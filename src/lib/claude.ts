@@ -1,0 +1,437 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { logAgentRun } from "@/lib/agent-runs";
+import { loadVoiceSamples, type VoiceSample } from "@/lib/voice";
+
+const MODEL = "claude-sonnet-4-6";
+
+let _client: Anthropic | null = null;
+function client() {
+  if (_client) return _client;
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new Error("ANTHROPIC_API_KEY not set");
+  _client = new Anthropic({ apiKey: key });
+  return _client;
+}
+
+export type Channel = "email" | "x_dm" | "linkedin";
+
+export interface ResearchInput {
+  name?: string;
+  linkedin_url?: string;
+  x_post_url?: string;
+  free_text?: string;
+  intent?: string;          // user's stated goal — strong disambiguation signal
+}
+
+export interface ResearchResult {
+  name: string | null;
+  role: string | null;
+  company: string | null;
+  links: Record<string, string>;
+  context_lines: string[];                          // 3 lines
+  candidates?: { name: string; role?: string; company?: string; linkedin?: string }[];
+  match_confidence?: "high" | "medium" | "low";    // how sure we picked the right person
+  raw: string;
+}
+
+const RESEARCH_SYSTEM = `You are a research analyst preparing a single-shot brief on ONE specific person, used to draft a cold outreach.
+
+DISAMBIGUATION IS THE PRIMARY JOB. Common names match many people. You MUST pick the right one.
+
+Procedure:
+1. If a LinkedIn URL or X URL is provided, that is the canonical anchor — start there.
+2. Otherwise, search "site:linkedin.com/in <name>" first to enumerate candidates.
+3. The user's "Intent" line is the strongest disambiguation signal. If they say "PM at Wayfair", the right candidate works at (or is interviewing for) Wayfair. Match against company, city, role, or topic.
+4. If multiple plausible candidates exist, pick the one that best matches the intent. Set match_confidence to "high" only when the linkedin profile or another authoritative source confirms BOTH the name AND a feature from the intent (company, role, location).
+5. If NO candidate clearly matches the intent, return name as null and list up to 3 candidates so the user can disambiguate. Do NOT pad with facts about the wrong person.
+
+Use the web_search tool. Prefer the person's own profile, posts, and recent press over second-hand sources. NEVER mix facts from different people.
+
+Output strict JSON, no prose before or after:
+{
+  "name": string | null,
+  "role": string | null,
+  "company": string | null,
+  "links": { "linkedin"?: string, "x"?: string, "website"?: string, "github"?: string },
+  "context_lines": [string, string, string],
+  "candidates": [{ "name": string, "role"?: string, "company"?: string, "linkedin"?: string }],
+  "match_confidence": "high" | "medium" | "low"
+}
+
+Rules for context_lines:
+- Exactly 3 lines, each tied to the SAME person you confirmed above.
+- Each line is a concrete, specific, recent fact: something they made, said, shipped, or are working on.
+- Each line must contain a specific noun: a project, company, paper, number, post topic.
+- No flattery, no "thought leader," no "passionate about", no generic descriptors.
+- If you cannot verify 3 specific facts about the right person, return fewer (pad with empty strings). Do NOT invent or borrow from other people with the same name.`;
+
+export async function research(input: ResearchInput): Promise<ResearchResult> {
+  const started = Date.now();
+  const userPrompt = [
+    input.name && `Name: ${input.name}`,
+    input.linkedin_url && `LinkedIn: ${input.linkedin_url}`,
+    input.x_post_url && `X post: ${input.x_post_url}`,
+    input.free_text && `Context the user pasted:\n${input.free_text}`,
+    input.intent && `Intent (use to disambiguate which person this is):\n${input.intent}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  if (!userPrompt) throw new Error("research(): empty input");
+
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 1500,
+      system: RESEARCH_SYSTEM,
+      tools: [
+        {
+          type: "web_search_20250305",
+          name: "web_search",
+          max_uses: 5,
+        } as unknown as Anthropic.Messages.Tool,
+      ],
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") text += block.text;
+    }
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: "reach_out:research",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+    });
+  }
+
+  return parseResearch(text, input);
+}
+
+function parseResearch(text: string, input: ResearchInput): ResearchResult {
+  const json = extractJson(text);
+  let parsed: Partial<ResearchResult> = {};
+  try {
+    parsed = JSON.parse(json) as Partial<ResearchResult>;
+  } catch {
+    parsed = {};
+  }
+  const lines = Array.isArray(parsed.context_lines)
+    ? parsed.context_lines.slice(0, 3)
+    : [];
+  while (lines.length < 3) lines.push("");
+  return {
+    name: parsed.name ?? input.name ?? null,
+    role: parsed.role ?? null,
+    company: parsed.company ?? null,
+    links: parsed.links ?? {},
+    context_lines: lines,
+    candidates: Array.isArray(parsed.candidates) ? parsed.candidates.slice(0, 5) : undefined,
+    match_confidence: parsed.match_confidence,
+    raw: text,
+  };
+}
+
+function extractJson(text: string): string {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced) return fenced[1].trim();
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start >= 0 && end > start) return text.slice(start, end + 1);
+  return text;
+}
+
+// ---------- IDENTIFY ----------
+// Lightweight enumerate-candidates pass. The user confirms one before research/draft.
+
+export interface IdentifyInput {
+  text: string;          // raw paste from the user — name, name+company, etc.
+  intent?: string;       // disambiguation hint
+}
+
+export interface IdentifyCandidate {
+  name: string;
+  role?: string | null;
+  company?: string | null;
+  location?: string | null;
+  linkedin?: string | null;
+  why?: string | null;            // 1-line reason this matches the intent (for the UI)
+}
+
+export interface IdentifyResult {
+  candidates: IdentifyCandidate[];
+  raw: string;
+}
+
+const IDENTIFY_SYSTEM = `You are a name-disambiguation researcher. Given a name (and an optional intent hint), return a SHORT list of distinct people who plausibly match — so the user can pick the right one before we do deeper research.
+
+Procedure:
+1. Search "site:linkedin.com/in <name>" first. Also search the name with any company word from the intent ("<name> <company>") as a second query.
+2. Cluster results by person — different titles, companies, or photos = different people.
+3. Return up to 5 candidates, ordered by how well they match the intent (best first).
+4. For each candidate, fill role, company, location, and the linkedin URL when you can find it. Add a 1-line "why" tying them to the intent if relevant ("Sr. Analyst at Wayfair, Boston — matches 'Wayfair' in intent"). Otherwise leave why null.
+5. NEVER fabricate. If you cannot find any plausible candidate, return an empty list.
+
+Output strict JSON only, no prose:
+{
+  "candidates": [
+    { "name": string, "role": string|null, "company": string|null, "location": string|null, "linkedin": string|null, "why": string|null }
+  ]
+}`;
+
+export async function identify(input: IdentifyInput): Promise<IdentifyResult> {
+  const started = Date.now();
+  const userPrompt = [
+    `Name or context: ${input.text}`,
+    input.intent && `Intent (use to rank candidates): ${input.intent}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 1200,
+      system: IDENTIFY_SYSTEM,
+      tools: [
+        {
+          type: "web_search_20250305",
+          name: "web_search",
+          max_uses: 4,
+        } as unknown as Anthropic.Messages.Tool,
+      ],
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") text += block.text;
+    }
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: "reach_out:identify",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+    });
+  }
+
+  const json = extractJson(text);
+  let parsed: { candidates?: IdentifyCandidate[] } = {};
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    parsed = {};
+  }
+  return {
+    candidates: Array.isArray(parsed.candidates) ? parsed.candidates.slice(0, 5) : [],
+    raw: text,
+  };
+}
+
+// ---------- DRAFT ----------
+
+export interface DraftInput {
+  person_context: ResearchResult;
+  channel: Channel;
+  intent?: string;
+  voice_samples?: VoiceSample[];
+  parent_draft?: { channel: Channel; body: string }; // for followups
+  sender_context?: string;                            // about the user — name, resume excerpt
+  sender_writing_samples?: string;                    // pasted samples from onboarding
+  sender_full_name?: string;                          // for sign-off
+}
+
+export interface DraftResult {
+  subject: string | null;
+  body: string;
+  model: string;
+}
+
+const ANTI_PATTERNS = [
+  "Hope this finds you well",
+  "I hope you are doing well",
+  "I came across your work",
+  "I came across your profile",
+  "I'd love to learn more",
+  "I would love to learn more",
+  "I wanted to reach out",
+  "I am reaching out",
+  "your fascinating work",
+  "your incredible work",
+  "delve",
+  "leverage",
+  "synergy",
+  "circle back",
+  "Looking forward to hearing back",
+  "Looking forward to your response",
+];
+
+const LENGTH_BUDGETS: Record<Channel, string> = {
+  email: "80–120 words. Subject line under 6 words, lowercase, specific.",
+  x_dm: "40–60 words. No subject. No greeting. Get to the point in sentence one.",
+  linkedin: "60–100 words. No subject. One short greeting line maximum.",
+};
+
+function draftSystem(channel: Channel, signOffName?: string) {
+  return `You write outreach messages in the user's voice. The user is a thoughtful operator who hates AI-sounding email. Treat that as a hard constraint, not a preference.
+
+Channel: ${channel}.
+Length: ${LENGTH_BUDGETS[channel]}
+
+Forbidden phrases (do not use these or variations):
+${ANTI_PATTERNS.map((p) => `- ${p}`).join("\n")}
+
+Forbidden patterns:
+- Em-dashes used as a connector (—). Use periods or commas.
+- Three-part sentence rhythms ("X, Y, and Z" used three times in one message).
+- Multi-question closers. Pick exactly one ask.
+- Closers like "Best,", "Regards,", "Cheers," — match the user's voice samples instead. ${signOffName ? `Default sign-off: "${signOffName.split(/\s+/)[0]}" on a new line.` : "If no samples, sign off with first name only on a new line."}
+- Adjectives that flatter the recipient.
+
+Required:
+- Reference exactly ONE specific thing the recipient did, said, or shipped (from the research). Name the thing.
+- If the research has no specific facts, prefer a short message that ties the user's own background or intent to the recipient's company/role, rather than fabricating a reference. Honest > fluffy.
+- One concrete ask, single question.
+- Plain words. No jargon. No metaphors that did not exist 200 years ago.
+- Match the user's sentence length and rhythm from the voice samples if any are provided.
+- Do NOT respond with meta-commentary like "I need more context" — write the best message you can with what you have.
+
+Output strict JSON only:
+${
+  channel === "email"
+    ? '{ "subject": string, "body": string }'
+    : '{ "body": string }'
+}`;
+}
+
+export async function draft(input: DraftInput): Promise<DraftResult> {
+  const started = Date.now();
+  const samples = input.voice_samples ?? (await loadVoiceSamples());
+  const channelSamples = samples.filter(
+    (s) => !s.channel || s.channel === input.channel
+  );
+
+  const userBlocks: string[] = [];
+  userBlocks.push(`# Recipient`);
+  const ctx = input.person_context;
+  userBlocks.push(
+    [
+      ctx.name && `Name: ${ctx.name}`,
+      ctx.role && `Role: ${ctx.role}`,
+      ctx.company && `Company: ${ctx.company}`,
+      Object.keys(ctx.links).length &&
+        `Links: ${Object.entries(ctx.links)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(", ")}`,
+    ]
+      .filter(Boolean)
+      .join("\n")
+  );
+  userBlocks.push(
+    `Research:\n${ctx.context_lines.filter(Boolean).map((l) => `- ${l}`).join("\n") || "(no specific facts found)"}`
+  );
+
+  if (input.intent) userBlocks.push(`# Intent\n${input.intent}`);
+
+  if (input.sender_context) {
+    userBlocks.push(`# About the sender (you are writing as this person)\n${input.sender_context}`);
+  }
+
+  if (input.sender_writing_samples) {
+    userBlocks.push(
+      `# Sender's writing samples (match rhythm, openers, sign-off)\n${input.sender_writing_samples}`
+    );
+  } else if (channelSamples.length) {
+    userBlocks.push(
+      `# Voice samples (match this rhythm and word choice)\n${channelSamples
+        .slice(0, 5)
+        .map((s, i) => `Sample ${i + 1}:\n${s.body}`)
+        .join("\n\n")}`
+    );
+  }
+
+  if (input.parent_draft) {
+    userBlocks.push(
+      `# Original message (this is a followup, ~5 days later, no reply)\n${input.parent_draft.body}\n\nWrite a short followup. Reference the original briefly. Different angle if possible. Do not say "just bumping" or "circling back".`
+    );
+  }
+
+  const userPrompt = userBlocks.join("\n\n");
+
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 600,
+      system: draftSystem(input.channel, input.sender_full_name),
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") text += block.text;
+    }
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: `reach_out:draft:${input.channel}`,
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { intent: input.intent },
+    });
+  }
+
+  const json = extractJson(text);
+  let parsed: { subject?: string; body?: string } = {};
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    parsed = { body: text.trim() };
+  }
+  return {
+    subject: parsed.subject ?? null,
+    body: (parsed.body ?? "").trim(),
+    model: MODEL,
+  };
+}

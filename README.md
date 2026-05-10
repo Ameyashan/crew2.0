@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Crew v1 — Reach Out (personal build)
 
-## Getting Started
+Personal outreach copilot. Paste a name, a LinkedIn URL, or an X post; Crew researches the person, finds a likely email via Apollo, drafts in your voice across email / X DM / LinkedIn, tracks every send, and reminds you to follow up.
 
-First, run the development server:
+Built per the prompts in `../crew_prompts.md`. Single-user, no auth, no payments. Designed to be run locally and self-hosted on Vercel.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Stack
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **Next.js 16 / App Router** + TypeScript
+- **Tailwind v4**, custom theme tokens (cream / clay / ink) inspired by the prototype
+- **Supabase Postgres** (project `ccikbznbrjpruwiqzxib`)
+- **Anthropic SDK** — `claude-sonnet-4-6` for research (with web_search) and drafting
+- **Apollo people-match** for email lookup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Run
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Fill `.env.local`:
+   ```
+   ANTHROPIC_API_KEY=sk-ant-...
+   APOLLO_API_KEY=...
+   SUPABASE_URL=https://ccikbznbrjpruwiqzxib.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=...   # or use the anon publishable key, since RLS is off
+   CRON_SECRET=anything-long
+   ```
+2. `npm run dev`
+3. Open <http://localhost:3000>.
 
-## Learn More
+The Supabase migration in `supabase/migrations/0001_init.sql` has already been applied to the project; re-run only on a fresh project.
 
-To learn more about Next.js, take a look at the following resources:
+## Routes
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `/` — Compose. Paste, research, draft 3 channels, copy & open Gmail.
+- `/today` — Followups due + conversations needing review. Keyboard: `j`/`k` move, `r`/`n` mark replied/no-reply, `Enter` open.
+- `/people` — Searchable contacts.
+- `/people/[id]` — Per-person timeline (the seed of the memory layer).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## API
 
-## Deploy on Vercel
+- `POST /api/compose` — `{ text, intent? }` → research + drafts.
+- `POST /api/draft/[id]/sent` — mark draft sent, log interaction.
+- `GET  /api/today` — feeds the Today page.
+- `POST /api/review` — `{ interaction_id, outcome: 'replied' | 'no_reply' }`. `no_reply` schedules a 5-day followup and pre-drafts it.
+- `POST /api/followup/[id]/sent` — mark a followup sent.
+- `GET  /api/cron/daily-digest` — snapshots pending followups/reviews. Wired in `vercel.json` to `0 12 * * *` (≈ 8 AM ET). Test locally: `curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/daily-digest`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Voice
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Edit `voice/samples.md` directly. Each fenced block is a sample; an optional first-line `# email` / `# x_dm` / `# linkedin` scopes it to that channel. Drafts pull samples in as few-shot context per call. Cache invalidates on file mtime change.
+
+## What's deliberately not here (per the prompts)
+
+No automated send, no Gmail OAuth, no auth, no multi-tenant, no link redirector / click tracking, no BCC tracking, no marketing site, no onboarding, no settings UI, no mobile polish, no dark mode toggle.
+
+## Vision and prompts
+
+See sibling files `../crew_vision.md` and `../crew_prompts.md`. The prototype `../crew_prototype.html` is the visual reference.

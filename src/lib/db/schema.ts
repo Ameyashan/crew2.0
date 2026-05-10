@@ -1,0 +1,105 @@
+// Types mirror supabase/migrations/0001_init.sql.
+// Edit migrations first, then update these.
+
+export type Channel = "email" | "x_dm" | "linkedin";
+
+export type DraftStatus = "generated" | "edited" | "sent" | "discarded";
+
+export type InteractionType =
+  | "drafted"
+  | "sent"
+  | "replied"
+  | "no_reply"
+  | "clicked"
+  | "followed_up";
+
+export type FollowupStatus = "pending" | "sent" | "cancelled";
+
+export interface Person {
+  id: string;
+  user_id: string;
+  name: string;
+  role: string | null;
+  company: string | null;
+  email: string | null;
+  email_confidence: number | null;
+  email_source: string | null;
+  links: Record<string, string>;
+  enrichment: Record<string, unknown>;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Draft {
+  id: string;
+  user_id: string;
+  person_id: string | null;
+  channel: Channel;
+  subject: string | null;
+  body: string;
+  intent: string | null;
+  status: DraftStatus;
+  model: string | null;
+  parent_draft_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Interaction {
+  id: string;
+  user_id: string;
+  person_id: string | null;
+  agent_type: string;
+  interaction_type: InteractionType;
+  channel: Channel | null;
+  draft_id: string | null;
+  meta: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface Followup {
+  id: string;
+  user_id: string;
+  person_id: string | null;
+  source_interaction_id: string | null;
+  draft_id: string | null;
+  due_at: string;
+  status: FollowupStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VoiceSample {
+  id: string;
+  user_id: string;
+  channel: Channel | null;
+  body: string;
+  source: string | null;
+  meta: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface AgentRun {
+  id: string;
+  user_id: string;
+  agent_type: string;
+  model: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cost_usd: number | null;
+  latency_ms: number | null;
+  outcome: string | null;
+  error: string | null;
+  meta: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface DailyDigest {
+  id: string;
+  user_id: string;
+  generated_at: string;
+  pending_followups: number;
+  pending_reviews: number;
+  snapshot: Record<string, unknown>;
+}
