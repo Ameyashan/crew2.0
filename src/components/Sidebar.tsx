@@ -6,12 +6,12 @@ import { usePathname } from "next/navigation";
 const REACH_OUT_LINKS = [
   { href: "/today", label: "Today", glyph: "◐", badge: 4 },
   { href: "/", label: "Compose", glyph: "↗" },
+  { href: "/resume", label: "Resume", glyph: "§" },
   { href: "/people", label: "People", glyph: "◇" },
   { href: "/settings", label: "Settings", glyph: "✦" },
 ];
 
 const INCOMING = [
-  { label: "Resume", glyph: "§" },
   { label: "Opportunities", glyph: "◇" },
   { label: "Inbox triage", glyph: "✉" },
   { label: "Calendar", glyph: "▢" },

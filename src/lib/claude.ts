@@ -147,7 +147,7 @@ function parseResearch(text: string, input: ResearchInput): ResearchResult {
   };
 }
 
-function extractJson(text: string): string {
+export function extractJson(text: string): string {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenced) return fenced[1].trim();
   const start = text.indexOf("{");
