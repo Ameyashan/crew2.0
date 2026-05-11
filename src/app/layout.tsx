@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Newsreader } from "next/font/google";
-import Link from "next/link";
+import { Sidebar } from "@/components/Sidebar";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -22,36 +22,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
-        <header className="border-b border-[color:var(--color-line)]/60">
-          <div className="max-w-3xl mx-auto px-5 py-4 flex items-center gap-6">
-            <Link
-              href="/"
-              className="text-2xl text-[color:var(--color-clay)] leading-none"
-              style={{ fontFamily: "var(--font-newsreader)" }}
-            >
-              c.
-            </Link>
-            <nav className="flex gap-5 text-sm">
-              <NavLink href="/">Compose</NavLink>
-              <NavLink href="/today">Today</NavLink>
-              <NavLink href="/people">People</NavLink>
-            </nav>
-          </div>
-        </header>
-        <main className="flex-1 max-w-3xl w-full mx-auto px-5 py-8">{children}</main>
+      <body className="min-h-full flex">
+        <Sidebar />
+        <main className="flex-1 min-w-0 px-10 py-10 overflow-x-hidden">
+          <div className="max-w-4xl mx-auto">{children}</div>
+        </main>
       </body>
     </html>
-  );
-}
-
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="text-[color:var(--color-ink-muted)] hover:text-[color:var(--color-ink)] transition-colors"
-    >
-      {children}
-    </Link>
   );
 }
