@@ -22,9 +22,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex">
+      <body className="min-h-full md:flex">
         <Sidebar />
-        <main className="flex-1 min-w-0 px-10 py-10 overflow-x-hidden">
+        <main className="flex-1 min-w-0 px-4 py-6 md:px-10 md:py-10 overflow-x-hidden">
           <div className="max-w-4xl mx-auto">{children}</div>
         </main>
       </body>
