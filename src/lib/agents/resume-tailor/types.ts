@@ -59,5 +59,7 @@ export type ResumeTailorStepEvent =
       status: "done";
       data: { resume: TailoredResume };
     }
+  | { type: "tool"; name: "web_search"; query: string }
+  | { type: "progress"; chars: number; bullets: number }
   | { type: "complete" }
   | { type: "error"; message: string };

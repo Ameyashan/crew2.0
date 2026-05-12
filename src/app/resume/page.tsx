@@ -24,6 +24,8 @@ type Status =
       jobTitle?: string;
       company?: string;
       hasJobUrl: boolean;
+      searches: string[];
+      bullets: number;
     }
   | { phase: "preview" }
   | { phase: "exporting"; kind: "pdf" | "docx" }
@@ -97,7 +99,13 @@ export default function ResumePage() {
   async function runTailor(regenerate_notes?: string) {
     const trimmedUrlNow = jobUrl.trim();
     const hasJobUrl = trimmedUrlNow.length > 0;
-    setStatus({ phase: "streaming", step: "research", hasJobUrl });
+    setStatus({
+      phase: "streaming",
+      step: "research",
+      hasJobUrl,
+      searches: [],
+      bullets: 0,
+    });
     setTailored((prev) => (regenerate_notes ? prev : null));
 
     const resp = await fetch("/api/resume/tailor", {
@@ -142,17 +150,36 @@ export default function ResumePage() {
   }
 
   function handleEvent(evt: ResumeTailorStepEvent) {
-    const hasJobUrl = status.phase === "streaming" ? status.hasJobUrl : jobUrl.trim().length > 0;
     if (evt.type === "step" && evt.id === "research" && evt.status === "start") {
-      setStatus({ phase: "streaming", step: "research", hasJobUrl });
+      setStatus((prev) => ({
+        phase: "streaming",
+        step: "research",
+        hasJobUrl: prev.phase === "streaming" ? prev.hasJobUrl : jobUrl.trim().length > 0,
+        searches: prev.phase === "streaming" ? prev.searches : [],
+        bullets: 0,
+      }));
+    } else if (evt.type === "tool" && evt.name === "web_search") {
+      setStatus((prev) =>
+        prev.phase === "streaming"
+          ? { ...prev, searches: [evt.query, ...prev.searches].slice(0, 3) }
+          : prev
+      );
+    } else if (evt.type === "progress") {
+      setStatus((prev) =>
+        prev.phase === "streaming"
+          ? { ...prev, step: "tailor", bullets: evt.bullets }
+          : prev
+      );
     } else if (evt.type === "step" && evt.id === "research" && evt.status === "done") {
-      setStatus({
+      setStatus((prev) => ({
         phase: "streaming",
         step: "tailor",
         jobTitle: evt.data.job_title,
         company: evt.data.company,
-        hasJobUrl,
-      });
+        hasJobUrl: prev.phase === "streaming" ? prev.hasJobUrl : jobUrl.trim().length > 0,
+        searches: prev.phase === "streaming" ? prev.searches : [],
+        bullets: prev.phase === "streaming" ? prev.bullets : 0,
+      }));
     } else if (evt.type === "step" && evt.id === "tailor" && evt.status === "done") {
       setTailored(evt.data.resume);
       setStatus({ phase: "preview" });
@@ -177,10 +204,13 @@ export default function ResumePage() {
         setStatus({ phase: "error", message: j.error ?? `${kind} failed` });
         return;
       }
-      const blob = await resp.blob();
+      const bytes = await resp.arrayBuffer();
       const disp = resp.headers.get("Content-Disposition") ?? "";
       const m = disp.match(/filename="([^"]+)"/);
       const filename = m?.[1] ?? `resume.${kind}`;
+      // Force iOS Safari to treat the response as an opaque download instead
+      // of inline-rendering it as a PDF.
+      const blob = new Blob([bytes], { type: "application/octet-stream" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -357,6 +387,8 @@ export default function ResumePage() {
           jobTitle={status.jobTitle}
           company={status.company}
           hasJobUrl={status.hasJobUrl}
+          searches={status.searches}
+          bullets={status.bullets}
         />
       )}
 
@@ -453,26 +485,43 @@ function Timeline({
   jobTitle,
   company,
   hasJobUrl,
+  searches,
+  bullets,
 }: {
   step: "research" | "tailor";
   jobTitle?: string;
   company?: string;
   hasJobUrl: boolean;
+  searches: string[];
+  bullets: number;
 }) {
   const firstStepLabel = hasJobUrl ? "Reading the job posting" : "Reading your brief";
+  const target =
+    step === "tailor" && (jobTitle || company)
+      ? `${jobTitle ?? ""}${company ? ` @ ${company}` : ""}`.trim()
+      : null;
   return (
     <div className="rounded-md border border-[color:var(--color-line)] bg-[color:var(--color-cream-50)] px-4 py-3 text-sm space-y-2">
       <Row done={step === "tailor"} active={step === "research"} label={firstStepLabel}>
-        {step === "tailor" && (jobTitle || company)
-          ? `${jobTitle ?? ""}${company ? ` @ ${company}` : ""}`.trim()
-          : null}
+        {searches.length > 0 ? (
+          <div className="space-y-0.5">
+            {target ? <div>{target}</div> : null}
+            {searches.map((q, i) => (
+              <div key={`${q}-${i}`} className="truncate">
+                Searching: <span className="italic">&ldquo;{q}&rdquo;</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          target
+        )}
       </Row>
-      <Row
-        done={false}
-        active={step === "tailor"}
-        label="Rewriting your resume"
-      >
-        {step === "tailor" ? "Drafting bullets…" : null}
+      <Row done={false} active={step === "tailor"} label="Rewriting your resume">
+        {step === "tailor"
+          ? bullets > 0
+            ? `Drafting bullets… ${bullets} written`
+            : "Drafting bullets…"
+          : null}
       </Row>
     </div>
   );
