@@ -19,12 +19,13 @@ const BUDGETS = {
   },
 } as const;
 
-export const SYSTEM_PROMPT = `You are a resume editor that tailors a candidate's resume to a specific job posting.
+export const SYSTEM_PROMPT = `You are a resume editor that tailors a candidate's resume against either a specific job posting or a free-text brief from the user.
 
 PROCEDURE
-1. Use the web_search tool to read the job posting at the URL provided. Identify the target role title, the hiring company, and the top 5–8 must-have skills/keywords from the JD.
-2. If the URL cannot be fetched (auth wall, login required, 404), say so by returning the JSON with meta.target_role and meta.target_company set to null and a single experience array with a placeholder bullet "JOB_FETCH_FAILED" — the caller will detect this and ask the user to paste the JD.
-3. Re-tailor the candidate's resume so the most relevant experience, skills, and projects surface first, JD keywords are mirrored naturally, and bullets are rewritten to lead with action + impact.
+1. If a Job URL is provided, use the web_search tool to read the posting. Identify the target role title, the hiring company, and the top 5–8 must-have skills/keywords from the JD.
+   - If the URL cannot be fetched (auth wall, login required, 404), say so by returning the JSON with meta.target_role and meta.target_company set to null and a single experience array with a placeholder bullet "JOB_FETCH_FAILED" — the caller will detect this and ask the user to paste the JD.
+2. If no Job URL is provided, do NOT call web_search. Treat the User Highlights block as the brief: it tells you which direction to push the resume (a target role, a skill set to lead with, content to drop, tone, etc.). Set meta.target_role and meta.target_company from the highlights if the user named them, otherwise leave them null.
+3. Re-tailor the candidate's resume so the most relevant experience, skills, and projects surface first, brief/JD keywords are mirrored naturally, and bullets are rewritten to lead with action + impact.
 
 HARD RULES
 - Never invent companies, titles, dates, schools, or numeric metrics. If a fact is not in the source resume, do not include it. You may rephrase and reorder; you may not fabricate.
@@ -59,12 +60,20 @@ export function buildUserPrompt(
   input: ResumeTailorInput & { resume_text: string; full_name?: string | null }
 ): string {
   const blocks: string[] = [];
-  blocks.push(`# Job URL\n${input.job_url}`);
+  if (input.job_url) {
+    blocks.push(`# Job URL\n${input.job_url}`);
+  } else {
+    blocks.push(
+      `# Job URL\n(none provided — do NOT call web_search. Use the User Highlights block as the brief.)`
+    );
+  }
   blocks.push(`# Target Page Count\n${input.page_count}`);
   if (input.full_name) blocks.push(`# Candidate name (use verbatim)\n${input.full_name}`);
   blocks.push(`# Existing Resume (verbatim — source of truth for all facts)\n${input.resume_text}`);
   if (input.highlights?.trim()) {
-    blocks.push(`# User Highlights (emphasize these)\n${input.highlights.trim()}`);
+    blocks.push(
+      `# User Highlights${input.job_url ? " (emphasize these on top of the JD)" : " (this is the brief — what the user wants from this revision)"}\n${input.highlights.trim()}`
+    );
   }
   if (input.regenerate_notes?.trim()) {
     blocks.push(`# Regeneration Notes (apply these on top of the previous draft)\n${input.regenerate_notes.trim()}`);

@@ -38,7 +38,7 @@ export type TailoredResume = {
 };
 
 export interface ResumeTailorInput {
-  job_url: string;
+  job_url?: string;
   highlights?: string;
   page_count: 1 | 2;
   regenerate_notes?: string;
