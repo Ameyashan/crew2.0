@@ -610,6 +610,7 @@ function sourceLabel(s: string): string {
   if (s === "apollo_verified") return "verified";
   if (s === "apollo_guessed") return "pattern guess";
   if (s === "apollo_unverified") return "unverified";
+  if (s === "apollo_catch_all") return "catch-all";
   return s.replace("apollo_", "");
 }
 

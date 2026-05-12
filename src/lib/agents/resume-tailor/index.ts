@@ -49,7 +49,7 @@ export async function* runResumeTailorStream(
     let err: string | null = null;
 
     try {
-      const resp = await client().messages.create({
+      const stream = client().messages.stream({
         model: MODEL,
         max_tokens: 4000,
         system: SYSTEM_PROMPT,
@@ -62,10 +62,78 @@ export async function* runResumeTailorStream(
         ],
         messages: [{ role: "user", content: userPrompt }],
       });
-      inTokens = resp.usage.input_tokens;
-      outTokens = resp.usage.output_tokens;
-      for (const block of resp.content) {
-        if (block.type === "text") text += block.text;
+
+      const toolBlocks = new Map<number, { name: string; partial: string }>();
+      let lastProgressAt = 0;
+      let lastProgressChars = 0;
+      let textForProgress = "";
+
+      for await (const evt of stream) {
+        if (evt.type === "content_block_start") {
+          const block = evt.content_block as {
+            type: string;
+            name?: string;
+          };
+          if (
+            (block.type === "server_tool_use" || block.type === "tool_use") &&
+            block.name === "web_search"
+          ) {
+            toolBlocks.set(evt.index, { name: block.name, partial: "" });
+          }
+        } else if (evt.type === "content_block_delta") {
+          const delta = evt.delta as {
+            type: string;
+            text?: string;
+            partial_json?: string;
+          };
+          if (delta.type === "text_delta" && delta.text) {
+            text += delta.text;
+            textForProgress += delta.text;
+            const now = Date.now();
+            if (
+              now - lastProgressAt > 250 &&
+              textForProgress.length - lastProgressChars > 80
+            ) {
+              const bullets = (textForProgress.match(/\.\s*"/g) || []).length;
+              lastProgressAt = now;
+              lastProgressChars = textForProgress.length;
+              yield {
+                type: "progress",
+                chars: textForProgress.length,
+                bullets,
+              };
+            }
+          } else if (delta.type === "input_json_delta" && delta.partial_json) {
+            const b = toolBlocks.get(evt.index);
+            if (b) b.partial += delta.partial_json;
+          }
+        } else if (evt.type === "content_block_stop") {
+          const b = toolBlocks.get(evt.index);
+          if (b) {
+            let query: string | null = null;
+            try {
+              const parsed = JSON.parse(b.partial) as { query?: string };
+              query = parsed.query ?? null;
+            } catch {
+              // partial JSON didn't parse — skip
+            }
+            toolBlocks.delete(evt.index);
+            if (query) {
+              yield { type: "tool", name: "web_search", query };
+            }
+          }
+        }
+      }
+
+      const final = await stream.finalMessage();
+      inTokens = final.usage.input_tokens;
+      outTokens = final.usage.output_tokens;
+      // Prefer the SDK's reassembled text when available (it includes any
+      // final text block we didn't capture via deltas).
+      if (!text) {
+        for (const block of final.content) {
+          if (block.type === "text") text += block.text;
+        }
       }
     } catch (e) {
       outcome = "error";

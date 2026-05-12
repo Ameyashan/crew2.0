@@ -18,6 +18,7 @@ export interface FindEmailResult {
     | "apollo_verified"
     | "apollo_guessed"
     | "apollo_unverified"
+    | "apollo_catch_all"      // domain accepts mail for any address; can't verify mailbox
     | "apollo_no_match"
     | "apollo_inaccessible"   // free plan blocks people endpoints
     | "apollo_error"
@@ -89,8 +90,15 @@ export async function findEmail(input: FindEmailInput): Promise<FindEmailResult>
       }
     } else {
       const person = (raw as { person?: Record<string, unknown> } | null)?.person;
-      const email = (person?.email as string | undefined) ?? null;
+      const rawEmail = (person?.email as string | undefined) ?? null;
       const status = (person?.email_status as string | undefined) ?? null;
+      const personalEmails = (person?.personal_emails as string[] | undefined) ?? [];
+      // Apollo returns "email_not_unlocked@domain.com" as a placeholder when the
+      // mailbox isn't revealed; treat that as no email.
+      const email =
+        rawEmail && !/^email_not_unlocked@/i.test(rawEmail)
+          ? rawEmail
+          : personalEmails.find((e) => e && !/^email_not_unlocked@/i.test(e)) ?? null;
       const org = person?.organization as Record<string, unknown> | undefined;
       const domain =
         (org?.primary_domain as string | undefined) ??
@@ -102,14 +110,25 @@ export async function findEmail(input: FindEmailInput): Promise<FindEmailResult>
         const guesses = domain ? buildGuesses(input.name, domain) : [];
         result = { ...blank("apollo_no_match"), domain, guesses, raw };
       } else {
-        const confidence =
-          status === "verified" ? 0.95 : status === "guessed" ? 0.4 : 0.7;
-        const source: FindEmailResult["source"] =
-          status === "verified"
-            ? "apollo_verified"
-            : status === "guessed"
-              ? "apollo_guessed"
-              : "apollo_unverified";
+        let source: FindEmailResult["source"];
+        let confidence: number;
+        if (status === "verified") {
+          source = "apollo_verified";
+          confidence = 0.95;
+        } else if (status === "guessed") {
+          source = "apollo_guessed";
+          confidence = 0.4;
+        } else if (
+          status === "catch_all" ||
+          status === "catchall" ||
+          status === "unavailable"
+        ) {
+          source = "apollo_catch_all";
+          confidence = 0.5;
+        } else {
+          source = "apollo_unverified";
+          confidence = 0.6;
+        }
         result = {
           email,
           confidence,
