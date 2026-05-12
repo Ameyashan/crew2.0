@@ -18,7 +18,13 @@ interface Profile {
 
 type Status =
   | { phase: "idle" }
-  | { phase: "streaming"; step: "research" | "tailor"; jobTitle?: string; company?: string }
+  | {
+      phase: "streaming";
+      step: "research" | "tailor";
+      jobTitle?: string;
+      company?: string;
+      hasJobUrl: boolean;
+    }
   | { phase: "preview" }
   | { phase: "exporting"; kind: "pdf" | "docx" }
   | { phase: "error"; message: string };
@@ -89,14 +95,16 @@ export default function ResumePage() {
   }
 
   async function runTailor(regenerate_notes?: string) {
-    setStatus({ phase: "streaming", step: "research" });
+    const trimmedUrlNow = jobUrl.trim();
+    const hasJobUrl = trimmedUrlNow.length > 0;
+    setStatus({ phase: "streaming", step: "research", hasJobUrl });
     setTailored((prev) => (regenerate_notes ? prev : null));
 
     const resp = await fetch("/api/resume/tailor", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        job_url: jobUrl.trim(),
+        job_url: trimmedUrlNow || undefined,
         highlights: highlights.trim() || undefined,
         page_count: pageCount,
         regenerate_notes,
@@ -134,14 +142,16 @@ export default function ResumePage() {
   }
 
   function handleEvent(evt: ResumeTailorStepEvent) {
+    const hasJobUrl = status.phase === "streaming" ? status.hasJobUrl : jobUrl.trim().length > 0;
     if (evt.type === "step" && evt.id === "research" && evt.status === "start") {
-      setStatus({ phase: "streaming", step: "research" });
+      setStatus({ phase: "streaming", step: "research", hasJobUrl });
     } else if (evt.type === "step" && evt.id === "research" && evt.status === "done") {
       setStatus({
         phase: "streaming",
         step: "tailor",
         jobTitle: evt.data.job_title,
         company: evt.data.company,
+        hasJobUrl,
       });
     } else if (evt.type === "step" && evt.id === "tailor" && evt.status === "done") {
       setTailored(evt.data.resume);
@@ -186,8 +196,11 @@ export default function ResumePage() {
   }
 
   const hasResume = !!resumeStatus.filename;
-  const canRun =
-    hasResume && /^https?:\/\//i.test(jobUrl.trim()) && status.phase !== "streaming";
+  const trimmedUrl = jobUrl.trim();
+  const trimmedHighlights = highlights.trim();
+  const urlOk = trimmedUrl === "" || /^https?:\/\//i.test(trimmedUrl);
+  const hasBrief = trimmedUrl.length > 0 || trimmedHighlights.length > 0;
+  const canRun = hasResume && hasBrief && urlOk && status.phase !== "streaming";
 
   if (loadingProfile) {
     return <div className="text-sm text-[color:var(--color-ink-muted)]">Loading…</div>;
@@ -270,7 +283,12 @@ export default function ResumePage() {
         </p>
       </Card>
 
-      <Card title="The job">
+      <Card title="The brief">
+        <p className="text-xs text-[color:var(--color-ink-muted)] mb-3">
+          Give Crew at least one of these — a job posting to tailor to, or a description of how to
+          change the resume. Both is best.
+        </p>
+
         <label className="block text-xs text-[color:var(--color-ink-muted)] mb-1">
           Job posting URL
         </label>
@@ -283,12 +301,12 @@ export default function ResumePage() {
         />
 
         <label className="block text-xs text-[color:var(--color-ink-muted)] mt-3 mb-1">
-          Highlights or extra context (optional)
+          What to change / emphasize
         </label>
         <textarea
           value={highlights}
           onChange={(e) => setHighlights(e.target.value)}
-          placeholder="What to emphasize. e.g. 'lead with the Stripe work, show python + infra signal, mention shipping the billing migration'."
+          placeholder="e.g. 'lead with the Stripe work, show python + infra signal, mention shipping the billing migration'. Required if you didn't give a job URL."
           className="w-full min-h-[100px] rounded-md border border-[color:var(--color-line)] bg-white/60 p-3 text-sm outline-none focus:border-[color:var(--color-clay)]"
         />
 
@@ -319,16 +337,27 @@ export default function ResumePage() {
           >
             {status.phase === "streaming" ? "Tailoring…" : "Tailor my resume →"}
           </button>
-          {!hasResume && (
+          {!hasResume ? (
             <span className="text-xs text-[color:var(--color-ink-muted)]">
               Upload a resume first.
             </span>
-          )}
+          ) : !hasBrief ? (
+            <span className="text-xs text-[color:var(--color-ink-muted)]">
+              Add a job URL or a description.
+            </span>
+          ) : !urlOk ? (
+            <span className="text-xs text-red-700">URL must start with http(s)://</span>
+          ) : null}
         </div>
       </Card>
 
       {status.phase === "streaming" && (
-        <Timeline step={status.step} jobTitle={status.jobTitle} company={status.company} />
+        <Timeline
+          step={status.step}
+          jobTitle={status.jobTitle}
+          company={status.company}
+          hasJobUrl={status.hasJobUrl}
+        />
       )}
 
       {status.phase === "error" && (
@@ -423,14 +452,17 @@ function Timeline({
   step,
   jobTitle,
   company,
+  hasJobUrl,
 }: {
   step: "research" | "tailor";
   jobTitle?: string;
   company?: string;
+  hasJobUrl: boolean;
 }) {
+  const firstStepLabel = hasJobUrl ? "Reading the job posting" : "Reading your brief";
   return (
     <div className="rounded-md border border-[color:var(--color-line)] bg-[color:var(--color-cream-50)] px-4 py-3 text-sm space-y-2">
-      <Row done={step === "tailor"} active={step === "research"} label="Reading the job posting">
+      <Row done={step === "tailor"} active={step === "research"} label={firstStepLabel}>
         {step === "tailor" && (jobTitle || company)
           ? `${jobTitle ?? ""}${company ? ` @ ${company}` : ""}`.trim()
           : null}
@@ -438,7 +470,7 @@ function Timeline({
       <Row
         done={false}
         active={step === "tailor"}
-        label="Rewriting your resume for this role"
+        label="Rewriting your resume"
       >
         {step === "tailor" ? "Drafting bullets…" : null}
       </Row>

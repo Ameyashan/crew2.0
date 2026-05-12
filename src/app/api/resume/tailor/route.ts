@@ -14,10 +14,13 @@ export async function POST(req: NextRequest) {
   const pageRaw = Number(body?.page_count);
   const page_count: 1 | 2 = pageRaw === 2 ? 2 : 1;
 
-  if (!job_url) {
-    return Response.json({ error: "job_url required" }, { status: 400 });
+  if (!job_url && !highlights?.trim()) {
+    return Response.json(
+      { error: "Provide a job URL or a description of how to change the resume" },
+      { status: 400 }
+    );
   }
-  if (!/^https?:\/\//i.test(job_url)) {
+  if (job_url && !/^https?:\/\//i.test(job_url)) {
     return Response.json({ error: "job_url must be http(s)" }, { status: 400 });
   }
 
@@ -26,7 +29,7 @@ export async function POST(req: NextRequest) {
     async start(controller) {
       try {
         for await (const evt of runResumeTailorStream({
-          job_url,
+          job_url: job_url || undefined,
           highlights,
           page_count,
           regenerate_notes,
