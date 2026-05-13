@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { CONTEXT_PROMPT_TEMPLATE } from "@/lib/profile";
 
 type FollowupChoice = 3 | 5 | 7 | 10 | "never";
 
@@ -12,6 +13,7 @@ interface Profile {
   resume_filename: string | null;
   writing_samples: string | null;
   followup_days: number | null;
+  context_prompt: string | null;
   onboarded_at: string | null;
 }
 
@@ -21,6 +23,8 @@ export default function OnboardingPage() {
   const [fullName, setFullName] = useState("");
   const [linkedin, setLinkedin] = useState("");
   const [samples, setSamples] = useState("");
+  const [contextPrompt, setContextPrompt] = useState("");
+  const [promptCopied, setPromptCopied] = useState(false);
   const [cadence, setCadence] = useState<FollowupChoice>(5);
   const [resumeStatus, setResumeStatus] = useState<{
     filename: string | null;
@@ -41,6 +45,7 @@ export default function OnboardingPage() {
           setFullName(p.full_name ?? "");
           setLinkedin(p.linkedin_url ?? "");
           setSamples(p.writing_samples ?? "");
+          setContextPrompt(p.context_prompt ?? "");
           if (p.followup_days != null) {
             setCadence(p.followup_days as FollowupChoice);
           } else if (p.onboarded_at) {
@@ -81,6 +86,7 @@ export default function OnboardingPage() {
           full_name: fullName || null,
           linkedin_url: linkedin || null,
           writing_samples: samples || null,
+          context_prompt: contextPrompt || null,
           followup_days: cadence === "never" ? null : Number(cadence),
           onboarded: true,
         }),
@@ -102,6 +108,7 @@ export default function OnboardingPage() {
   const hasResume = !!resumeStatus.filename;
   const hasLinkedIn = !!linkedin;
   const hasSamples = !!samples.trim();
+  const hasContext = !!contextPrompt.trim();
 
   return (
     <div className="grid gap-10 md:grid-cols-2">
@@ -130,6 +137,7 @@ export default function OnboardingPage() {
           <Check label="Resume" set={hasResume} />
           <Check label="LinkedIn" set={hasLinkedIn} />
           <Check label="Voice samples" set={hasSamples} />
+          <Check label="Goals & context" set={hasContext} />
           <div className="flex items-center justify-between pt-1">
             <span className="flex items-center gap-2">
               <span className="text-[color:var(--color-clay)]">✓</span>
@@ -225,7 +233,36 @@ export default function OnboardingPage() {
           />
         </Card>
 
-        <Card n={4} title="Followup cadence" required>
+        <Card n={4} title="Goals & context">
+          <p className="text-xs text-[color:var(--color-ink-muted)] mb-3">
+            Paste this prompt into your favorite LLM, answer its questions, then paste the
+            summary back. Crew uses it to write drafts that match what you&apos;re working toward.
+          </p>
+          <div className="rounded-md border border-[color:var(--color-line)] bg-[color:var(--color-cream-50)] p-3 text-xs text-[color:var(--color-ink-muted)]">
+            <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-[color:var(--color-ink)]">
+{CONTEXT_PROMPT_TEMPLATE}
+            </pre>
+            <button
+              type="button"
+              onClick={async () => {
+                await navigator.clipboard.writeText(CONTEXT_PROMPT_TEMPLATE);
+                setPromptCopied(true);
+                setTimeout(() => setPromptCopied(false), 2000);
+              }}
+              className="mt-2 rounded-md border border-[color:var(--color-line)] bg-white/60 px-2 py-1 text-[11px] hover:border-[color:var(--color-clay)]"
+            >
+              {promptCopied ? "✓ copied" : "Copy prompt"}
+            </button>
+          </div>
+          <textarea
+            value={contextPrompt}
+            onChange={(e) => setContextPrompt(e.target.value)}
+            placeholder="Paste your LLM-generated summary here…"
+            className="mt-3 w-full min-h-[140px] rounded-md border border-[color:var(--color-line)] bg-white/60 p-3 text-sm outline-none focus:border-[color:var(--color-clay)]"
+          />
+        </Card>
+
+        <Card n={5} title="Followup cadence" required>
           <p className="text-xs text-[color:var(--color-ink-muted)] mb-3">
             When someone doesn&apos;t reply, when should Crew nudge?
           </p>
