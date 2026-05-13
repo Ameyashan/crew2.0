@@ -9,6 +9,8 @@ export interface UserProfile {
   resume_filename: string | null;
   writing_samples: string | null;
   followup_days: number | null;
+  context_prompt: string | null;
+  context_structured: Record<string, unknown> | null;
   onboarded_at: string | null;
   updated_at: string;
 }
@@ -29,6 +31,8 @@ export interface ProfilePatch {
   resume_filename?: string | null;
   writing_samples?: string | null;
   followup_days?: number | null;
+  context_prompt?: string | null;
+  context_structured?: Record<string, unknown> | null;
   onboarded_at?: string | null;
 }
 
@@ -53,6 +57,10 @@ export function senderContextFromProfile(p: UserProfile | null): string {
   if (p.resume_text) {
     const trimmed = p.resume_text.replace(/\s+/g, " ").trim().slice(0, 2400);
     parts.push(`Background (from resume):\n${trimmed}`);
+  }
+  if (p.context_prompt) {
+    const trimmed = p.context_prompt.replace(/\s+/g, " ").trim().slice(0, 2400);
+    parts.push(`Goals & context (in their own words):\n${trimmed}`);
   }
   return parts.join("\n\n");
 }

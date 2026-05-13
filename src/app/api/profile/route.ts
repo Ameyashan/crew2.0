@@ -16,6 +16,12 @@ export async function POST(req: NextRequest) {
     writing_samples: body.writing_samples ?? null,
     followup_days:
       typeof body.followup_days === "number" ? body.followup_days : null,
+    context_prompt:
+      typeof body.context_prompt === "string"
+        ? body.context_prompt.trim() || null
+        : body.context_prompt === null
+          ? null
+          : undefined,
     resume_text: body.resume_text ?? undefined,
     resume_filename: body.resume_filename ?? undefined,
     onboarded_at: body.onboarded ? new Date().toISOString() : undefined,

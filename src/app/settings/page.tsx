@@ -11,14 +11,26 @@ interface Profile {
   resume_filename: string | null;
   writing_samples: string | null;
   followup_days: number | null;
+  context_prompt: string | null;
   onboarded_at: string | null;
 }
+
+const CONTEXT_PROMPT_TEMPLATE = `I'm using a tool that drafts outreach messages on my behalf. Help me write a self-summary it can use as context. Cover:
+- My current role, background, and what I'm working on
+- What I'm looking for next (roles, companies, kinds of people to meet)
+- My motivations and what excites me professionally
+- How I communicate (tone, formality, things I'd never say)
+- Anything else that would help someone write a message that sounds like me
+
+Ask me questions if you need to. When we're done, give me a single block of text I can paste back.`;
 
 export default function SettingsPage() {
   const [loaded, setLoaded] = useState(false);
   const [fullName, setFullName] = useState("");
   const [linkedin, setLinkedin] = useState("");
   const [samples, setSamples] = useState("");
+  const [contextPrompt, setContextPrompt] = useState("");
+  const [promptCopied, setPromptCopied] = useState(false);
   const [cadence, setCadence] = useState<FollowupChoice>(5);
   const [resumeStatus, setResumeStatus] = useState<{
     filename: string | null;
@@ -39,6 +51,7 @@ export default function SettingsPage() {
           setFullName(p.full_name ?? "");
           setLinkedin(p.linkedin_url ?? "");
           setSamples(p.writing_samples ?? "");
+          setContextPrompt(p.context_prompt ?? "");
           if (p.followup_days != null) setCadence(p.followup_days as FollowupChoice);
           else if (p.onboarded_at) setCadence("never");
           if (p.resume_filename) {
@@ -78,6 +91,7 @@ export default function SettingsPage() {
           full_name: fullName || null,
           linkedin_url: linkedin || null,
           writing_samples: samples || null,
+          context_prompt: contextPrompt || null,
           followup_days: cadence === "never" ? null : Number(cadence),
         }),
       });
@@ -187,6 +201,38 @@ export default function SettingsPage() {
               onChange={(e) => setSamples(e.target.value)}
               placeholder="Paste a real email or DM. We learn the patterns, not the content."
               className="w-full min-h-[160px] rounded-md border border-[color:var(--color-line)] bg-white/60 p-3 text-sm outline-none focus:border-[color:var(--color-clay)] font-mono"
+            />
+          </Section>
+
+          <Section
+            title="Goals & context (optional)"
+            hint="Paste a self-summary from your favorite LLM. Crew uses it to draft messages that reflect what you're working toward."
+          >
+            <div className="rounded-md border border-[color:var(--color-line)] bg-[color:var(--color-cream-50)] p-3 text-xs text-[color:var(--color-ink-muted)]">
+              <div className="mb-2">
+                1. Copy this prompt into Claude or ChatGPT and answer its questions.
+                2. Paste the final summary below.
+              </div>
+              <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-[color:var(--color-ink)]">
+{CONTEXT_PROMPT_TEMPLATE}
+              </pre>
+              <button
+                type="button"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(CONTEXT_PROMPT_TEMPLATE);
+                  setPromptCopied(true);
+                  setTimeout(() => setPromptCopied(false), 2000);
+                }}
+                className="mt-2 rounded-md border border-[color:var(--color-line)] bg-white/60 px-2 py-1 text-[11px] hover:border-[color:var(--color-clay)]"
+              >
+                {promptCopied ? "✓ copied" : "Copy prompt"}
+              </button>
+            </div>
+            <textarea
+              value={contextPrompt}
+              onChange={(e) => setContextPrompt(e.target.value)}
+              placeholder="Paste your LLM-generated summary here…"
+              className="mt-3 w-full min-h-[160px] rounded-md border border-[color:var(--color-line)] bg-white/60 p-3 text-sm outline-none focus:border-[color:var(--color-clay)]"
             />
           </Section>
 
