@@ -67,9 +67,51 @@ export function senderContextFromProfile(p: UserProfile | null): string {
     const trimmed = p.resume_text.replace(/\s+/g, " ").trim().slice(0, 2400);
     parts.push(`Background (from resume):\n${trimmed}`);
   }
-  if (p.context_prompt) {
+  if (p.context_structured && typeof p.context_structured === "object") {
+    const formatted = formatStructuredContext(p.context_structured);
+    if (formatted) parts.push(`Goals & context:\n${formatted}`);
+  } else if (p.context_prompt) {
     const trimmed = p.context_prompt.replace(/\s+/g, " ").trim().slice(0, 2400);
     parts.push(`Goals & context (in their own words):\n${trimmed}`);
   }
   return parts.join("\n\n");
+}
+
+function formatStructuredContext(c: Record<string, unknown>): string {
+  const lines: string[] = [];
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const arr = (v: unknown) =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0) : [];
+
+  const role = str(c.current_role);
+  if (role) lines.push(`Current role: ${role}`);
+  const bg = str(c.background_summary);
+  if (bg) lines.push(`Background: ${bg}`);
+  const lookingFor = arr(c.looking_for);
+  if (lookingFor.length) lines.push(`Looking for: ${lookingFor.join("; ")}`);
+  const motivations = arr(c.motivations);
+  if (motivations.length) lines.push(`Motivated by: ${motivations.join("; ")}`);
+  const companies = arr(c.target_companies);
+  if (companies.length) lines.push(`Target companies: ${companies.join(", ")}`);
+  const roles = arr(c.target_roles);
+  if (roles.length) lines.push(`Target roles: ${roles.join(", ")}`);
+  const projects = arr(c.notable_projects);
+  if (projects.length) lines.push(`Notable projects: ${projects.join("; ")}`);
+
+  const voice = c.voice as Record<string, unknown> | undefined;
+  if (voice && typeof voice === "object") {
+    const tone = str(voice.tone);
+    const formality = str(voice.formality);
+    const avoid = arr(voice.avoid);
+    const voiceBits: string[] = [];
+    if (tone) voiceBits.push(`tone ${tone}`);
+    if (formality) voiceBits.push(`${formality} register`);
+    if (avoid.length) voiceBits.push(`avoid: ${avoid.join(", ")}`);
+    if (voiceBits.length) lines.push(`Voice: ${voiceBits.join("; ")}`);
+  }
+
+  const other = arr(c.other);
+  if (other.length) lines.push(`Other: ${other.join("; ")}`);
+
+  return lines.join("\n");
 }
