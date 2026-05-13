@@ -10,8 +10,8 @@ import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
 
 const styles = StyleSheet.create({
   page: { paddingTop: 36, paddingBottom: 36, paddingHorizontal: 44, fontSize: 10, fontFamily: "Helvetica", color: "#1a1a1a", lineHeight: 1.35 },
-  name: { fontSize: 18, fontFamily: "Helvetica-Bold", marginBottom: 2 },
-  headline: { fontSize: 10.5, color: "#444", marginBottom: 4 },
+  name: { fontSize: 18, fontFamily: "Helvetica-Bold", lineHeight: 1.15, marginBottom: 6 },
+  headline: { fontSize: 10.5, color: "#444", lineHeight: 1.25, marginBottom: 6 },
   contact: { fontSize: 9, color: "#555", marginBottom: 12 },
   contactSep: { color: "#aaa" },
   sectionTitle: { fontSize: 10, fontFamily: "Helvetica-Bold", letterSpacing: 1.2, textTransform: "uppercase", marginTop: 10, marginBottom: 4, borderBottomWidth: 0.6, borderBottomColor: "#999", paddingBottom: 2 },
