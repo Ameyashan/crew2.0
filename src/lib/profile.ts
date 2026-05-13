@@ -1,6 +1,15 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { USER_ID } from "@/lib/utils";
 
+export const CONTEXT_PROMPT_TEMPLATE = `I'm using a tool that drafts outreach messages on my behalf. Help me write a self-summary it can use as context. Cover:
+- My current role, background, and what I'm working on
+- What I'm looking for next (roles, companies, kinds of people to meet)
+- My motivations and what excites me professionally
+- How I communicate (tone, formality, things I'd never say)
+- Anything else that would help someone write a message that sounds like me
+
+Ask me questions if you need to. When we're done, give me a single block of text I can paste back.`;
+
 export interface UserProfile {
   user_id: string;
   full_name: string | null;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { CONTEXT_PROMPT_TEMPLATE } from "@/lib/profile";
 
 type FollowupChoice = 3 | 5 | 7 | 10 | "never";
 
@@ -15,14 +16,6 @@ interface Profile {
   onboarded_at: string | null;
 }
 
-const CONTEXT_PROMPT_TEMPLATE = `I'm using a tool that drafts outreach messages on my behalf. Help me write a self-summary it can use as context. Cover:
-- My current role, background, and what I'm working on
-- What I'm looking for next (roles, companies, kinds of people to meet)
-- My motivations and what excites me professionally
-- How I communicate (tone, formality, things I'd never say)
-- Anything else that would help someone write a message that sounds like me
-
-Ask me questions if you need to. When we're done, give me a single block of text I can paste back.`;
 
 export default function SettingsPage() {
   const [loaded, setLoaded] = useState(false);
