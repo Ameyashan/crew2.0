@@ -21,6 +21,7 @@ export interface ResearchInput {
   x_post_url?: string;
   free_text?: string;
   intent?: string;          // user's stated goal — strong disambiguation signal
+  intent_image?: { data: string; media_type: string }; // base64 screenshot
 }
 
 export interface ResearchResult {
@@ -73,11 +74,28 @@ export async function research(input: ResearchInput): Promise<ResearchResult> {
     input.x_post_url && `X post: ${input.x_post_url}`,
     input.free_text && `Context the user pasted:\n${input.free_text}`,
     input.intent && `Intent (use to disambiguate which person this is):\n${input.intent}`,
+    input.intent_image &&
+      `Attached: a screenshot the user provided as additional context — extract any role, company, team, or other specifics visible in it.`,
   ]
     .filter(Boolean)
     .join("\n");
 
   if (!userPrompt) throw new Error("research(): empty input");
+
+  type ImageMime = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+  const userContent: Anthropic.Messages.ContentBlockParam[] = input.intent_image
+    ? [
+        { type: "text", text: userPrompt },
+        {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: input.intent_image.media_type as ImageMime,
+            data: input.intent_image.data,
+          },
+        },
+      ]
+    : [{ type: "text", text: userPrompt }];
 
   let text = "";
   let inTokens = 0;
@@ -97,7 +115,7 @@ export async function research(input: ResearchInput): Promise<ResearchResult> {
           max_uses: 5,
         } as unknown as Anthropic.Messages.Tool,
       ],
-      messages: [{ role: "user", content: userPrompt }],
+      messages: [{ role: "user", content: userContent }],
     });
     inTokens = resp.usage.input_tokens;
     outTokens = resp.usage.output_tokens;

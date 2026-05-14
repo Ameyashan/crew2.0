@@ -8,6 +8,7 @@ import { getProfile, senderContextFromProfile } from "@/lib/profile";
 export interface RunReachOutInput {
   text: string;
   intent?: string;
+  intent_image?: { data: string; media_type: string };
   picked?: {
     name?: string;
     role?: string | null;
@@ -54,8 +55,13 @@ export async function* runReachOutStream(
           intent:
             input.intent ||
             [input.picked.role, input.picked.company].filter(Boolean).join(" at "),
+          intent_image: input.intent_image,
         }
-      : { ...classify(input.text), intent: input.intent };
+      : {
+          ...classify(input.text),
+          intent: input.intent,
+          intent_image: input.intent_image,
+        };
     const ctx = await research(researchInput);
     yield { type: "step", id: "research", status: "done", data: ctx };
 
