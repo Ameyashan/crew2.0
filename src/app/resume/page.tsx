@@ -16,6 +16,18 @@ interface Profile {
   onboarded_at: string | null;
 }
 
+interface HistoryRow {
+  id: string;
+  job_url: string | null;
+  highlights: string | null;
+  regenerate_notes: string | null;
+  page_count: 1 | 2;
+  target_role: string | null;
+  target_company: string | null;
+  model: string | null;
+  created_at: string;
+}
+
 type Status =
   | { phase: "idle" }
   | {
@@ -49,6 +61,8 @@ export default function ResumePage() {
   const [status, setStatus] = useState<Status>({ phase: "idle" });
   const [showRegen, setShowRegen] = useState(false);
   const [regenNotes, setRegenNotes] = useState("");
+  const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [loadingHistoryId, setLoadingHistoryId] = useState<string | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -68,7 +82,43 @@ export default function ResumePage() {
         }
       })
       .finally(() => setLoadingProfile(false));
+
+    fetch("/api/resume/history")
+      .then((r) => r.json())
+      .then((j) => {
+        if (Array.isArray(j.generations)) setHistory(j.generations);
+      })
+      .catch(() => {});
   }, []);
+
+  async function refreshHistory() {
+    try {
+      const r = await fetch("/api/resume/history");
+      const j = await r.json();
+      if (Array.isArray(j.generations)) setHistory(j.generations);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function loadHistory(id: string) {
+    setLoadingHistoryId(id);
+    try {
+      const r = await fetch(`/api/resume/history/${id}`);
+      const j = await r.json();
+      if (r.ok && j.generation?.resume) {
+        setTailored(j.generation.resume as TailoredResume);
+        setStatus({ phase: "preview" });
+        setShowRegen(false);
+        setRegenNotes("");
+        if (typeof window !== "undefined") {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }
+    } finally {
+      setLoadingHistoryId(null);
+    }
+  }
 
   async function handleResume(file: File) {
     setResumeStatus({ filename: null, chars: null, uploading: true, error: null });
@@ -185,6 +235,8 @@ export default function ResumePage() {
       setStatus({ phase: "preview" });
       setShowRegen(false);
       setRegenNotes("");
+    } else if (evt.type === "saved") {
+      refreshHistory();
     } else if (evt.type === "error") {
       setStatus({ phase: "error", message: evt.message });
     }
@@ -381,6 +433,41 @@ export default function ResumePage() {
         </div>
       </Card>
 
+      {history.length > 0 && (
+        <Card title="Past tailorings">
+          <ul className="divide-y divide-[color:var(--color-line)]">
+            {history.map((row) => {
+              const label =
+                [row.target_role, row.target_company].filter(Boolean).join(" @ ") ||
+                row.job_url ||
+                (row.highlights ? row.highlights.slice(0, 60) : "Untitled");
+              return (
+                <li key={row.id}>
+                  <button
+                    type="button"
+                    onClick={() => loadHistory(row.id)}
+                    disabled={loadingHistoryId === row.id}
+                    className="w-full text-left py-2 flex items-center justify-between gap-3 hover:text-[color:var(--color-clay)] disabled:opacity-50"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm truncate">{label}</div>
+                      <div className="text-[11px] text-[color:var(--color-ink-muted)] truncate">
+                        {row.job_url ? shortUrl(row.job_url) : row.highlights ? "from brief" : ""}
+                        {row.regenerate_notes ? " · regenerated" : ""}
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-[color:var(--color-ink-muted)] whitespace-nowrap">
+                      {row.page_count}pg · {relativeTime(row.created_at)}
+                      {loadingHistoryId === row.id ? " · loading…" : ""}
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
+
       {status.phase === "streaming" && (
         <Timeline
           step={status.step}
@@ -467,6 +554,29 @@ export default function ResumePage() {
       )}
     </div>
   );
+}
+
+function shortUrl(u: string) {
+  try {
+    const parsed = new URL(u);
+    return parsed.host + parsed.pathname;
+  } catch {
+    return u;
+  }
+}
+
+function relativeTime(iso: string) {
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "";
+  const diff = Date.now() - then;
+  const m = Math.round(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.round(h / 24);
+  if (d < 30) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString();
 }
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
