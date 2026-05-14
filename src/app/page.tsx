@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 type Channel = "email" | "x_dm" | "linkedin";
@@ -82,6 +82,10 @@ function isUrlInput(text: string) {
 export default function ComposePage() {
   const [text, setText] = useState("");
   const [intent, setIntent] = useState("");
+  const [intentImage, setIntentImage] = useState<File | null>(null);
+  const [intentImagePreview, setIntentImagePreview] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const intentImageRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>("idle");
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
   const [steps, setSteps] = useState<Steps>(INITIAL_STEPS);
@@ -116,6 +120,35 @@ export default function ComposePage() {
     setEdits({});
     setEditing({});
     setSentMarks({});
+  }
+
+  const ALLOWED_INTENT_IMAGE_TYPES = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+  ];
+  const MAX_INTENT_IMAGE_BYTES = 5 * 1024 * 1024;
+
+  function chooseIntentImage(file: File | null) {
+    setImageError(null);
+    if (!file) {
+      setIntentImage(null);
+      if (intentImagePreview) URL.revokeObjectURL(intentImagePreview);
+      setIntentImagePreview(null);
+      return;
+    }
+    if (!ALLOWED_INTENT_IMAGE_TYPES.includes(file.type)) {
+      setImageError("Use a PNG, JPG, WEBP, or GIF screenshot.");
+      return;
+    }
+    if (file.size > MAX_INTENT_IMAGE_BYTES) {
+      setImageError("Screenshot must be 5MB or smaller.");
+      return;
+    }
+    if (intentImagePreview) URL.revokeObjectURL(intentImagePreview);
+    setIntentImage(file);
+    setIntentImagePreview(URL.createObjectURL(file));
   }
 
   async function submit(e: React.FormEvent) {
@@ -158,15 +191,24 @@ export default function ComposePage() {
     setError(null);
 
     try {
-      const r = await fetch("/api/compose", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: composeInput,
-          intent: intent || undefined,
-          picked: picked ?? undefined,
-        }),
-      });
+      const r = await (intentImage
+        ? (() => {
+            const fd = new FormData();
+            fd.append("text", composeInput);
+            if (intent) fd.append("intent", intent);
+            if (picked) fd.append("picked", JSON.stringify(picked));
+            fd.append("intent_image", intentImage);
+            return fetch("/api/compose", { method: "POST", body: fd });
+          })()
+        : fetch("/api/compose", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: composeInput,
+              intent: intent || undefined,
+              picked: picked ?? undefined,
+            }),
+          }));
       if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
       const reader = r.body.getReader();
       const decoder = new TextDecoder();
@@ -323,6 +365,53 @@ export default function ComposePage() {
           placeholder="What do you want? (optional, e.g. 'PM at Wayfair')"
           className="w-full rounded-lg border border-[color:var(--color-line)] bg-white/40 px-4 py-2 text-sm outline-none focus:border-[color:var(--color-clay)] focus:ring-1 focus:ring-[color:var(--color-clay)]"
         />
+
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {intentImage && intentImagePreview ? (
+            <span className="inline-flex items-center gap-2 rounded-md border border-[color:var(--color-line)] bg-white/60 py-1 pl-1 pr-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={intentImagePreview}
+                alt="attached screenshot"
+                className="h-8 w-8 rounded object-cover"
+              />
+              <span className="max-w-[180px] truncate text-[color:var(--color-ink)]">
+                {intentImage.name}
+              </span>
+              <button
+                type="button"
+                onClick={() => chooseIntentImage(null)}
+                className="text-[color:var(--color-ink-muted)] hover:text-[color:var(--color-ink)]"
+                aria-label="remove screenshot"
+              >
+                ×
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => intentImageRef.current?.click()}
+              className="rounded-md border border-dashed border-[color:var(--color-line)] bg-white/40 px-2.5 py-1 font-mono text-[11px] text-[color:var(--color-ink-muted)] hover:border-[color:var(--color-clay)]"
+            >
+              ＋ attach screenshot
+            </button>
+          )}
+          <span className="text-[color:var(--color-ink-muted)]">
+            PNG, JPG, WEBP, GIF · max 5MB · optional
+          </span>
+          <input
+            ref={intentImageRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              chooseIntentImage(f);
+              e.target.value = "";
+            }}
+          />
+        </div>
+        {imageError && <span className="block text-sm text-red-700">{imageError}</span>}
         {error && <span className="block text-sm text-red-700">{error}</span>}
       </form>
 

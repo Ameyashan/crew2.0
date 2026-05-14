@@ -1,15 +1,78 @@
 import { NextRequest } from "next/server";
-import { runReachOutStream } from "@/lib/agents/reach-out";
+import { runReachOutStream, type RunReachOutInput } from "@/lib/agents/reach-out";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
 
-export async function POST(req: NextRequest) {
+const ALLOWED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+async function parseInput(req: NextRequest): Promise<
+  { input: RunReachOutInput } | { error: string; status: number }
+> {
+  const contentType = req.headers.get("content-type") ?? "";
+
+  if (contentType.includes("multipart/form-data")) {
+    const form = await req.formData();
+    const text = (form.get("text") ?? "").toString();
+    const intent = form.get("intent");
+    const pickedRaw = form.get("picked");
+    const image = form.get("intent_image");
+
+    let picked: RunReachOutInput["picked"] | undefined;
+    if (typeof pickedRaw === "string" && pickedRaw.trim()) {
+      try {
+        picked = JSON.parse(pickedRaw);
+      } catch {
+        return { error: "invalid picked json", status: 400 };
+      }
+    }
+
+    let intent_image: RunReachOutInput["intent_image"];
+    if (image instanceof File && image.size > 0) {
+      if (!ALLOWED_IMAGE_TYPES.has(image.type)) {
+        return { error: `unsupported image type: ${image.type}`, status: 415 };
+      }
+      if (image.size > MAX_IMAGE_BYTES) {
+        return { error: "image exceeds 5MB limit", status: 413 };
+      }
+      const data = Buffer.from(await image.arrayBuffer()).toString("base64");
+      intent_image = { data, media_type: image.type };
+    }
+
+    return {
+      input: {
+        text,
+        intent: typeof intent === "string" && intent ? intent : undefined,
+        picked,
+        intent_image,
+      },
+    };
+  }
+
   const body = await req.json().catch(() => ({}));
-  const text = (body?.text ?? "").toString();
-  const intent = body?.intent ? body.intent.toString() : undefined;
-  const picked = body?.picked && typeof body.picked === "object" ? body.picked : undefined;
-  if (!text.trim()) {
+  return {
+    input: {
+      text: (body?.text ?? "").toString(),
+      intent: body?.intent ? body.intent.toString() : undefined,
+      picked:
+        body?.picked && typeof body.picked === "object" ? body.picked : undefined,
+    },
+  };
+}
+
+export async function POST(req: NextRequest) {
+  const parsed = await parseInput(req);
+  if ("error" in parsed) {
+    return Response.json({ error: parsed.error }, { status: parsed.status });
+  }
+  const { input } = parsed;
+  if (!input.text.trim()) {
     return Response.json({ error: "empty input" }, { status: 400 });
   }
 
@@ -17,7 +80,7 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        for await (const evt of runReachOutStream({ text, intent, picked })) {
+        for await (const evt of runReachOutStream(input)) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(evt)}\n\n`));
         }
       } catch (e) {
