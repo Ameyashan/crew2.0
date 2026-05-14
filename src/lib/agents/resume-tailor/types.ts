@@ -61,5 +61,6 @@ export type ResumeTailorStepEvent =
     }
   | { type: "tool"; name: "web_search"; query: string }
   | { type: "progress"; chars: number; bullets: number }
+  | { type: "saved"; id: string }
   | { type: "complete" }
   | { type: "error"; message: string };
