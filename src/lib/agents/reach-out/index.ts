@@ -9,6 +9,7 @@ export interface RunReachOutInput {
   text: string;
   intent?: string;
   intent_image?: { data: string; media_type: string };
+  provided_email?: string;
   picked?: {
     name?: string;
     role?: string | null;
@@ -22,6 +23,7 @@ export type StepEvent =
   | { type: "step"; id: "research"; status: "done"; data: Awaited<ReturnType<typeof research>> }
   | { type: "step"; id: "email_lookup"; status: "start" }
   | { type: "step"; id: "email_lookup"; status: "done"; data: Awaited<ReturnType<typeof findEmail>> }
+  | { type: "step"; id: "email_lookup"; status: "skipped"; data: Awaited<ReturnType<typeof findEmail>> }
   | { type: "step"; id: "person_saved"; status: "done"; data: { id: string; name: string; role: string | null; company: string | null } }
   | { type: "step"; id: "draft"; status: "start"; channel: Channel }
   | { type: "step"; id: "draft"; status: "done"; channel: Channel; data: { id: string; channel: Channel; subject: string | null; body: string } }
@@ -71,26 +73,43 @@ export async function* runReachOutStream(
       return;
     }
 
-    // Email lookup
-    yield { type: "step", id: "email_lookup", status: "start" };
-    const enrichment = await findEmail({
-      name: ctx.name ?? input.text,
-      company: ctx.company ?? undefined,
-      linkedin_url: ctx.links?.linkedin,
-    });
+    // Email lookup — skip when the user already has the email
+    const providedEmail = input.provided_email?.trim();
+    let enrichment: Awaited<ReturnType<typeof findEmail>>;
+    let enrichmentForUi: Awaited<ReturnType<typeof findEmail>>;
+    if (providedEmail) {
+      const domain = providedEmail.includes("@") ? providedEmail.split("@")[1] : null;
+      enrichment = {
+        email: providedEmail,
+        confidence: 1,
+        source: "user_provided",
+        domain,
+        guesses: [],
+        message: null,
+      };
+      enrichmentForUi = enrichment;
+      yield { type: "step", id: "email_lookup", status: "skipped", data: enrichmentForUi };
+    } else {
+      yield { type: "step", id: "email_lookup", status: "start" };
+      enrichment = await findEmail({
+        name: ctx.name ?? input.text,
+        company: ctx.company ?? undefined,
+        linkedin_url: ctx.links?.linkedin,
+      });
 
-    // Always guarantee guesses + domain so the UI has a fallback even when
-    // Apollo can't be called (free plan) or returns no domain data.
-    const finalDomain =
-      enrichment.domain ?? inferDomain({ company: ctx.company, links: ctx.links });
-    const finalGuesses =
-      enrichment.guesses && enrichment.guesses.length
-        ? enrichment.guesses
-        : finalDomain
-          ? buildGuesses(ctx.name ?? input.text, finalDomain)
-          : [];
-    const enrichmentForUi = { ...enrichment, domain: finalDomain, guesses: finalGuesses };
-    yield { type: "step", id: "email_lookup", status: "done", data: enrichmentForUi };
+      // Always guarantee guesses + domain so the UI has a fallback even when
+      // Apollo can't be called (free plan) or returns no domain data.
+      const finalDomain =
+        enrichment.domain ?? inferDomain({ company: ctx.company, links: ctx.links });
+      const finalGuesses =
+        enrichment.guesses && enrichment.guesses.length
+          ? enrichment.guesses
+          : finalDomain
+            ? buildGuesses(ctx.name ?? input.text, finalDomain)
+            : [];
+      enrichmentForUi = { ...enrichment, domain: finalDomain, guesses: finalGuesses };
+      yield { type: "step", id: "email_lookup", status: "done", data: enrichmentForUi };
+    }
 
     // Dedupe: prefer linkedin URL match; fall back to lower(name) + lower(company).
     const sb = supabaseAdmin();

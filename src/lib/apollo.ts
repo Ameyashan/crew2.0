@@ -22,6 +22,7 @@ export interface FindEmailResult {
     | "apollo_no_match"
     | "apollo_inaccessible"   // free plan blocks people endpoints
     | "apollo_error"
+    | "user_provided"          // user supplied the email up front, no lookup performed
     | "skipped";
   domain: string | null;       // company domain — used to power guesses
   guesses: EmailGuess[];       // format guesses for the user when no verified email

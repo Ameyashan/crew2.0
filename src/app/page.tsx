@@ -82,10 +82,20 @@ function isUrlInput(text: string) {
 export default function ComposePage() {
   const [text, setText] = useState("");
   const [intent, setIntent] = useState("");
+  const intentRef = useRef<HTMLTextAreaElement>(null);
   const [intentImage, setIntentImage] = useState<File | null>(null);
   const [intentImagePreview, setIntentImagePreview] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const intentImageRef = useRef<HTMLInputElement>(null);
+  const [haveEmail, setHaveEmail] = useState(false);
+  const [providedEmail, setProvidedEmail] = useState("");
+
+  useEffect(() => {
+    const el = intentRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [intent]);
   const [phase, setPhase] = useState<Phase>("idle");
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
   const [steps, setSteps] = useState<Steps>(INITIAL_STEPS);
@@ -190,6 +200,9 @@ export default function ComposePage() {
     setSteps(INITIAL_STEPS);
     setError(null);
 
+    const trimmedProvidedEmail =
+      haveEmail && providedEmail.trim() ? providedEmail.trim() : undefined;
+
     try {
       const r = await (intentImage
         ? (() => {
@@ -197,6 +210,7 @@ export default function ComposePage() {
             fd.append("text", composeInput);
             if (intent) fd.append("intent", intent);
             if (picked) fd.append("picked", JSON.stringify(picked));
+            if (trimmedProvidedEmail) fd.append("provided_email", trimmedProvidedEmail);
             fd.append("intent_image", intentImage);
             return fetch("/api/compose", { method: "POST", body: fd });
           })()
@@ -207,6 +221,7 @@ export default function ComposePage() {
               text: composeInput,
               intent: intent || undefined,
               picked: picked ?? undefined,
+              provided_email: trimmedProvidedEmail,
             }),
           }));
       if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
@@ -236,13 +251,19 @@ export default function ComposePage() {
   function handleEvent(evt: Record<string, unknown> & { type: string }) {
     if (evt.type === "step") {
       const id = evt.id as string;
-      const status = evt.status as "start" | "done";
+      const status = evt.status as "start" | "done" | "skipped";
       if (id === "research") {
         setSteps((s) => ({ ...s, research: status === "start" ? "running" : "done" }));
         if (status === "done") setResearch(evt.data as ResearchData);
       } else if (id === "email_lookup") {
-        setSteps((s) => ({ ...s, email_lookup: status === "start" ? "running" : "done" }));
-        if (status === "done") setEmailLookup(evt.data as EmailLookup);
+        setSteps((s) => ({
+          ...s,
+          email_lookup:
+            status === "start" ? "running" : status === "skipped" ? "skipped" : "done",
+        }));
+        if (status === "done" || status === "skipped") {
+          setEmailLookup(evt.data as EmailLookup);
+        }
       } else if (id === "person_saved") {
         setSteps((s) => ({ ...s, person_saved: "done" }));
         setPerson(evt.data as PersonInfo);
@@ -359,12 +380,40 @@ export default function ComposePage() {
           </div>
         </div>
 
-        <input
+        <textarea
+          ref={intentRef}
           value={intent}
           onChange={(e) => setIntent(e.target.value)}
-          placeholder="What do you want? (optional, e.g. 'PM at Wayfair')"
-          className="w-full rounded-lg border border-[color:var(--color-line)] bg-white/40 px-4 py-2 text-sm outline-none focus:border-[color:var(--color-clay)] focus:ring-1 focus:ring-[color:var(--color-clay)]"
+          rows={1}
+          placeholder="What do you want to convey? (optional, e.g. 'PM at Wayfair')"
+          className="w-full resize-none overflow-hidden rounded-lg border border-[color:var(--color-line)] bg-white/40 px-4 py-2 text-sm leading-relaxed outline-none focus:border-[color:var(--color-clay)] focus:ring-1 focus:ring-[color:var(--color-clay)]"
         />
+
+        <div className="rounded-lg border border-[color:var(--color-line)] bg-white/40 px-4 py-3 text-sm">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={haveEmail}
+              onChange={(e) => setHaveEmail(e.target.checked)}
+              className="h-3.5 w-3.5 accent-[color:var(--color-clay)]"
+            />
+            <span className="text-[color:var(--color-ink)]">
+              I already have their email
+            </span>
+            <span className="text-[11px] text-[color:var(--color-ink-muted)]">
+              skip the email lookup
+            </span>
+          </label>
+          {haveEmail && (
+            <input
+              type="email"
+              value={providedEmail}
+              onChange={(e) => setProvidedEmail(e.target.value)}
+              placeholder="name@company.com (optional)"
+              className="mt-2 w-full rounded-md border border-[color:var(--color-line)] bg-white/60 px-3 py-1.5 font-mono text-xs outline-none focus:border-[color:var(--color-clay)]"
+            />
+          )}
+        </div>
 
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {intentImage && intentImagePreview ? (
@@ -700,6 +749,7 @@ function sourceLabel(s: string): string {
   if (s === "apollo_guessed") return "pattern guess";
   if (s === "apollo_unverified") return "unverified";
   if (s === "apollo_catch_all") return "catch-all";
+  if (s === "user_provided") return "your email";
   return s.replace("apollo_", "");
 }
 
