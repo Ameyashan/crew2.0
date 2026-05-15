@@ -6,6 +6,7 @@ export interface FollowupRow {
   due_at: string;
   person: { id: string; name: string; email: string | null };
   draft: { id: string; channel: string; subject: string | null; body: string } | null;
+  parent: { subject: string | null; body: string; sent_at: string } | null;
   source_sent_at: string | null;
 }
 
@@ -29,12 +30,41 @@ export async function loadTodayData() {
     .lte("due_at", new Date().toISOString())
     .order("due_at", { ascending: true });
 
-  const due: FollowupRow[] = (dueRaw ?? []).map((r: Record<string, unknown>) => ({
+  const dueRows = (dueRaw ?? []) as Array<Record<string, unknown>>;
+
+  // Load the original ("previous") message for each followup via source_interaction_id.
+  const interactionIds = dueRows
+    .map((r) => r.source_interaction_id as string | null)
+    .filter((x): x is string => !!x);
+
+  const parentByIxId = new Map<
+    string,
+    { subject: string | null; body: string; sent_at: string }
+  >();
+  if (interactionIds.length) {
+    const { data: parents } = await sb
+      .from("interactions")
+      .select("id, created_at, draft:drafts(id, subject, body)")
+      .in("id", interactionIds);
+    for (const p of (parents ?? []) as Array<Record<string, unknown>>) {
+      const draft = pickDraftRaw(p.draft);
+      if (draft) {
+        parentByIxId.set(p.id as string, {
+          subject: draft.subject ?? null,
+          body: draft.body ?? "",
+          sent_at: p.created_at as string,
+        });
+      }
+    }
+  }
+
+  const due: FollowupRow[] = dueRows.map((r) => ({
     id: r.id as string,
     due_at: r.due_at as string,
     person: pickPerson(r.person),
     draft: pickDraft(r.draft),
-    source_sent_at: null,
+    parent: parentByIxId.get(r.source_interaction_id as string) ?? null,
+    source_sent_at: parentByIxId.get(r.source_interaction_id as string)?.sent_at ?? null,
   }));
 
   // Conversations needing review: 'sent' interactions in last 14d that don't have a 'replied' or 'no_reply' for the same person+draft yet.
@@ -84,7 +114,7 @@ function pickPerson(p: unknown): { id: string; name: string; email: string | nul
   };
 }
 function pickDraft(d: unknown) {
-  const x = (Array.isArray(d) ? d[0] : d) as Record<string, unknown> | null;
+  const x = pickDraftRaw(d);
   if (!x) return null;
   return {
     id: x.id as string,
@@ -92,4 +122,8 @@ function pickDraft(d: unknown) {
     subject: (x.subject as string) ?? null,
     body: x.body as string,
   };
+}
+function pickDraftRaw(d: unknown): Record<string, string> | null {
+  const x = (Array.isArray(d) ? d[0] : d) as Record<string, string> | null;
+  return x ?? null;
 }
