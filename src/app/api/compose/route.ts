@@ -23,6 +23,7 @@ async function parseInput(req: NextRequest): Promise<
     const intent = form.get("intent");
     const pickedRaw = form.get("picked");
     const image = form.get("intent_image");
+    const providedEmail = form.get("provided_email");
 
     let picked: RunReachOutInput["picked"] | undefined;
     if (typeof pickedRaw === "string" && pickedRaw.trim()) {
@@ -51,6 +52,10 @@ async function parseInput(req: NextRequest): Promise<
         intent: typeof intent === "string" && intent ? intent : undefined,
         picked,
         intent_image,
+        provided_email:
+          typeof providedEmail === "string" && providedEmail.trim()
+            ? providedEmail.trim()
+            : undefined,
       },
     };
   }
@@ -62,6 +67,10 @@ async function parseInput(req: NextRequest): Promise<
       intent: body?.intent ? body.intent.toString() : undefined,
       picked:
         body?.picked && typeof body.picked === "object" ? body.picked : undefined,
+      provided_email:
+        typeof body?.provided_email === "string" && body.provided_email.trim()
+          ? body.provided_email.trim()
+          : undefined,
     },
   };
 }
