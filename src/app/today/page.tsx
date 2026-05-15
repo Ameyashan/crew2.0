@@ -13,11 +13,17 @@ interface Draft {
   subject: string | null;
   body: string;
 }
+interface PreviousMessage {
+  subject: string | null;
+  body: string;
+  sent_at: string;
+}
 interface FollowupRow {
   id: string;
   due_at: string;
   person: Person;
   draft: Draft | null;
+  parent: PreviousMessage | null;
 }
 interface ReviewRow {
   interaction_id: string;
@@ -98,6 +104,11 @@ export default function TodayPage() {
     await refresh();
   }
 
+  async function markFollowupReplied(id: string) {
+    await fetch(`/api/followup/${id}/replied`, { method: "POST" });
+    await refresh();
+  }
+
   function copyAndOpen(d: Draft, person: Person) {
     navigator.clipboard.writeText(d.body).catch(() => {});
     if (d.channel === "email") {
@@ -165,10 +176,21 @@ export default function TodayPage() {
                   >
                     Mark sent
                   </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      markFollowupReplied(d.id);
+                    }}
+                    className="rounded border border-[color:var(--color-line)] px-3 py-1 text-xs"
+                    title="They replied — cancel this reminder"
+                  >
+                    Replied
+                  </button>
                 </div>
               </div>
+              {open && d.parent && <PreviousMessageBlock parent={d.parent} />}
               {open && d.draft && (
-                <DraftPreview draft={d.draft} />
+                <DraftPreview draft={d.draft} label="Pre-drafted followup" />
               )}
             </Row>
           );
@@ -267,9 +289,14 @@ function Row({
   );
 }
 
-function DraftPreview({ draft }: { draft: Draft }) {
+function DraftPreview({ draft, label }: { draft: Draft; label?: string }) {
   return (
     <div className="mt-3 rounded-md border border-[color:var(--color-line)] bg-white/60 p-3 text-sm whitespace-pre-wrap">
+      {label && (
+        <div className="mb-2 text-[10px] uppercase tracking-wide text-[color:var(--color-clay)]">
+          {label}
+        </div>
+      )}
       {draft.subject && (
         <div className="mb-2 text-[color:var(--color-ink-muted)] text-xs">
           Subject: {draft.subject}
@@ -277,6 +304,27 @@ function DraftPreview({ draft }: { draft: Draft }) {
       )}
       {draft.body}
     </div>
+  );
+}
+
+function PreviousMessageBlock({ parent }: { parent: PreviousMessage }) {
+  return (
+    <details
+      className="mt-3 rounded-md border border-[color:var(--color-line)] bg-white/40 p-3"
+      open
+    >
+      <summary className="cursor-pointer text-[10px] uppercase tracking-wide text-[color:var(--color-ink-muted)]">
+        Previous message · sent {timeAgo(parent.sent_at)} ago
+      </summary>
+      <div className="mt-2 whitespace-pre-wrap text-sm">
+        {parent.subject && (
+          <div className="mb-2 text-xs text-[color:var(--color-ink-muted)]">
+            Subject: {parent.subject}
+          </div>
+        )}
+        {parent.body}
+      </div>
+    </details>
   );
 }
 
