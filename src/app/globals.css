@@ -1,6 +1,12 @@
 @import "tailwindcss";
 
 @theme {
+  --font-display: var(--font-dm-serif), var(--font-newsreader), Georgia, serif;
+  --font-serif: var(--font-newsreader), Georgia, serif;
+  --font-sans: var(--font-space-grotesk), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), var(--font-geist-mono), ui-monospace, monospace;
+
+  /* Legacy tokens — kept so the (legacy) routes still render until each is replaced. */
   --color-cream: #f1ead8;
   --color-cream-50: #faf6e8;
   --color-cream-100: #f1ead8;
@@ -10,21 +16,46 @@
   --color-clay: #bd5d3c;
   --color-clay-dark: #9a4830;
   --color-line: #d9d1bb;
-
-  --font-display: var(--font-newsreader), Georgia, serif;
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-html, body {
-  background: var(--color-cream);
-  color: var(--color-ink);
+.row-active {
+  box-shadow: inset 3px 0 0 var(--color-clay);
+}
+
+html,
+body {
+  height: 100%;
+  background: #f1e7d2;
+  color: #13110c;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
-textarea, input, button {
+textarea,
+input,
+button {
   font-family: inherit;
 }
 
-.row-active { box-shadow: inset 3px 0 0 var(--color-clay); }
+.scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(19, 17, 12, 0.2) transparent;
+}
+.scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll::-webkit-scrollbar-thumb {
+  background: rgba(19, 17, 12, 0.18);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(19, 17, 12, 0.32);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
