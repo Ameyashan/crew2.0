@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
                 target_company: finalResume.meta.target_company ?? null,
                 model: finalResume.meta.model ?? null,
                 resume: finalResume,
+                ats_score: finalResume.meta.ats_score ?? null,
               })
               .select("id")
               .single();

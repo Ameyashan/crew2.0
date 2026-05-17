@@ -252,6 +252,12 @@ function parseTailored(text: string, input: ResumeTailorInput): TailoredResume {
       page_count: input.page_count,
       model: MODEL,
       generated_at: new Date().toISOString(),
+      ats_score:
+        typeof raw.meta?.ats_score === "number" &&
+        raw.meta.ats_score >= 0 &&
+        raw.meta.ats_score <= 100
+          ? Math.round(raw.meta.ats_score)
+          : undefined,
     },
   };
 }

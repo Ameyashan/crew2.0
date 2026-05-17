@@ -58,26 +58,58 @@ function ComposeV3({ p, seed, setSeed, go }) {
     setDrafts(null);
 
     if (kind === 'job') {
-      // Job path lands in PR 4. For now, keep the simulated progress so the UI
-      // still flows; replace with /api/compose/apply once it exists.
-      const plan = [
-        { k: 'resume',   ms: 2400, t0: 100  },
-        { k: 'person',   ms: 1800, t0: 300  },
-        { k: 'email',    ms: 1400, t0: 1900 },
-        { k: 'outreach', ms: 2200, t0: 2900 },
-      ];
-      plan.forEach((step) => {
-        setTimeout(() => {
-          const start = performance.now();
-          const tick = () => {
-            const ratio = Math.min(1, (performance.now() - start) / step.ms);
-            setProgress((prev) => ({ ...prev, [step.k]: Math.floor(ratio * 100) }));
-            if (ratio < 1) requestAnimationFrame(tick);
-          };
-          requestAnimationFrame(tick);
-        }, step.t0);
-      });
-      setTimeout(() => setStage('done'), Math.max(...plan.map(s => s.t0 + s.ms)) + 200);
+      // ── job path ── stream from /api/compose/apply (tailor + reach-out)
+      const collectedDrafts = [];
+      let collectedEnrichment = null;
+      let bundle = { ats_score: null, target_role: null, target_company: null };
+      const jobUrl = input.trim().match(/^https?:\/\//) ? input.trim() : `https://${input.trim()}`;
+      try {
+        const res = await fetch('/api/compose/apply', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+          body: JSON.stringify({ job_url: jobUrl, intent: intent || undefined }),
+        });
+        if (!res.ok || !res.body) throw new Error(`apply failed: ${res.status}`);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split('\n\n');
+          buf = parts.pop() || '';
+          for (const raw of parts) {
+            const line = raw.split('\n').find((l) => l.startsWith('data: '));
+            if (!line) continue;
+            let evt;
+            try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+            if (evt.type === 'step') {
+              const k = evt.id; // resume | person | email | outreach
+              if (evt.status === 'start') setProgress((p) => ({ ...p, [k]: 10 }));
+              else if (evt.status === 'done' || evt.status === 'skipped') setProgress((p) => ({ ...p, [k]: 100 }));
+              if (k === 'resume' && evt.status === 'done' && evt.data) {
+                bundle = { ...bundle, ...evt.data };
+              }
+              if (k === 'email' && evt.data) collectedEnrichment = evt.data;
+              if (k === 'outreach' && evt.status === 'done' && evt.data) {
+                collectedDrafts.push(evt.data);
+              }
+            } else if (evt.type === 'error') {
+              throw new Error(evt.message || 'apply error');
+            }
+          }
+        }
+        if (collectedDrafts.length) setDrafts(collectedDrafts);
+        if (collectedEnrichment) setEnrichment(collectedEnrichment);
+        // Stuff the bundle into parsed so PackageV3's JobPackage can render it.
+        setParsed((prev) => ({ ...(prev || {}), ...bundle }));
+        setProgress({ resume: 100, person: 100, email: 100, outreach: 100 });
+        setStage('done');
+      } catch (e) {
+        setRunError(String(e?.message || e));
+        setStage('review');
+      }
       return;
     }
 
