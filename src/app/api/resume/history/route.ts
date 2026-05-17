@@ -7,7 +7,7 @@ export async function GET() {
   const { data, error } = await supabaseAdmin()
     .from("resume_generations")
     .select(
-      "id, job_url, highlights, regenerate_notes, page_count, target_role, target_company, model, created_at"
+      "id, job_url, highlights, regenerate_notes, page_count, target_role, target_company, model, ats_score, created_at"
     )
     .eq("user_id", USER_ID)
     .order("created_at", { ascending: false })

@@ -1,363 +1,510 @@
+// @ts-nocheck — verbatim port of Crew prototype v3 onboarding
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CONTEXT_PROMPT_TEMPLATE } from "@/lib/profile";
+import { PAPER_FONTS } from "@/components/paper/fonts";
+import { usePaperTheme } from "@/components/paper/use-paper-theme";
+import { Eyebrow, InkButton, Marginalia } from "@/components/paper/primitives";
 
-type FollowupChoice = 3 | 5 | 7 | 10 | "never";
+const GOALS_PROMPT = `I'm using a tool that drafts outreach messages on my behalf. Help me write a self-summary it can use as context. Cover:
+- My current role, background, and what I'm working on
+- What I'm looking for next (roles, companies, kinds of people to meet)
+- My motivations and what excites me professionally
+- How I communicate (tone, formality, things I'd never say)
+- Anything else that would help someone write a message that sounds like me
 
-interface Profile {
-  full_name: string | null;
-  linkedin_url: string | null;
-  resume_text: string | null;
-  resume_filename: string | null;
-  writing_samples: string | null;
-  followup_days: number | null;
-  context_prompt: string | null;
-  onboarded_at: string | null;
-}
+Ask me questions if you need to. When we're done, give me a single block of text I can paste back.`;
 
-export default function OnboardingPage() {
-  const router = useRouter();
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [fullName, setFullName] = useState("");
-  const [linkedin, setLinkedin] = useState("");
-  const [samples, setSamples] = useState("");
-  const [contextPrompt, setContextPrompt] = useState("");
-  const [promptCopied, setPromptCopied] = useState(false);
-  const [cadence, setCadence] = useState<FollowupChoice>(5);
-  const [resumeStatus, setResumeStatus] = useState<{
-    filename: string | null;
-    chars: number | null;
-    error: string | null;
-    uploading: boolean;
-  }>({ filename: null, chars: null, error: null, uploading: false });
-  const [saving, setSaving] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
+const GOALS_SAMPLE = `I'm Ameya — Senior VP of Product at Goldman Sachs Asset Management's Alternatives group, where I partner with Strats to build portfolio management tools for private credit, real estate, and infra. Spent the last decade going from analyst to leading a small product team; before GSAM, I shipped retail trading at Robinhood and credit-risk tooling at Capital One.
 
-  useEffect(() => {
-    fetch("/api/profile")
-      .then((r) => r.json())
-      .then((j) => {
-        const p = j.profile as Profile | null;
-        setProfile(p);
-        if (p) {
-          setFullName(p.full_name ?? "");
-          setLinkedin(p.linkedin_url ?? "");
-          setSamples(p.writing_samples ?? "");
-          setContextPrompt(p.context_prompt ?? "");
-          if (p.followup_days != null) {
-            setCadence(p.followup_days as FollowupChoice);
-          } else if (p.onboarded_at) {
-            setCadence("never");
-          }
-          if (p.resume_filename) {
-            setResumeStatus((s) => ({
-              ...s,
-              filename: p.resume_filename!,
-              chars: p.resume_text?.length ?? null,
-            }));
-          }
-        }
-      });
-  }, []);
+What I'm looking for: senior product roles at AI-native fintechs (Series B+) or the asset-management arm of a top-tier firm. Roles where I get to own the LLM-in-the-loop layer for analysts, not just dashboards.
 
-  async function handleResume(file: File) {
-    setResumeStatus({ filename: null, chars: null, error: null, uploading: true });
-    const fd = new FormData();
-    fd.append("file", file);
-    const r = await fetch("/api/profile/resume", { method: "POST", body: fd });
-    const j = await r.json();
-    if (!r.ok) {
-      setResumeStatus({ filename: null, chars: null, error: j.error ?? "upload failed", uploading: false });
-    } else {
-      setResumeStatus({ filename: j.filename, chars: j.characters, error: null, uploading: false });
-    }
-  }
+How I communicate: warm but direct. Hate corporate filler ("hope this finds you well", "circling back"). Will use lowercase if it feels right. Prefer ending on a real question, not a CTA.`;
 
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
+function OnboardingV3({ p, onDone, onBack }) {
+  const [resume, setResume]     = useState(null);
+  const [linkedin, setLinkedin] = useState('');
+  const [samples, setSamples]   = useState([]);
+  const [goals, setGoals]       = useState('');
+  const [followup, setFollowup] = useState('3d');
+  const [copied, setCopied]     = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+
+  const FOLLOWUP_TO_DAYS = { '3d': 3, '5d': 5, '7d': 7, '10d': 10, 'never': 0 };
+
+  async function handleDone() {
+    setSubmitting(true);
+    setSubmitError(null);
     try {
-      await fetch("/api/profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          full_name: fullName || null,
-          linkedin_url: linkedin || null,
-          writing_samples: samples || null,
-          context_prompt: contextPrompt || null,
-          followup_days: cadence === "never" ? null : Number(cadence),
+          linkedin_url: linkedin.trim() ? `https://linkedin.com/in/${linkedin.trim()}` : null,
+          writing_samples: samples.length ? samples : null,
+          context_prompt: goals.trim() || null,
+          followup_days: FOLLOWUP_TO_DAYS[followup] ?? null,
           onboarded: true,
         }),
       });
-      router.push("/");
-    } finally {
-      setSaving(false);
+      if (!res.ok) throw new Error(`profile save failed: ${res.status}`);
+      // soft signal the middleware reads to skip the landing for returning users
+      document.cookie = 'crew_onboarded=1; path=/; max-age=31536000; samesite=lax';
+      onDone();
+    } catch (e) {
+      setSubmitError(String(e?.message || e));
+      setSubmitting(false);
     }
   }
 
-  function skipAll() {
-    fetch("/api/profile", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ followup_days: 5, onboarded: true }),
-    }).then(() => router.push("/"));
+  const completed =
+    (resume ? 1 : 0) +
+    (linkedin.trim() ? 1 : 0) +
+    (samples.length > 0 ? 1 : 0) +
+    (goals.trim() ? 1 : 0);
+
+  function copyPrompt() {
+    navigator.clipboard?.writeText(GOALS_PROMPT).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
   }
 
-  const hasResume = !!resumeStatus.filename;
-  const hasLinkedIn = !!linkedin;
-  const hasSamples = !!samples.trim();
-  const hasContext = !!contextPrompt.trim();
-
   return (
-    <div className="grid gap-10 md:grid-cols-2">
-      <aside className="space-y-6">
-        <div className="text-xs uppercase tracking-wide text-[color:var(--color-clay)]">
-          Crew · let&apos;s get you set up
-        </div>
-        <h1
-          className="text-4xl leading-tight"
-          style={{ fontFamily: "var(--font-newsreader)" }}
-        >
-          Tell Crew about you.{" "}
-          <em className="text-[color:var(--color-ink-muted)]">
-            All of it is optional.
-          </em>
-        </h1>
-        <p className="text-sm text-[color:var(--color-ink-muted)]">
-          More context means sharper drafts. You can skip every step except the
-          followup default and still ship your first message in under a minute.
-        </p>
+    <div style={{
+      flex: 1, display: 'grid', gridTemplateColumns: '1fr 1.15fr', background: p.paper, color: p.ink,
+      overflow: 'hidden',
+    }}>
+      {/* Left — narrative */}
+      <aside style={{
+        background: p.paperDeep, padding: '64px 56px 48px',
+        display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+        borderRight: `1.5px solid ${p.ink}`, position: 'relative', overflow: 'hidden',
+      }}>
+        <div aria-hidden style={{
+          position: 'absolute', right: -140, bottom: -200,
+          fontFamily: PAPER_FONTS.display, fontSize: 480, lineHeight: .8,
+          color: p.paper, opacity: .55, letterSpacing: '-.06em', pointerEvents: 'none',
+        }}>क्र</div>
 
-        <div className="rounded-lg border border-[color:var(--color-line)] bg-white/40 p-4 space-y-2 text-xs">
-          <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-ink-muted)]">
-            Context Crew will use
+        <div style={{ position: 'relative' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 22 }}>
+            <button onClick={onBack} style={{
+              background: 'transparent', border: 'none', color: p.inkMute,
+              fontFamily: PAPER_FONTS.mono, fontSize: 11, letterSpacing: '.1em',
+              textTransform: 'uppercase', cursor: 'pointer', padding: 0,
+            }}>← landing</button>
           </div>
-          <Check label="Resume" set={hasResume} />
-          <Check label="LinkedIn" set={hasLinkedIn} />
-          <Check label="Voice samples" set={hasSamples} />
-          <Check label="Goals & context" set={hasContext} />
-          <div className="flex items-center justify-between pt-1">
-            <span className="flex items-center gap-2">
-              <span className="text-[color:var(--color-clay)]">✓</span>
-              Followup default ·{" "}
-              {cadence === "never" ? "never" : `after ${cadence}d`}
-            </span>
+          <Eyebrow p={p} hindi="शुरुआत" en="Crew · let's get you set up"/>
+          <h1 style={{
+            margin: '8px 0 0', fontFamily: PAPER_FONTS.display, fontWeight: 400,
+            fontSize: 'clamp(40px, 4.4vw, 60px)', lineHeight: .95, letterSpacing: '-.025em',
+            color: p.ink, maxWidth: 500,
+          }}>
+            Tell Crew about you. <span style={{ fontStyle: 'italic', color: p.stamp }}>All of it is optional.</span>
+          </h1>
+          <p style={{
+            margin: '18px 0 0', fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
+            fontSize: 18, lineHeight: 1.45, color: p.inkSoft, maxWidth: 500,
+          }}>
+            More context means sharper drafts. You can skip every step except the followup default and still ship your first message in under a minute.
+          </p>
+
+          {/* Live preview */}
+          <div style={{
+            marginTop: 32, padding: '18px 20px',
+            background: p.card, border: `1.5px solid ${p.ink}`, boxShadow: `4px 4px 0 ${p.marigold}`,
+          }}>
+            <div style={{
+              fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute,
+              letterSpacing: '.16em', textTransform: 'uppercase', marginBottom: 10,
+            }}>Context Crew will use</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <PreviewChip p={p} on={!!resume}            label={resume ? `Resume · ${resume.name}` : 'Resume'}/>
+              <PreviewChip p={p} on={!!linkedin.trim()}    label={linkedin.trim() ? `LinkedIn · ${linkedin}` : 'LinkedIn'}/>
+              <PreviewChip p={p} on={samples.length > 0}   label={samples.length ? `Voice samples · ${samples.length} learned` : 'Voice samples'}/>
+              <PreviewChip p={p} on={!!goals.trim()}       label={goals.trim() ? `Goals & context · ${Math.round(goals.length/5)} words` : 'Goals & context'}/>
+              <PreviewChip p={p} on required label={`Followup default · after ${followup}`}/>
+            </div>
+          </div>
+        </div>
+
+        {/* progress strip */}
+        <div style={{
+          position: 'relative', marginTop: 36,
+          display: 'flex', alignItems: 'center', gap: 14,
+          fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.08em',
+        }}>
+          <span>{completed}/4 OPTIONAL</span>
+          <div style={{ flex: 1, height: 4, background: p.ink + '20', overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', width: `${(completed / 4) * 100}%`,
+              background: p.stamp, transition: 'width .4s ease',
+            }}/>
           </div>
         </div>
       </aside>
 
-      <form onSubmit={save} className="space-y-4">
-        <Card n={1} title="Drop your resume" required={false}>
-          <p className="text-xs text-[color:var(--color-ink-muted)] mb-3">
-            PDF or DOCX. Helps Crew describe you in your own words.
-          </p>
-          <div
-            onClick={() => fileRef.current?.click()}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              const f = e.dataTransfer.files?.[0];
-              if (f) handleResume(f);
-            }}
-            className="rounded-lg border border-dashed border-[color:var(--color-line)] px-4 py-6 text-center text-sm text-[color:var(--color-ink-muted)] cursor-pointer hover:bg-[color:var(--color-cream-50)]"
-          >
-            {resumeStatus.uploading ? (
-              "Parsing…"
-            ) : hasResume ? (
-              <span>
-                <span className="text-[color:var(--color-clay)]">✓</span>{" "}
-                {resumeStatus.filename}{" "}
-                <span className="text-xs">({resumeStatus.chars} chars)</span>
-              </span>
-            ) : (
-              <>
-                ↑ Drop a file or click to upload a sample resume
-                <div className="mt-1 text-[11px]">
-                  PDF, DOCX, TXT · max 5MB · skip if you&apos;d rather not
-                </div>
-              </>
+      {/* Right — cards */}
+      <div className="scroll" style={{
+        overflow: 'auto', padding: '60px 56px 80px',
+        display: 'flex', flexDirection: 'column', gap: 14,
+      }}>
+        <OnbCardV3 p={p} num={1} done={!!resume} optional
+          title="Drop your resume"
+          sub="PDF or DOCX. Helps Crew describe you in your own words."
+          color={p.marigold}
+        >
+          <ResumeDropV3 p={p} resume={resume} setResume={setResume}/>
+        </OnbCardV3>
+
+        <OnbCardV3 p={p} num={2} done={!!linkedin.trim()} optional
+          title="LinkedIn profile"
+          sub="Used for context, never to message anyone."
+          color={p.stamp}
+        >
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '11px 14px', background: p.paper,
+            border: `1.5px solid ${linkedin.trim() ? p.stamp : p.ink + '40'}`,
+            transition: 'border-color .2s',
+          }}>
+            <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 13, color: p.inkMute }}>linkedin.com/in/</span>
+            <input value={linkedin} onChange={(e) => setLinkedin(e.target.value)} placeholder="ameya-shanbhag" style={{
+              flex: 1, background: 'transparent', border: 'none', outline: 'none',
+              color: p.ink, fontFamily: PAPER_FONTS.mono, fontSize: 14,
+            }}/>
+            {linkedin.trim() && (
+              <span style={{ color: p.stamp, fontFamily: PAPER_FONTS.mono, fontSize: 12 }}>✓</span>
             )}
           </div>
-          {resumeStatus.error && (
-            <div className="mt-2 text-xs text-red-700">{resumeStatus.error}</div>
-          )}
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleResume(f);
+        </OnbCardV3>
+
+        <OnbCardV3 p={p} num={3} done={samples.length > 0} optional
+          title="Writing samples"
+          sub="Paste 1–2 things you've actually written so Crew matches your voice."
+          color={p.leaf}
+        >
+          <SampleEditorV3 p={p} samples={samples} setSamples={setSamples}/>
+        </OnbCardV3>
+
+        <OnbCardV3 p={p} num={4} done={!!goals.trim()} optional
+          title="Goals & context"
+          sub="Paste the prompt below into your favourite LLM, answer its questions, then paste the summary back. Crew uses it to write drafts that match what you're working toward."
+          color={p.tea}
+        >
+          <div style={{
+            background: p.paper, border: `1.5px dashed ${p.ink}40`,
+            padding: '14px 16px', position: 'relative',
+            fontFamily: PAPER_FONTS.mono, fontSize: 12, lineHeight: 1.55, color: p.inkSoft,
+            whiteSpace: 'pre-wrap',
+          }}>
+            {GOALS_PROMPT}
+            <button onClick={copyPrompt} style={{
+              position: 'absolute', top: 8, right: 8,
+              padding: '5px 10px', fontFamily: PAPER_FONTS.mono, fontSize: 10.5,
+              letterSpacing: '.06em', textTransform: 'uppercase',
+              background: copied ? p.leaf : p.card, color: copied ? p.paper : p.ink,
+              border: `1.5px solid ${p.ink}`, cursor: 'pointer',
+            }}>{copied ? '✓ copied' : 'copy prompt'}</button>
+          </div>
+          <textarea
+            value={goals}
+            onChange={(e) => setGoals(e.target.value)}
+            placeholder={`Paste the LLM's reply here.\n\n${GOALS_SAMPLE.slice(0, 220)}…`}
+            rows={6}
+            style={{
+              width: '100%', marginTop: 10, padding: '12px 14px', resize: 'vertical',
+              background: p.paper, color: p.ink,
+              border: `1.5px solid ${goals.trim() ? p.tea : p.ink + '30'}`,
+              fontFamily: PAPER_FONTS.sans, fontSize: 13.5, lineHeight: 1.5, outline: 'none',
+              minHeight: 110,
             }}
           />
-          <input
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            placeholder="Your full name (used in sign-offs)"
-            className="mt-3 w-full rounded-md border border-[color:var(--color-line)] bg-white/60 px-3 py-2 text-sm outline-none focus:border-[color:var(--color-clay)]"
-          />
-        </Card>
-
-        <Card n={2} title="LinkedIn profile">
-          <p className="text-xs text-[color:var(--color-ink-muted)] mb-3">
-            Used for context, never to message anyone.
-          </p>
-          <div className="flex items-center rounded-md border border-[color:var(--color-line)] bg-white/60">
-            <span className="pl-3 pr-1 text-xs text-[color:var(--color-ink-muted)] font-mono">
-              linkedin.com/in/
-            </span>
-            <input
-              value={linkedin.replace(/^https?:\/\/(www\.)?linkedin\.com\/in\//, "")}
-              onChange={(e) => {
-                const v = e.target.value.trim();
-                setLinkedin(v ? `https://www.linkedin.com/in/${v.replace(/^\/+/, "")}` : "");
-              }}
-              placeholder="your-handle"
-              className="flex-1 bg-transparent px-1 py-2 text-sm outline-none"
-            />
-          </div>
-        </Card>
-
-        <Card n={3} title="Writing samples">
-          <p className="text-xs text-[color:var(--color-ink-muted)] mb-3">
-            Paste 1–2 things you&apos;ve actually written so Crew matches your voice.
-          </p>
-          <textarea
-            value={samples}
-            onChange={(e) => setSamples(e.target.value)}
-            placeholder="Paste a real email or DM you've sent. We learn the patterns, not the content."
-            className="w-full min-h-[140px] rounded-md border border-[color:var(--color-line)] bg-white/60 p-3 text-sm outline-none focus:border-[color:var(--color-clay)] font-mono"
-          />
-        </Card>
-
-        <Card n={4} title="Goals & context">
-          <p className="text-xs text-[color:var(--color-ink-muted)] mb-3">
-            Paste this prompt into your favorite LLM, answer its questions, then paste the
-            summary back. Crew uses it to write drafts that match what you&apos;re working toward.
-          </p>
-          <div className="rounded-md border border-[color:var(--color-line)] bg-[color:var(--color-cream-50)] p-3 text-xs text-[color:var(--color-ink-muted)]">
-            <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-[color:var(--color-ink)]">
-{CONTEXT_PROMPT_TEMPLATE}
-            </pre>
+          {!goals.trim() && (
             <button
-              type="button"
-              onClick={async () => {
-                await navigator.clipboard.writeText(CONTEXT_PROMPT_TEMPLATE);
-                setPromptCopied(true);
-                setTimeout(() => setPromptCopied(false), 2000);
+              onClick={() => setGoals(GOALS_SAMPLE)}
+              style={{
+                marginTop: 8, padding: '6px 10px', background: 'transparent',
+                border: `1px solid ${p.ink}30`, color: p.inkSoft,
+                fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.06em',
+                cursor: 'pointer',
               }}
-              className="mt-2 rounded-md border border-[color:var(--color-line)] bg-white/60 px-2 py-1 text-[11px] hover:border-[color:var(--color-clay)]"
-            >
-              {promptCopied ? "✓ copied" : "Copy prompt"}
-            </button>
-          </div>
-          <textarea
-            value={contextPrompt}
-            onChange={(e) => setContextPrompt(e.target.value)}
-            placeholder="Paste your LLM-generated summary here…"
-            className="mt-3 w-full min-h-[140px] rounded-md border border-[color:var(--color-line)] bg-white/60 p-3 text-sm outline-none focus:border-[color:var(--color-clay)]"
-          />
-        </Card>
-
-        <Card n={5} title="Followup cadence" required>
-          <p className="text-xs text-[color:var(--color-ink-muted)] mb-3">
-            When someone doesn&apos;t reply, when should Crew nudge?
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {([3, 5, 7, 10, "never"] as FollowupChoice[]).map((opt) => (
-              <button
-                key={String(opt)}
-                type="button"
-                onClick={() => setCadence(opt)}
-                className={`rounded-full px-3 py-1 text-sm border ${
-                  cadence === opt
-                    ? "bg-[color:var(--color-clay)] text-white border-[color:var(--color-clay)]"
-                    : "border-[color:var(--color-line)] text-[color:var(--color-ink)] hover:border-[color:var(--color-clay)]"
-                }`}
-              >
-                {opt === "never" ? "never" : `${opt}d`}
-              </button>
-            ))}
-          </div>
-        </Card>
-
-        <div className="flex items-center gap-3 pt-2">
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-md bg-[color:var(--color-clay)] px-4 py-2 text-sm text-white hover:bg-[color:var(--color-clay-dark)] disabled:opacity-50"
-          >
-            Take me to Crew →
-          </button>
-          {!profile?.onboarded_at && (
-            <button
-              type="button"
-              onClick={skipAll}
-              className="text-xs text-[color:var(--color-ink-muted)] hover:text-[color:var(--color-ink)]"
-            >
-              skip everything
-            </button>
+            >+ try a sample summary</button>
           )}
-        </div>
-      </form>
-    </div>
-  );
-}
+        </OnbCardV3>
 
-function Check({ label, set }: { label: string; set: boolean }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span
-        className={`inline-block h-3 w-3 rounded-sm border ${
-          set ? "bg-[color:var(--color-clay)] border-[color:var(--color-clay)]" : "border-[color:var(--color-line)]"
-        }`}
-      />
-      <span className={set ? "" : "italic text-[color:var(--color-ink-muted)]"}>
-        {label} {set ? "" : "— not added"}
-      </span>
-    </div>
-  );
-}
-
-function Card({
-  n,
-  title,
-  required,
-  children,
-}: {
-  n: number;
-  title: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-xl border border-[color:var(--color-line)] bg-white/40 p-5">
-      <header className="flex items-baseline justify-between mb-3">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-[color:var(--color-line)] text-xs text-[color:var(--color-ink-muted)]">
-            {n}
-          </span>
-          <h2
-            className="text-lg"
-            style={{ fontFamily: "var(--font-newsreader)" }}
-          >
-            {title}
-          </h2>
-        </div>
-        <span
-          className={`text-[10px] uppercase tracking-wider ${
-            required
-              ? "text-[color:var(--color-clay)]"
-              : "text-[color:var(--color-ink-muted)]"
-          }`}
+        <OnbCardV3 p={p} num={5} done required
+          title="Followup cadence"
+          sub="When someone doesn't reply, when should Crew nudge?"
+          color={p.stamp}
         >
-          {required ? "required" : "optional"}
-        </span>
-      </header>
-      {children}
-    </section>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {['3d','5d','7d','10d','never'].map(v => {
+              const active = followup === v;
+              return (
+                <button key={v} onClick={() => setFollowup(v)} style={{
+                  padding: '9px 18px', fontFamily: PAPER_FONTS.mono, fontSize: 13,
+                  background: active ? p.stamp : 'transparent', color: active ? p.paper : p.ink,
+                  border: `1.5px solid ${p.ink}`, boxShadow: active ? `2px 2px 0 ${p.ink}` : 'none',
+                  cursor: 'pointer',
+                }}>{v}</button>
+              );
+            })}
+          </div>
+        </OnbCardV3>
+
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 14, marginTop: 18,
+        }}>
+          <InkButton p={p} size="lg" color={p.stamp} disabled={submitting} onClick={handleDone}>
+            {submitting ? 'Saving…' : 'Take me to Crew'}  <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 17 }}>→</span>
+          </InkButton>
+          {submitError && (
+            <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.stamp }}>{submitError}</span>
+          )}
+          <Marginalia p={p} rotate={-2}>or skip everything · ⌘↵</Marginalia>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PreviewChip({ p, on, label, required }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5,
+      color: on ? p.ink : p.inkMute,
+    }}>
+      <span style={{
+        width: 14, height: 14, background: on ? p.stamp : 'transparent',
+        border: `1.5px solid ${on ? p.stamp : p.ink + '40'}`,
+        display: 'grid', placeItems: 'center', color: p.paper, fontSize: 10, flexShrink: 0,
+      }}>{on ? '✓' : ''}</span>
+      <span style={{
+        fontFamily: on ? PAPER_FONTS.sans : PAPER_FONTS.serif,
+        fontStyle: on ? 'normal' : 'italic',
+      }}>{label}</span>
+      {required && (
+        <span style={{
+          marginLeft: 'auto',
+          fontFamily: PAPER_FONTS.mono, fontSize: 9, letterSpacing: '.16em',
+          color: p.stamp, textTransform: 'uppercase',
+        }}>set</span>
+      )}
+    </div>
+  );
+}
+
+function OnbCardV3({ p, num, done, required, optional, title, sub, color, children }) {
+  return (
+    <div style={{
+      background: p.card, border: `1.5px solid ${done ? p.ink : p.ink + '40'}`,
+      boxShadow: done ? `4px 4px 0 ${color || p.marigold}` : 'none',
+      padding: '20px 22px',
+      transition: 'box-shadow .25s, border-color .25s',
+      animation: `fadeUp .4s ease both`,
+      animationDelay: `${num * 50}ms`,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 6 }}>
+        <span style={{
+          width: 26, height: 26, fontSize: 12, fontWeight: 700,
+          fontFamily: PAPER_FONTS.mono,
+          display: 'grid', placeItems: 'center', flexShrink: 0,
+          background: done ? p.ink : 'transparent', color: done ? p.paper : p.ink,
+          border: `1.5px solid ${p.ink}`, borderRadius: 999,
+        }}>{done ? '✓' : num}</span>
+        <h3 style={{
+          fontFamily: PAPER_FONTS.display, fontWeight: 400, fontSize: 22,
+          letterSpacing: '-.01em', margin: 0, flex: 1, color: p.ink, lineHeight: 1.1,
+        }}>{title}</h3>
+        <span style={{
+          fontFamily: PAPER_FONTS.mono, fontSize: 10, letterSpacing: '.18em',
+          color: required ? p.stamp : p.inkMute, textTransform: 'uppercase',
+        }}>{required ? 'required' : 'optional'}</span>
+      </div>
+      {sub && (
+        <p style={{
+          margin: '4px 0 14px', marginLeft: 38,
+          fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
+          fontSize: 14, lineHeight: 1.5, color: p.inkSoft,
+        }}>{sub}</p>
+      )}
+      <div style={{ marginLeft: 38 }}>{children}</div>
+    </div>
+  );
+}
+
+function ResumeDropV3({ p, resume, setResume }) {
+  const [hover, setHover] = useState(false);
+  if (resume) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 14,
+        padding: '12px 14px', background: p.paper, border: `1.5px solid ${p.marigold}`,
+      }}>
+        <div style={{
+          width: 36, height: 44, background: p.card, color: p.marigoldDeep,
+          border: `1px solid ${p.marigold}`, display: 'grid', placeItems: 'center',
+          fontFamily: PAPER_FONTS.mono, fontSize: 10, fontWeight: 700, letterSpacing: '.04em',
+        }}>PDF</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: PAPER_FONTS.sans, fontSize: 14, color: p.ink }}>
+            <span style={{ color: p.leaf, marginRight: 4 }}>✓</span>{resume.name}
+          </div>
+          <div style={{
+            fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute,
+            marginTop: 2, letterSpacing: '.04em',
+          }}>{resume.size} · 7,204 chars · parsed in 1.2s</div>
+        </div>
+        <button onClick={() => setResume(null)} style={{
+          padding: '6px 10px', background: 'transparent', color: p.inkSoft,
+          border: `1.5px solid ${p.ink}30`, fontFamily: PAPER_FONTS.mono, fontSize: 11,
+          cursor: 'pointer',
+        }}>remove</button>
+      </div>
+    );
+  }
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  async function handleFile(file) {
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/profile/resume', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error(`upload failed: ${res.status}`);
+      const j = await res.json();
+      const kb = Math.max(1, Math.round(file.size / 1024));
+      setResume({ name: j.filename || file.name, size: `${kb} KB`, characters: j.characters });
+    } catch (e) {
+      setUploadError(String(e?.message || e));
+    } finally {
+      setUploading(false);
+    }
+  }
+  return (
+    <label
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 14, padding: '18px 18px',
+        background: hover ? p.paper : 'transparent',
+        border: `1.5px dashed ${hover ? p.marigoldDeep : p.ink + '40'}`,
+        cursor: 'pointer', transition: 'border-color .2s, background .2s',
+      }}
+    >
+      <input
+        type="file"
+        accept=".pdf,.docx,.txt"
+        style={{ display: 'none' }}
+        onChange={(e) => handleFile(e.target.files?.[0])}
+      />
+      <span style={{
+        width: 32, height: 32, background: hover ? p.marigold : 'transparent',
+        color: hover ? p.paper : p.ink, display: 'grid', placeItems: 'center',
+        fontSize: 16, border: `1.5px solid ${p.ink}`, borderRadius: 999,
+        transition: 'all .2s',
+      }}>{uploading ? '…' : '↑'}</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontFamily: PAPER_FONTS.sans, fontSize: 14, color: p.ink }}>
+          {uploading ? 'Parsing…' : 'Click to upload your resume'}
+        </div>
+        <div style={{
+          fontFamily: PAPER_FONTS.mono, fontSize: 11, color: uploadError ? p.stamp : p.inkMute, marginTop: 2,
+          letterSpacing: '.04em',
+        }}>{uploadError || 'PDF, DOCX, TXT · max 5MB · skip if you’d rather not'}</div>
+      </div>
+    </label>
+  );
+}
+
+function SampleEditorV3({ p, samples, setSamples }) {
+  const [draft, setDraft] = useState('');
+  const presets = [
+    'Hey — saw your launch. The bit about agent UX hit. Worth a chat?',
+    'Quick one. Retail investors can now access private markets through their 401k, and asset managers are being defensive in their investments — collateral monitoring is becoming critical for risk management.',
+  ];
+  function add(text) {
+    if (!text.trim() || samples.length >= 3) return;
+    setSamples([...samples, text.trim()]);
+    setDraft('');
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {samples.map((s, i) => (
+        <div key={i} style={{
+          padding: '12px 14px', background: p.paper, border: `1.5px solid ${p.leaf}`,
+          display: 'flex', gap: 10, alignItems: 'flex-start',
+        }}>
+          <span style={{
+            fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.leaf,
+            letterSpacing: '.1em', flexShrink: 0, marginTop: 2,
+          }}>#{String(i + 1).padStart(2, '0')}</span>
+          <span style={{
+            flex: 1, fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
+            fontSize: 14, lineHeight: 1.5, color: p.ink,
+          }}>"{s}"</span>
+          <button onClick={() => setSamples(samples.filter((_, j) => j !== i))} style={{
+            background: 'transparent', border: 'none', color: p.inkMute,
+            fontSize: 16, cursor: 'pointer', padding: 0, lineHeight: 1,
+          }}>×</button>
+        </div>
+      ))}
+      {samples.length < 3 && (
+        <>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Paste a real email, DM, or post you've sent."
+            rows={3}
+            style={{
+              width: '100%', resize: 'none', padding: '11px 14px',
+              background: p.paper, color: p.ink,
+              border: `1.5px solid ${p.ink}30`,
+              fontFamily: PAPER_FONTS.sans, fontSize: 13.5, lineHeight: 1.5, outline: 'none',
+            }}
+          />
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            flexWrap: 'wrap', gap: 8,
+          }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {presets.map((s, i) => (
+                <button key={i} onClick={() => add(s)} style={{
+                  padding: '5px 10px', background: 'transparent',
+                  border: `1px solid ${p.ink}30`, color: p.inkSoft,
+                  fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.04em',
+                  cursor: 'pointer',
+                }}>+ sample {i + 1}</button>
+              ))}
+            </div>
+            <button onClick={() => add(draft)} disabled={!draft.trim()} style={{
+              padding: '7px 14px', background: draft.trim() ? p.ink : 'transparent',
+              color: draft.trim() ? p.paper : p.inkMute,
+              border: `1.5px solid ${p.ink}`,
+              fontFamily: PAPER_FONTS.mono, fontSize: 12,
+              cursor: draft.trim() ? 'pointer' : 'not-allowed',
+            }}>add ⌘↵</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+
+export default function OnboardingPage() {
+  const router = useRouter();
+  const { p } = usePaperTheme();
+  return (
+    <OnboardingV3
+      p={p}
+      onDone={() => router.push("/app/compose")}
+      onBack={() => router.push("/")}
+    />
   );
 }

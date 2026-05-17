@@ -34,6 +34,7 @@ export type TailoredResume = {
     page_count: 1 | 2;
     model: string;
     generated_at: string;
+    ats_score?: number; // 0-100, self-scored against the JD; null when JD wasn't reachable
   };
 };
 

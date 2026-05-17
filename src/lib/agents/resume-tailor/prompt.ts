@@ -51,8 +51,10 @@ Strict JSON only, no prose, no markdown fences. Schema:
   "skills"?:    [ { "group": string, "items": string[] } ],
   "projects"?:  [ { "name": string, "link"?: string, "bullets": string[] } ],
   "extras"?:    [ { "heading": string, "items": string[] } ],
-  "meta": { "target_role"?: string|null, "target_company"?: string|null, "job_url"?: string, "page_count": 1|2 }
+  "meta": { "target_role"?: string|null, "target_company"?: string|null, "job_url"?: string, "page_count": 1|2, "ats_score"?: number }
 }
+
+"ats_score" is your honest 0-100 estimate of how well this tailored resume scores against the JD on a typical ATS (keyword coverage, role/level alignment, recency, signal density). Leave it out if you didn't see the JD.
 
 "headline" is a single tight line under the name, e.g. "Senior Backend Engineer · Python, Distributed Systems". Derive it from the JD + the candidate's strongest signal.`;
 
