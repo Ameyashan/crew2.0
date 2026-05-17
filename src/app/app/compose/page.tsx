@@ -12,6 +12,7 @@ import {
   PaperCard,
   Marginalia,
 } from "@/components/paper/primitives";
+import { openGmailCompose } from "@/lib/gmail";
 
 function ComposeV3({ p, seed, setSeed, go }) {
   const [input, setInput]   = useState(seed?.input || '');
@@ -627,7 +628,7 @@ function PackageV3({ p, kind, parsed, intent, drafts, enrichment, onReset, go })
 
       {kind === 'person'
         ? <PersonPackage p={p} parsed={parsed} drafts={drafts} enrichment={enrichment} go={go}/>
-        : <JobPackage    p={p} parsed={parsed} go={go}/>
+        : <JobPackage    p={p} parsed={parsed} drafts={drafts} enrichment={enrichment} go={go}/>
       }
     </div>
   );
@@ -722,10 +723,14 @@ function PersonPackage({ p, parsed, drafts, enrichment, go }) {
           <span style={{ color: p.inkMute }}>· best send Tue 10:42am</span>
           <span style={{ color: p.inkMute }}>· followup in 3d</span>
         </div>
-        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+        <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {channel === 'email' && (
+            <InkButton p={p} color={p.stamp} size="sm" onClick={() => {
+              openGmailCompose({ to: m.to, subject: m.subject, body: m.body });
+            }}>Open in Gmail →</InkButton>
+          )}
           <InkButton p={p} kind="outline" size="sm">↻ Another angle</InkButton>
           <InkButton p={p} kind="outline" size="sm">✎ Edit</InkButton>
-          <InkButton p={p} kind="outline" size="sm">⊕ Notes for next draft</InkButton>
         </div>
       </PaperCard>
 
@@ -769,7 +774,13 @@ function PersonPackage({ p, parsed, drafts, enrichment, go }) {
   );
 }
 
-function JobPackage({ p, parsed, go }) {
+function JobPackage({ p, parsed, drafts, enrichment, go }) {
+  // Prefer real drafts/enrichment over the prototype's mocked strings.
+  const emailDraft = Array.isArray(drafts) ? drafts.find((d) => d.channel === 'email') : null;
+  const emailTo = enrichment?.email || 'anika@stripe.com';
+  const emailSubject = emailDraft?.subject || 'the bit about pricing tables in Atlas — a 3 min thought';
+  const emailBody = emailDraft?.body
+    || `Anika — caught the Atlas pricing-table redesign and the way you handled the discount-stacking edge case is the cleanest take I've seen on it. I rebuilt onboarding at Razorpay last year and ran into a similar spec-vs-edge tension. I sketched two ways out (3-min watch).\n\nI'm also applying for the Senior PD role open on your team — resume attached. Either way, would love your take.\n\n— Sam`;
   return (
     <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr', gap: 12 }}>
       {/* resume */}
@@ -826,20 +837,14 @@ function JobPackage({ p, parsed, go }) {
           padding: '12px 14px', fontFamily: PAPER_FONTS.sans, fontSize: 13, lineHeight: 1.55,
         }}>
           <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute }}>
-            <span>To &nbsp;</span><span style={{ color: p.ink }}>anika@stripe.com</span>
-            <span style={{ color: p.leaf, marginLeft: 8 }}>· 96%</span>
+            <span>To &nbsp;</span><span style={{ color: p.ink }}>{emailTo}</span>
+            {enrichment?.email && <span style={{ color: p.leaf, marginLeft: 8 }}>· verified</span>}
           </div>
           <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, marginTop: 4 }}>
-            <span>Re &nbsp;</span><span style={{ color: p.ink }}>the bit about pricing tables in Atlas — a 3 min thought</span>
+            <span>Re &nbsp;</span><span style={{ color: p.ink }}>{emailSubject}</span>
           </div>
           <div style={{ height: 1, background: p.ink + '14', margin: '8px 0' }}/>
-          <p style={{ margin: 0, color: p.ink }}>
-            Anika — caught the Atlas pricing-table redesign and the way you handled the discount-stacking edge case is the cleanest take I've seen on it. I rebuilt onboarding at Razorpay last year and ran into a similar spec-vs-edge tension. I sketched two ways out (3-min watch).
-          </p>
-          <p style={{ margin: '8px 0 0', color: p.inkSoft }}>
-            I'm also applying for the Senior PD role open on your team — resume attached. Either way, would love your take.
-          </p>
-          <p style={{ margin: '8px 0 0', color: p.inkSoft }}>— Sam</p>
+          <p style={{ margin: 0, color: p.ink, whiteSpace: 'pre-wrap' }}>{emailBody}</p>
         </div>
         <div style={{
           marginTop: 10, display: 'flex', gap: 14, fontFamily: PAPER_FONTS.mono, fontSize: 11,
@@ -849,9 +854,11 @@ function JobPackage({ p, parsed, go }) {
           <span style={{ color: p.inkMute }}>· best send Tue 10:42am</span>
           <span style={{ color: p.inkMute }}>· followup in 3d</span>
         </div>
-        <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
+        <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <InkButton p={p} color={p.stamp} size="sm" style={{ flex: 1 }} onClick={() => {
+            openGmailCompose({ to: emailTo, subject: emailSubject, body: emailBody });
+          }}>Open in Gmail →</InkButton>
           <InkButton p={p} kind="outline" size="sm" style={{ flex: 1 }}>↻ Another angle</InkButton>
-          <InkButton p={p} kind="outline" size="sm" style={{ flex: 1 }}>✎ Edit</InkButton>
         </div>
       </PaperCard>
 

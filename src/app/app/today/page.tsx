@@ -11,6 +11,7 @@ import {
   PageHead,
   Marginalia,
 } from "@/components/paper/primitives";
+import { openGmailCompose } from "@/lib/gmail";
 
 function TodayV3({ p, go }) {
   const [cursor, setCursor]   = useState({ list: 'fu', idx: 0 });
@@ -225,11 +226,17 @@ function FollowupRow({ p, fu, cursor, acted, expanded, onExpand, onAct, onGo }) 
             }}>{acted === 'sent' ? '✓ sent' : acted === 'replied' ? '✓ replied' : '· skipped'}</span>
           ) : (
             <>
-              <button onClick={(e) => { e.stopPropagation(); onAct('sent'); }} style={{
-                padding: '8px 14px', background: p.ink, color: p.paper,
-                border: `1.5px solid ${p.ink}`, fontFamily: PAPER_FONTS.display, fontSize: 13,
-                cursor: 'pointer',
-              }}>Copy &amp; open</button>
+              {fu.channel === 'email' && fu.email && (
+                <button onClick={(e) => {
+                  e.stopPropagation();
+                  openGmailCompose({ to: fu.email, subject: fu.subject, body: fu.body });
+                  onAct('sent');
+                }} style={{
+                  padding: '8px 14px', background: p.ink, color: p.paper,
+                  border: `1.5px solid ${p.ink}`, fontFamily: PAPER_FONTS.display, fontSize: 13,
+                  cursor: 'pointer',
+                }}>Open in Gmail →</button>
+              )}
               <button onClick={(e) => { e.stopPropagation(); onAct('done'); }} style={{
                 padding: '8px 12px', background: 'transparent', color: p.ink,
                 border: `1.5px solid ${p.ink}40`, fontFamily: PAPER_FONTS.mono, fontSize: 12,
@@ -365,6 +372,10 @@ function adaptFollowups(rows) {
       last,
       preview: r.draft?.body || '(draft not generated yet)',
       angle: r.draft?.subject || 'followup',
+      email: r.person?.email || '',
+      subject: r.draft?.subject || '',
+      body: r.draft?.body || '',
+      channel: r.draft?.channel || 'email',
     };
   });
 }
