@@ -9,7 +9,7 @@ export default function ComposeStub() {
       italic="Crew figures out the rest."
       sub="The redesigned paste-anything Compose flow lands in PR 3. For now, the existing research-and-draft flow lives at /."
       hindi="लिखो"
-      legacyHref="/"
+      legacyHref="/compose"
       legacyLabel="Open legacy Compose"
     />
   );
