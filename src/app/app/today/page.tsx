@@ -17,20 +17,21 @@ function TodayV3({ p, go }) {
   const [acted, setActed]     = useState({}); // id → 'sent' | 'replied' | 'skip' | 'done'
   const [expanded, setExpanded] = useState(null);
   const [followups, setFollowups] = useState([]);
+  const [replies, setReplies] = useState([]);
   const [lastDigest, setLastDigest] = useState(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     fetch('/api/today').then((r) => r.json()).then((j) => {
       setFollowups(adaptFollowups(j?.due || []));
+      setReplies(adaptReplies(j?.replies || []));
       setLastDigest(j?.last_digest || null);
       setLoaded(true);
     }).catch(() => setLoaded(true));
   }, []);
 
-  // Replies stack ships empty until reply ingestion lands in PR 6.
   const FOLLOWUPS = followups;
-  const REPLIES = [];
+  const REPLIES = replies;
 
   useEffect(() => {
     if (loaded && !expanded && FOLLOWUPS.length) setExpanded(FOLLOWUPS[0].id);
@@ -364,6 +365,24 @@ function adaptFollowups(rows) {
       last,
       preview: r.draft?.body || '(draft not generated yet)',
       angle: r.draft?.subject || 'followup',
+    };
+  });
+}
+
+function adaptReplies(rows) {
+  return rows.map((r) => {
+    const name = r.person?.name || r.from_email?.split('@')[0] || '(unknown)';
+    const initials = name.split(/[\s.@_-]+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '·';
+    return {
+      id: r.id,
+      initials,
+      name,
+      co: r.person?.email?.split('@')[1] || '',
+      sentiment: r.sentiment || 'new',
+      intro: r.intro_offered,
+      meeting: r.meeting || null,
+      summary: r.summary || (r.body ? r.body.slice(0, 200) + (r.body.length > 200 ? '…' : '') : ''),
+      suggested: r.suggested_reply || 'Crew will summarise this shortly. In the meantime, open Compose to draft a reply manually.',
     };
   });
 }

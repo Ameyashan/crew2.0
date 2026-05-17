@@ -17,6 +17,20 @@ export interface ReviewRow {
   draft: { id: string; channel: string; subject: string | null; body: string } | null;
 }
 
+export interface ReplyRow {
+  id: string;
+  from_email: string;
+  subject: string | null;
+  body: string;
+  sentiment: string | null;
+  summary: string | null;
+  suggested_reply: string | null;
+  intro_offered: boolean;
+  meeting: string | null;
+  person: { id: string; name: string; email: string | null } | null;
+  created_at: string;
+}
+
 export async function loadTodayData() {
   const sb = supabaseAdmin();
 
@@ -102,7 +116,33 @@ export async function loadTodayData() {
       draft: pickDraft(r.draft),
     }));
 
-  return { due, reviews };
+  // Replies needing human attention — populated by the inbound webhook.
+  // Treat anything from the last 30 days that isn't marked handled as "needs review".
+  const replySince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: replyRaw } = await sb
+    .from("replies")
+    .select(
+      "id, from_email, subject, body, sentiment, summary, suggested_reply, intro_offered, meeting, created_at, person:people(id,name,email)",
+    )
+    .eq("user_id", USER_ID)
+    .gte("created_at", replySince)
+    .order("created_at", { ascending: false });
+
+  const replies: ReplyRow[] = ((replyRaw ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    id: r.id as string,
+    from_email: r.from_email as string,
+    subject: (r.subject as string) ?? null,
+    body: r.body as string,
+    sentiment: (r.sentiment as string) ?? null,
+    summary: (r.summary as string) ?? null,
+    suggested_reply: (r.suggested_reply as string) ?? null,
+    intro_offered: !!r.intro_offered,
+    meeting: (r.meeting as string) ?? null,
+    person: r.person ? pickPerson(r.person) : null,
+    created_at: r.created_at as string,
+  }));
+
+  return { due, reviews, replies };
 }
 
 function pickPerson(p: unknown): { id: string; name: string; email: string | null } {
