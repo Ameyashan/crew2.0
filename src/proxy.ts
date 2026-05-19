@@ -1,12 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Returning users land on /app/compose instead of the marketing landing.
-// Onboarding sets the `crew_onboarded=1` cookie on completion. We stay
-// cookie-only so we don't make a DB call on every request — the real source
-// of truth is user_profile.onboarded_at; the cookie is enough for routing UX.
+// We check for either:
+//   - the Supabase auth-token cookie (set after Google OAuth), or
+//   - the `crew_onboarded=1` cookie set by onboarding completion.
+// Pure cookie checks keep this edge-safe — no DB calls on every request.
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (pathname === "/" && req.cookies.get("crew_onboarded")?.value === "1") {
+  if (pathname !== "/") return NextResponse.next();
+
+  const hasOnboardedCookie = req.cookies.get("crew_onboarded")?.value === "1";
+  const hasSupabaseAuth = req.cookies
+    .getAll()
+    .some((c) => c.name.startsWith("sb-") && c.name.endsWith("-auth-token"));
+
+  if (hasOnboardedCookie || hasSupabaseAuth) {
     const url = req.nextUrl.clone();
     url.pathname = "/app/compose";
     return NextResponse.redirect(url);
