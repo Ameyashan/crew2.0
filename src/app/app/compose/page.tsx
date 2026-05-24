@@ -104,7 +104,16 @@ function ComposeV3({ p, seed, setSeed, go }) {
         if (collectedDrafts.length) setDrafts(collectedDrafts);
         if (collectedEnrichment) setEnrichment(collectedEnrichment);
         // Stuff the bundle into parsed so PackageV3's JobPackage can render it.
-        setParsed((prev) => ({ ...(prev || {}), ...bundle }));
+        // The API speaks target_role/target_company; the card reads role/company —
+        // map them across so a successful parse actually replaces the preview.
+        setParsed((prev) => ({
+          ...(prev || {}),
+          ...bundle,
+          unparsed: false,
+          role: bundle.target_role || prev?.role,
+          company: bundle.target_company || prev?.company,
+          ats_score: bundle.ats_score ?? prev?.ats_score,
+        }));
         setProgress({ resume: 100, person: 100, email: 100, outreach: 100 });
         setStage('done');
       } catch (e) {
@@ -453,6 +462,40 @@ function ParsedCard({ p, stage, kind, parsed, onConfirm, onChoose }) {
     );
   }
 
+  // job — not parsed yet: be honest that the posting is read on send, don't
+  // show fabricated company/role/skills.
+  if (parsed.unparsed) {
+    const host = jobHost(parsed.source);
+    return (
+      <PaperCard p={p} hardShadow color={p.marigold} style={{ marginTop: 14, padding: '24px 26px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 18 }}>
+          <div style={{
+            width: 64, height: 64, background: p.ink, color: p.paper,
+            display: 'grid', placeItems: 'center',
+            fontFamily: PAPER_FONTS.display, fontSize: 28,
+          }}>↗</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Eyebrow p={p} hindi="नौकरी का लिंक" en="Job link · not parsed yet" color={p.marigoldDeep}/>
+            <div style={{
+              fontFamily: PAPER_FONTS.display, fontSize: 28, lineHeight: 1.05, marginTop: 4, color: p.ink,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{host || 'Job posting'}</div>
+            {parsed.source && (
+              <div style={{
+                fontFamily: PAPER_FONTS.mono, fontSize: 12, color: p.inkMute, marginTop: 4,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{parsed.source}</div>
+            )}
+            <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 16, color: p.inkSoft, marginTop: 10 }}>
+              Jugaadu reads the full posting when you send the crew.
+            </div>
+          </div>
+          <InkButton p={p} color={p.stamp} onClick={onConfirm} disabled={parsing}>Send the crew →</InkButton>
+        </div>
+      </PaperCard>
+    );
+  }
+
   // job
   return (
     <PaperCard p={p} hardShadow color={p.marigold} style={{ marginTop: 14, padding: '24px 26px' }}>
@@ -775,6 +818,11 @@ function PersonPackage({ p, parsed, drafts, enrichment, go }) {
 }
 
 function JobPackage({ p, parsed, drafts, enrichment, go }) {
+  // Real values from the tailor agent, mapped in on confirm(). Fall back to the
+  // prototype's mock copy only when a field genuinely wasn't returned.
+  const jobRole = parsed?.role;
+  const jobCompany = parsed?.company;
+  const atsScore = parsed?.ats_score;
   // Prefer real drafts/enrichment over the prototype's mocked strings.
   const emailDraft = Array.isArray(drafts) ? drafts.find((d) => d.channel === 'email') : null;
   const emailTo = enrichment?.email || 'anika@stripe.com';
@@ -789,8 +837,15 @@ function JobPackage({ p, parsed, drafts, enrichment, go }) {
           <Eyebrow p={p} hindi="रेज़्यूमे" en="Tailored resume" color={p.marigold}/>
           <span style={{
             fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.leaf, letterSpacing: '.06em',
-          }}>ATS 96/100</span>
+          }}>{atsScore != null ? `ATS ${atsScore}/100` : 'ATS 96/100'}</span>
         </div>
+        {(jobRole || jobCompany) && (
+          <div style={{
+            fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 13, color: p.inkSoft, marginTop: 6,
+          }}>
+            for {[jobRole, jobCompany].filter(Boolean).join(' at ')}
+          </div>
+        )}
         <div style={{
           marginTop: 12, background: p.paper, border: `1.5px solid ${p.ink}30`,
           aspectRatio: '8.5/11', padding: '14px 14px', position: 'relative',
@@ -987,11 +1042,21 @@ function inferJobV3(input) {
     location: 'SF · onsite 3d', comp: '$240k–$320k', posted: 'Posted 1d ago',
     tags: ['react + typescript', 'tight design taste', 'shipped LLM UX', 'systems thinking'],
   };
-  return {
-    logo: '◇', company: 'Company · TBD', role: 'Role from JD',
-    location: 'Hybrid · TBD', comp: 'Comp tbd', posted: 'Posted recently',
-    tags: ['skill 1', 'skill 2', 'skill 3', 'skill 4'],
-  };
+  // Unknown input: we have NOT parsed anything yet. The real fetch+parse runs
+  // server-side on confirm(). Return an honest "not parsed yet" shape instead
+  // of fabricated company/role/skills so the review card can't masquerade as
+  // a parsed posting.
+  return { unparsed: true, source: (input || '').trim() };
+}
+
+function jobHost(source) {
+  const s = (source || '').trim();
+  if (!s) return '';
+  try {
+    return new URL(s.match(/^https?:\/\//) ? s : `https://${s}`).hostname.replace(/^www\./, '');
+  } catch {
+    return s;
+  }
 }
 
 

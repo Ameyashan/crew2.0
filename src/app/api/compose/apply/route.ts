@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { runResumeTailorStream } from "@/lib/agents/resume-tailor";
 import { runReachOutStream } from "@/lib/agents/reach-out";
+import { authWalledJobHost } from "@/lib/job-url";
 import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
 import { supabaseAdmin } from "@/lib/supabase";
 import { resolveUserId } from "@/lib/auth";
@@ -43,6 +44,25 @@ export async function POST(req: NextRequest) {
       let draftId: string | null = null;
 
       try {
+        // ── Step 0: bail early on login-walled boards (LinkedIn, etc.). Their
+        // postings can't be fetched, so skip the doomed API call and tell the
+        // user to use a public posting URL.
+        const walled = authWalledJobHost(job_url);
+        if (walled) {
+          send({
+            type: "step",
+            id: "resume",
+            status: "error",
+            message: `${walled} job links are behind a login wall, so Jugaadu can't read them.`,
+          });
+          send({
+            type: "error",
+            message: `${walled} job links are behind a login wall, so Jugaadu can't read them. Paste a public posting URL instead — the company's careers page, or a Greenhouse / Lever / Ashby link.`,
+          });
+          controller.close();
+          return;
+        }
+
         // ── Step 1: tailor the resume to this job
         send({ type: "step", id: "resume", status: "start" });
         for await (const evt of runResumeTailorStream({ job_url, page_count: 1 })) {
