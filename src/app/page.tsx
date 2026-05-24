@@ -5,6 +5,43 @@ import { Fragment, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PAPER_FONTS } from "@/components/paper/fonts";
 import { usePaperTheme } from "@/components/paper/use-paper-theme";
+import { signInWithGoogle } from "@/lib/supabase-browser";
+
+/* ─────────────────────── Jugaadu logo ─────────────────────── */
+/* A boxy stamp echoing the newspaper aesthetic — a J anchored by a
+   marigold spark (the "jugaad" — a clever little hack). */
+function JugaaduMark({ p, size = 46 }) {
+  return (
+    <div style={{
+      position: 'relative', width: size, height: size, borderRadius: 10,
+      background: p.stamp, color: p.paper,
+      display: 'grid', placeItems: 'center',
+      fontFamily: PAPER_FONTS.display, fontSize: size * 0.6,
+      boxShadow: `4px 4px 0 ${p.ink}`,
+    }}>
+      <span style={{ lineHeight: 1, transform: 'translateY(-1px)' }}>J</span>
+      <span style={{
+        position: 'absolute', right: 5, top: 5,
+        width: size * 0.18, height: size * 0.18, borderRadius: 999,
+        background: p.marigold, border: `1.5px solid ${p.ink}`,
+      }}/>
+      <span style={{
+        position: 'absolute', left: 4, bottom: 3,
+        fontFamily: PAPER_FONTS.mono, fontSize: size * 0.18,
+        color: p.marigold, letterSpacing: '.04em',
+      }}>★</span>
+    </div>
+  );
+}
+
+async function startGoogleSignIn() {
+  try {
+    await signInWithGoogle("/app/compose");
+  } catch (e) {
+    console.error("Google sign-in failed", e);
+    alert("Sign-in is not configured yet. See README for setup.");
+  }
+}
 
 // eslint-disable @typescript-eslint/no-explicit-any
 
@@ -211,31 +248,22 @@ function Masthead3({ p, mode = 'workspace' }) {
       <div style={{ height: 14 }}/>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{
-            width: 46, height: 46, borderRadius: 10,
-            background: p.stamp, color: p.paper,
-            display: 'grid', placeItems: 'center',
-            fontFamily: PAPER_FONTS.display, fontSize: 28,
-            boxShadow: `4px 4px 0 ${p.ink}`,
-          }}>C</div>
+          <JugaaduMark p={p}/>
           <div>
             <div style={{
               fontFamily: PAPER_FONTS.devan, fontWeight: 700,
               fontSize: 13, color: p.stamp, lineHeight: 1, letterSpacing: '.02em',
-            }}>क्रू</div>
+            }}>जुगाडू</div>
             <div style={{
               fontFamily: PAPER_FONTS.display, fontSize: 32, lineHeight: 1, marginTop: 2, color: p.ink,
-            }}>Crew<span style={{ color: p.stamp }}>.</span></div>
+            }}>Jugaadu<span style={{ color: p.stamp }}>.</span></div>
           </div>
         </div>
         <nav style={{
           display: 'flex', alignItems: 'center', gap: 26,
           fontFamily: PAPER_FONTS.mono, fontSize: 12, color: p.inkSoft,
         }}>
-          <a style={{ color: 'inherit', textDecoration: 'none' }}>the crew</a>
-          <a style={{ color: 'inherit', textDecoration: 'none' }}>how it works</a>
-          <a style={{ color: 'inherit', textDecoration: 'none' }}>manifesto</a>
-          <button onClick={() => router.push("/onboarding")} style={{
+          <button onClick={startGoogleSignIn} style={{
             background: p.ink, color: p.paper, padding: '10px 18px',
             border: `2px solid ${p.ink}`, fontFamily: PAPER_FONTS.display,
             fontSize: 15, cursor: 'pointer', boxShadow: `4px 4px 0 ${p.marigold}`,
@@ -322,7 +350,7 @@ function CTABlock({ p }) {
           fontFamily: PAPER_FONTS.serifAlt, fontSize: 22, width: 320, outline: 'none',
           color: p.ink,
         }}/>
-        <button onClick={() => router.push("/onboarding")} style={{
+        <button onClick={() => startGoogleSignIn()} style={{
           background: p.stamp, color: p.paper, padding: '18px 26px',
           border: `3px solid ${p.ink}`, fontFamily: PAPER_FONTS.display, fontSize: 22,
           cursor: 'pointer', boxShadow: `6px 6px 0 ${p.ink}`,
@@ -411,7 +439,7 @@ function WorkspaceHero({ p, headline, foreground }) {
           </div>
 
           <div style={{ marginTop: 32, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-            <button onClick={() => router.push("/onboarding")} style={{
+            <button onClick={() => startGoogleSignIn()} style={{
               background: p.stamp, color: p.paper, padding: '14px 22px',
               border: `2px solid ${p.ink}`, fontFamily: PAPER_FONTS.display, fontSize: 22,
               cursor: 'pointer', boxShadow: `6px 6px 0 ${p.ink}`, display: 'flex', alignItems: 'center', gap: 10,
@@ -1137,7 +1165,7 @@ function NewsroomHero({ p, headline }) {
           </div>
 
           <div style={{ marginTop: 32, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-            <button onClick={() => router.push("/onboarding")} style={{
+            <button onClick={() => startGoogleSignIn()} style={{
               background: p.ink, color: p.paper, padding: '14px 22px',
               border: `2px solid ${p.ink}`, fontFamily: PAPER_FONTS.display, fontSize: 22,
               cursor: 'pointer', boxShadow: `6px 6px 0 ${p.marigold}, 6px 6px 0 3px ${p.ink}`,
