@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="460" height="140" viewBox="0 0 460 140" role="img" aria-label="Jugaadu">
+  <!-- mark -->
+  <g transform="translate(14,18)">
+    <rect x="8" y="10" width="84" height="84" rx="20" fill="#13110c"/>
+    <rect x="0" y="0" width="84" height="84" rx="20" fill="#b7311d"/>
+    <text x="40" y="66" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="64" font-weight="700" fill="#f1e7d2">J</text>
+    <circle cx="72" cy="14" r="8.5" fill="#e8a019" stroke="#13110c" stroke-width="2.5"/>
+    <path d="M14 72 L17 65 L20 72 L27 75 L20 78 L17 85 L14 78 L7 75 Z" fill="#e8a019"/>
+  </g>
+  <!-- wordmark -->
+  <g transform="translate(126,0)">
+    <text x="0" y="56" font-family="'Noto Sans Devanagari', sans-serif" font-size="22" font-weight="700" fill="#b7311d">जुगाडू</text>
+    <text x="0" y="104" font-family="Georgia, 'Times New Roman', serif" font-size="58" font-weight="700" fill="#13110c">Jugaadu<tspan fill="#b7311d">.</tspan></text>
+  </g>
+</svg>

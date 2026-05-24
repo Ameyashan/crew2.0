@@ -393,7 +393,7 @@ function adaptReplies(rows) {
       intro: r.intro_offered,
       meeting: r.meeting || null,
       summary: r.summary || (r.body ? r.body.slice(0, 200) + (r.body.length > 200 ? '…' : '') : ''),
-      suggested: r.suggested_reply || 'Crew will summarise this shortly. In the meantime, open Compose to draft a reply manually.',
+      suggested: r.suggested_reply || 'Jugaadu will summarise this shortly. In the meantime, open Compose to draft a reply manually.',
     };
   });
 }

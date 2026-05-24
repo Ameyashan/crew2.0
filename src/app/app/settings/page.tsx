@@ -79,7 +79,7 @@ function SettingsV3({ p, t, setTweak, profile, saveProfile, onBack }) {
         eyebrow="Settings · you"
         title="Your crew,"
         italic="set up just for you."
-        sub="The defaults shape every draft Crew sends. Change anything; it takes effect from your next message."
+        sub="The defaults shape every draft Jugaadu sends. Change anything; it takes effect from your next message."
       />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 8 }}>
         <PaperCard p={p} color={p.marigold} hardShadow>
@@ -128,7 +128,7 @@ function SettingsV3({ p, t, setTweak, profile, saveProfile, onBack }) {
         <PaperCard p={p} color={p.stamp} hardShadow>
           <Eyebrow p={p} hindi="कौन" en="Voice" />
           <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 22, marginTop: 4, marginBottom: 10 }}>
-            How Crew writes for you
+            How Jugaadu writes for you
           </div>
           <p style={{ margin: 0, fontFamily: PAPER_FONTS.serif, fontStyle: "italic", fontSize: 15, color: p.inkSoft }}>
             Based on your writing samples + goals summary from onboarding. Re-train any time.
@@ -178,7 +178,7 @@ function SettingsV3({ p, t, setTweak, profile, saveProfile, onBack }) {
         <PaperCard p={p} color={p.tea} hardShadow>
           <Eyebrow p={p} hindi="चाबी" en="Connected" />
           <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 22, marginTop: 4, marginBottom: 10 }}>
-            What Crew reads
+            What Jugaadu reads
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {connected.map(({ name, sub, on }) => (

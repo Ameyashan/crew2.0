@@ -128,7 +128,7 @@ const HEADLINE_PRESETS = [
     pre: 'Your unfair',
     main: 'advantage,',
     italic: 'on call.',
-    sub: 'Crew is a personal OS. Eight small agents who apply for the job, publish the essay, brief the morning, and pick what you learn next — in your voice, on your beat.',
+    sub: 'Jugaadu is a personal OS. Eight small agents who apply for the job, publish the essay, brief the morning, and pick what you learn next — in your voice, on your beat.',
   },
   {
     id: 'second_self',
@@ -136,7 +136,7 @@ const HEADLINE_PRESETS = [
     pre: 'Hire the version',
     main: 'of yourself',
     italic: 'who has time.',
-    sub: 'You only have so many hours. Crew is the second self that runs alongside you — sending applications, writing essays, reading the internet, drilling you on the next thing.',
+    sub: 'You only have so many hours. Jugaadu is the second self that runs alongside you — sending applications, writing essays, reading the internet, drilling you on the next thing.',
   },
   {
     id: 'compound',
@@ -285,9 +285,9 @@ function Footer3({ p }) {
         fontFamily: PAPER_FONTS.mono, fontSize: 11, letterSpacing: '.14em',
         textTransform: 'uppercase', color: p.inkMute,
       }}>
-        <span>© 2026 Crew · a personal OS for the ambitious</span>
+        <span>© 2026 Jugaadu · a personal OS for the ambitious</span>
         <span>Built in public · weekly on x</span>
-        <span>hello@crew.app</span>
+        <span>hello@jugaadu.app</span>
       </div>
     </footer>
   );
@@ -296,7 +296,7 @@ function Footer3({ p }) {
 /* ─────────────────────── shared CTA + ambitions banner ─────────────────────── */
 
 function AmbitionsBanner({ p }) {
-  /* a marquee-style strip of who Crew is for */
+  /* a marquee-style strip of who Jugaadu is for */
   const cohorts = [
     'founders', 'staff engineers', 'PMs · L5 → L6', 'designers ratio-ing on X', 'solo consultants',
     'researchers shipping in public', 'first-job hustlers', 'creators with day jobs',
@@ -1404,7 +1404,7 @@ function SpecimenApply({ p, c }) {
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute, letterSpacing: '.06em',
       }}>
-        <span>FROM: sam@crew.app</span><span>TO: anika@stripe.com</span>
+        <span>FROM: sam@jugaadu.app</span><span>TO: anika@stripe.com</span>
       </div>
       <div style={{ height: 1, background: p.rule, margin: '10px 0' }}/>
       <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 20, color: p.ink, lineHeight: 1.15 }}>
@@ -1583,7 +1583,7 @@ function ManifestoBlock({ p }) {
           <p style={{
             margin: 0, fontFamily: PAPER_FONTS.serif, fontSize: 18, lineHeight: 1.55, color: p.inkSoft,
           }}>
-            Crew is a small crew of agents that does that work for them — and quietly turns their leftover hours into the kind of compounding only the very early in their careers, or very wealthy, used to get.
+            Jugaadu is a small crew of agents that does that work for them — and quietly turns their leftover hours into the kind of compounding only the very early in their careers, or very wealthy, used to get.
           </p>
           <p style={{
             margin: 0, fontFamily: PAPER_FONTS.display, fontStyle: 'italic', fontSize: 22, color: p.ink,

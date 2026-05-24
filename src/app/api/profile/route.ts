@@ -1,15 +1,19 @@
 import { NextRequest } from "next/server";
 import { getProfile, upsertProfile } from "@/lib/profile";
 import { extractUserContext } from "@/lib/agents/extract-context";
+import { withUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const profile = await getProfile();
-  return Response.json({ profile });
+  return withUser(async () => {
+    const profile = await getProfile();
+    return Response.json({ profile });
+  });
 }
 
 export async function POST(req: NextRequest) {
+  return withUser(async () => {
   const body = await req.json();
 
   const incomingContext =
@@ -49,4 +53,5 @@ export async function POST(req: NextRequest) {
     onboarded_at: body.onboarded ? new Date().toISOString() : undefined,
   });
   return Response.json({ ok: true });
+  });
 }

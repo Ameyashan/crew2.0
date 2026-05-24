@@ -1,14 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { USER_ID } from "@/lib/utils";
+import { currentUserId } from "@/lib/user-context";
 
-export const CONTEXT_PROMPT_TEMPLATE = `I'm using a tool that drafts outreach messages on my behalf. Help me write a self-summary it can use as context. Cover:
-- My current role, background, and what I'm working on
-- What I'm looking for next (roles, companies, kinds of people to meet)
-- My motivations and what excites me professionally
-- How I communicate (tone, formality, things I'd never say)
-- Anything else that would help someone write a message that sounds like me
-
-Ask me questions if you need to. When we're done, give me a single block of text I can paste back.`;
+export { CONTEXT_PROMPT_TEMPLATE } from "@/lib/profile-constants";
 
 export interface UserProfile {
   user_id: string;
@@ -28,7 +21,7 @@ export async function getProfile(): Promise<UserProfile | null> {
   const { data } = await supabaseAdmin()
     .from("user_profile")
     .select("*")
-    .eq("user_id", USER_ID)
+    .eq("user_id", currentUserId())
     .maybeSingle();
   return (data as UserProfile | null) ?? null;
 }
@@ -50,7 +43,7 @@ export async function upsertProfile(patch: ProfilePatch) {
   const { error } = await sb
     .from("user_profile")
     .upsert(
-      { user_id: USER_ID, ...patch, updated_at: new Date().toISOString() },
+      { user_id: currentUserId(), ...patch, updated_at: new Date().toISOString() },
       { onConflict: "user_id" }
     );
   if (error) throw new Error(`profile upsert: ${error.message}`);

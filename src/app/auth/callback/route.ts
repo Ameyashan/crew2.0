@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { getProfile } from "@/lib/profile";
+import { runWithUser } from "@/lib/user-context";
 
 export const runtime = "nodejs";
 
@@ -9,20 +10,24 @@ export async function GET(req: NextRequest) {
   const code = url.searchParams.get("code");
   const next = url.searchParams.get("next") || "/app/compose";
 
+  let userId: string | null = null;
   if (code) {
     const sb = await supabaseServer();
-    const { error } = await sb.auth.exchangeCodeForSession(code);
+    const { data, error } = await sb.auth.exchangeCodeForSession(code);
     if (error) {
       url.pathname = "/";
       url.search = `?auth_error=${encodeURIComponent(error.message)}`;
       return NextResponse.redirect(url);
     }
+    userId = data.user?.id ?? null;
   }
 
   // Route past the landing for returning users; send first-timers to onboarding.
   let target = next;
   try {
-    const profile = await getProfile();
+    const profile = userId
+      ? await runWithUser(userId, () => getProfile())
+      : null;
     if (!profile?.onboarded_at) target = "/onboarding";
   } catch {
     target = "/onboarding";

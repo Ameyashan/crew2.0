@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Jugaadu">
+  <rect x="9" y="11" width="48" height="48" rx="12" fill="#13110c"/>
+  <rect x="6" y="6" width="48" height="48" rx="12" fill="#b7311d"/>
+  <text x="29" y="43" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="36" font-weight="700" fill="#f1e7d2">J</text>
+  <circle cx="46" cy="15" r="5" fill="#e8a019" stroke="#13110c" stroke-width="1.5"/>
+</svg>

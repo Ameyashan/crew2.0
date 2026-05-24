@@ -74,7 +74,7 @@ const fontVars = [
 ].join(" ");
 
 export const metadata: Metadata = {
-  title: "Crew",
+  title: "Jugaadu",
   description: "A personal OS for the ambitious.",
 };
 

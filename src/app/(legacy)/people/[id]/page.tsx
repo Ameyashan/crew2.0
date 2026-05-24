@@ -1,6 +1,6 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase";
-import { USER_ID } from "@/lib/utils";
+import { resolveUserId } from "@/lib/auth";
 import { Timeline, type TimelineItem } from "@/components/Timeline";
 
 export const dynamic = "force-dynamic";
@@ -10,13 +10,15 @@ interface Props {
 }
 
 export default async function PersonPage({ params }: Props) {
+  const userId = await resolveUserId();
+  if (!userId) redirect("/");
   const { id } = await params;
   const sb = supabaseAdmin();
   const { data: person } = await sb
     .from("people")
     .select("id, name, role, company, email, email_confidence, email_source, links, notes")
     .eq("id", id)
-    .eq("user_id", USER_ID)
+    .eq("user_id", userId)
     .single();
   if (!person) return notFound();
 

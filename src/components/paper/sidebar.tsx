@@ -53,6 +53,7 @@ export function SidebarV3({ p }: { p: Palette }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
           <div
             style={{
+              position: "relative",
               width: 32,
               height: 32,
               borderRadius: 6,
@@ -65,7 +66,19 @@ export function SidebarV3({ p }: { p: Palette }) {
               boxShadow: `3px 3px 0 ${p.ink}`,
             }}
           >
-            C
+            J
+            <span
+              style={{
+                position: "absolute",
+                right: 3,
+                top: 3,
+                width: 6,
+                height: 6,
+                borderRadius: 999,
+                background: p.marigold,
+                border: `1px solid ${p.ink}`,
+              }}
+            />
           </div>
           <div style={{ lineHeight: 1 }}>
             <div
@@ -77,7 +90,7 @@ export function SidebarV3({ p }: { p: Palette }) {
                 letterSpacing: ".02em",
               }}
             >
-              क्रू
+              जुगाडू
             </div>
             <div
               style={{
@@ -87,7 +100,7 @@ export function SidebarV3({ p }: { p: Palette }) {
                 color: p.ink,
               }}
             >
-              Crew<span style={{ color: p.stamp }}>.</span>
+              Jugaadu<span style={{ color: p.stamp }}>.</span>
             </div>
           </div>
         </div>

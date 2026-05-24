@@ -59,9 +59,9 @@ export function Sidebar() {
       <div className="md:hidden sticky top-0 z-30 flex items-center justify-between border-b border-[color:var(--color-line)]/60 bg-[color:var(--color-cream)] px-4 py-3">
         <Link href="/compose" className="flex items-center gap-2">
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[color:var(--color-clay)] text-white text-sm font-medium">
-            c
+            J
           </span>
-          <span className="text-sm font-semibold text-[color:var(--color-ink)]">Crew</span>
+          <span className="text-sm font-semibold text-[color:var(--color-ink)]">Jugaadu</span>
         </Link>
         <button
           type="button"
@@ -123,10 +123,10 @@ function SidebarBody({
       <div className="px-5 py-5 flex items-start justify-between">
         <Link href="/compose" onClick={onNav} className="flex items-center gap-3">
           <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-[color:var(--color-clay)] text-white text-lg font-medium">
-            c
+            J
           </span>
           <span className="leading-tight">
-            <div className="text-base font-semibold text-[color:var(--color-ink)]">Crew</div>
+            <div className="text-base font-semibold text-[color:var(--color-ink)]">Jugaadu</div>
             <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-ink-muted)]">
               Sam · Beta
             </div>
@@ -212,7 +212,7 @@ function SidebarBody({
       </ul>
 
       <div className="mt-auto px-5 py-4 text-[11px] text-[color:var(--color-ink-muted)]">
-        crew.app
+        jugaadu.app
       </div>
     </>
   );

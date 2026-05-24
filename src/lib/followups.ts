@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { USER_ID } from "@/lib/utils";
+import { currentUserId } from "@/lib/user-context";
 import { draft as claudeDraft, type Channel } from "@/lib/claude";
 
 export type ScheduleResult =
@@ -21,19 +21,20 @@ export async function scheduleFollowup(opts: ScheduleFollowupOpts): Promise<Sche
   if (!opts.original_draft_id) return { skipped: "missing_draft" };
 
   const sb = supabaseAdmin();
+  const userId = currentUserId();
 
   // De-dupe: already-pending followup tied to this interaction or a child draft of the original.
   const { data: childDrafts } = await sb
     .from("drafts")
     .select("id")
-    .eq("user_id", USER_ID)
+    .eq("user_id", userId)
     .eq("parent_draft_id", opts.original_draft_id);
   const childIds = (childDrafts ?? []).map((d) => d.id as string);
 
   const { data: existing } = await sb
     .from("followups")
     .select("id")
-    .eq("user_id", USER_ID)
+    .eq("user_id", userId)
     .eq("person_id", opts.person_id)
     .eq("status", "pending")
     .or(
@@ -90,7 +91,7 @@ export async function scheduleFollowup(opts: ScheduleFollowupOpts): Promise<Sche
       const { data: fuRow } = await sb
         .from("drafts")
         .insert({
-          user_id: USER_ID,
+          user_id: userId,
           person_id: opts.person_id,
           channel: original.channel ?? opts.channel,
           subject: fu.subject,
@@ -111,7 +112,7 @@ export async function scheduleFollowup(opts: ScheduleFollowupOpts): Promise<Sche
   const { data: row, error } = await sb
     .from("followups")
     .insert({
-      user_id: USER_ID,
+      user_id: userId,
       person_id: opts.person_id,
       source_interaction_id: opts.source_interaction_id,
       draft_id: followupDraftId,
@@ -137,7 +138,7 @@ export async function cancelPendingFollowups(person_id: string): Promise<void> {
   await sb
     .from("followups")
     .update({ status: "cancelled" })
-    .eq("user_id", USER_ID)
+    .eq("user_id", currentUserId())
     .eq("person_id", person_id)
     .eq("status", "pending");
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CONTEXT_PROMPT_TEMPLATE } from "@/lib/profile";
+import { CONTEXT_PROMPT_TEMPLATE } from "@/lib/profile-constants";
 
 type FollowupChoice = 3 | 5 | 7 | 10 | "never";
 
@@ -107,7 +107,7 @@ export default function SettingsPage() {
           Your context
         </h1>
         <p className="mt-2 text-sm text-[color:var(--color-ink-muted)]">
-          Crew uses these to write drafts in your voice. Update them any time — changes apply to
+          Jugaadu uses these to write drafts in your voice. Update them any time — changes apply to
           all future drafts.
         </p>
       </div>
@@ -199,7 +199,7 @@ export default function SettingsPage() {
 
           <Section
             title="Goals & context (optional)"
-            hint="Paste a self-summary from your favorite LLM. Crew uses it to draft messages that reflect what you're working toward."
+            hint="Paste a self-summary from your favorite LLM. Jugaadu uses it to draft messages that reflect what you're working toward."
           >
             <div className="rounded-md border border-[color:var(--color-line)] bg-[color:var(--color-cream-50)] p-3 text-xs text-[color:var(--color-ink-muted)]">
               <div className="mb-2">
@@ -229,7 +229,7 @@ export default function SettingsPage() {
             />
           </Section>
 
-          <Section title="Followup cadence" hint="When someone doesn't reply, when should Crew nudge?">
+          <Section title="Followup cadence" hint="When someone doesn't reply, when should Jugaadu nudge?">
             <div className="flex flex-wrap gap-2">
               {([3, 5, 7, 10, "never"] as FollowupChoice[]).map((opt) => (
                 <button

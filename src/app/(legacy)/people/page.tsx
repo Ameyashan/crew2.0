@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase";
-import { USER_ID } from "@/lib/utils";
+import { resolveUserId } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -9,12 +10,14 @@ interface PeoplePageProps {
 }
 
 export default async function PeoplePage({ searchParams }: PeoplePageProps) {
+  const userId = await resolveUserId();
+  if (!userId) redirect("/");
   const { q } = await searchParams;
   const sb = supabaseAdmin();
   let query = sb
     .from("people")
     .select("id, name, role, company, updated_at")
-    .eq("user_id", USER_ID)
+    .eq("user_id", userId)
     .order("updated_at", { ascending: false })
     .limit(200);
   if (q && q.trim()) {
