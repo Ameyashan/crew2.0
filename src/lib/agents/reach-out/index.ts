@@ -2,7 +2,7 @@ import { research, draft, type Channel } from "@/lib/claude";
 import { inferDomain, buildGuesses } from "@/lib/apollo";
 import { findEmailHunter as findEmail } from "@/lib/hunter";
 import { supabaseAdmin } from "@/lib/supabase";
-import { USER_ID } from "@/lib/utils";
+import { currentUserId } from "@/lib/user-context";
 import { getProfile, senderContextFromProfile } from "@/lib/profile";
 
 export interface RunReachOutInput {
@@ -122,7 +122,7 @@ export async function* runReachOutStream(
       const { data } = await sb
         .from("people")
         .select("id")
-        .eq("user_id", USER_ID)
+        .eq("user_id", currentUserId())
         .eq("links->>linkedin", linkedin)
         .limit(1);
       if (data?.[0]) existingId = data[0].id as string;
@@ -131,7 +131,7 @@ export async function* runReachOutStream(
       const { data } = await sb
         .from("people")
         .select("id")
-        .eq("user_id", USER_ID)
+        .eq("user_id", currentUserId())
         .ilike("name", personName)
         .ilike("company", personCompany ?? "")
         .limit(1);
@@ -139,7 +139,7 @@ export async function* runReachOutStream(
     }
 
     const personRow = {
-      user_id: USER_ID,
+      user_id: currentUserId(),
       name: personName,
       role: ctx.role,
       company: personCompany,
@@ -204,7 +204,7 @@ export async function* runReachOutStream(
 
     // Persist drafts + interactions, then emit done
     const draftRows = okResults.map(({ channel, result }) => ({
-      user_id: USER_ID,
+      user_id: currentUserId(),
       person_id: personId,
       channel,
       subject: result.subject,
@@ -221,7 +221,7 @@ export async function* runReachOutStream(
 
     await sb.from("interactions").insert(
       drafts!.map((d) => ({
-        user_id: USER_ID,
+        user_id: currentUserId(),
         person_id: personId,
         agent_type: "reach_out",
         interaction_type: "drafted",

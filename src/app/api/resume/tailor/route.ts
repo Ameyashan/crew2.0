@@ -2,12 +2,16 @@ import { NextRequest } from "next/server";
 import { runResumeTailorStream } from "@/lib/agents/resume-tailor";
 import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
 import { supabaseAdmin } from "@/lib/supabase";
-import { USER_ID } from "@/lib/utils";
+import { resolveUserId } from "@/lib/auth";
+import { runWithUser } from "@/lib/user-context";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
+  const userId = await resolveUserId();
+  if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
+
   const body = await req.json().catch(() => ({}));
   const job_url = (body?.job_url ?? "").toString().trim();
   const highlights = body?.highlights ? body.highlights.toString() : undefined;
@@ -30,6 +34,7 @@ export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      await runWithUser(userId, async () => {
       let finalResume: TailoredResume | null = null;
       try {
         for await (const evt of runResumeTailorStream({
@@ -53,7 +58,7 @@ export async function POST(req: NextRequest) {
             const { data, error } = await supabaseAdmin()
               .from("resume_generations")
               .insert({
-                user_id: USER_ID,
+                user_id: userId,
                 job_url: job_url || null,
                 highlights: highlights?.trim() || null,
                 regenerate_notes: regenerate_notes?.trim() || null,
@@ -85,6 +90,7 @@ export async function POST(req: NextRequest) {
       } finally {
         controller.close();
       }
+      });
     },
   });
 

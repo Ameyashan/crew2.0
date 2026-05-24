@@ -3,7 +3,8 @@ import { runResumeTailorStream } from "@/lib/agents/resume-tailor";
 import { runReachOutStream } from "@/lib/agents/reach-out";
 import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
 import { supabaseAdmin } from "@/lib/supabase";
-import { USER_ID } from "@/lib/utils";
+import { resolveUserId } from "@/lib/auth";
+import { runWithUser } from "@/lib/user-context";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -15,6 +16,9 @@ export const maxDuration = 180;
 // it pipes the existing resume-tailor and reach-out agents end-to-end and
 // records one job_applications row.
 export async function POST(req: NextRequest) {
+  const userId = await resolveUserId();
+  if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
+
   const body = await req.json().catch(() => ({}));
   const job_url = (body?.job_url ?? "").toString().trim();
   const intent = body?.intent ? body.intent.toString() : undefined;
@@ -29,6 +33,7 @@ export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      await runWithUser(userId, async () => {
       const send = (obj: unknown) =>
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
 
@@ -111,7 +116,7 @@ export async function POST(req: NextRequest) {
           const { data, error } = await supabaseAdmin()
             .from("job_applications")
             .insert({
-              user_id: USER_ID,
+              user_id: userId,
               job_url,
               job_json: tailored?.meta ?? null,
               resume_generation_id: resumeGenerationId,
@@ -133,6 +138,7 @@ export async function POST(req: NextRequest) {
       } finally {
         controller.close();
       }
+      });
     },
   });
 

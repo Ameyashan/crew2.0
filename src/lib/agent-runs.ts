@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { USER_ID } from "@/lib/utils";
+import { currentUserId } from "@/lib/user-context";
 
 // Sonnet 4.6 pricing (USD per million tokens). Update if model changes.
 const PRICING: Record<string, { input: number; output: number }> = {
@@ -32,7 +32,7 @@ export async function logAgentRun(run: AgentRunLog) {
 
   try {
     await supabaseAdmin().from("agent_runs").insert({
-      user_id: USER_ID,
+      user_id: currentUserId(),
       agent_type: run.agent_type,
       model: run.model ?? null,
       input_tokens: run.input_tokens ?? null,

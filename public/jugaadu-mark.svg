@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="Jugaadu">
+  <!-- ink hard shadow -->
+  <rect x="22" y="26" width="84" height="84" rx="20" fill="#13110c"/>
+  <!-- stamp tile -->
+  <rect x="14" y="14" width="84" height="84" rx="20" fill="#b7311d"/>
+  <!-- the J -->
+  <text x="54" y="80" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="64" font-weight="700" fill="#f1e7d2">J</text>
+  <!-- marigold spark -->
+  <circle cx="86" cy="28" r="8.5" fill="#e8a019" stroke="#13110c" stroke-width="2.5"/>
+  <!-- 4-point sparkle, bottom-left -->
+  <path d="M28 86 L31 79 L34 86 L41 89 L34 92 L31 99 L28 92 L21 89 Z" fill="#e8a019"/>
+</svg>

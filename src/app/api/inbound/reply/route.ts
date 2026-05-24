@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { USER_ID } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -56,37 +55,53 @@ export async function POST(req: NextRequest) {
   const inReplyTo = pickInReplyTo(payload);
   const sb = supabaseAdmin();
 
+  // No session on a webhook — the owning user is whoever the matched draft (or,
+  // failing that, the matched person) belongs to.
   let draftId: string | null = null;
   let personId: string | null = null;
+  let userId: string | null = null;
   if (inReplyTo) {
     // Trim angle brackets if present
     const cleaned = inReplyTo.replace(/^<|>$/g, "");
     const { data: draft } = await sb
       .from("drafts")
-      .select("id, person_id")
+      .select("id, person_id, user_id")
       .eq("message_id", cleaned)
       .maybeSingle();
     if (draft) {
       draftId = draft.id as string;
       personId = (draft.person_id as string | null) ?? null;
+      userId = (draft.user_id as string | null) ?? null;
     }
   }
 
-  // Fall back to matching by email if we couldn't match the thread
-  if (!personId && from) {
-    const { data: person } = await sb
+  // Fall back to matching by sender email if we couldn't match the thread.
+  // Best-effort only — the same email can exist across tenants, so take the
+  // most recent match rather than erroring on multiple rows.
+  if (!userId && from) {
+    const { data: matches } = await sb
       .from("people")
-      .select("id")
-      .eq("user_id", USER_ID)
+      .select("id, user_id")
       .eq("email", from.toLowerCase())
-      .maybeSingle();
-    if (person) personId = person.id as string;
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    const person = matches?.[0];
+    if (person) {
+      personId = person.id as string;
+      userId = (person.user_id as string | null) ?? null;
+    }
+  }
+
+  // Can't attribute the reply to an account — ack so the provider stops
+  // retrying, but record nothing.
+  if (!userId) {
+    return Response.json({ ok: true, skipped: "no matching user" });
   }
 
   const { data, error } = await sb
     .from("replies")
     .insert({
-      user_id: USER_ID,
+      user_id: userId,
       draft_id: draftId,
       person_id: personId,
       from_email: from,
@@ -101,7 +116,7 @@ export async function POST(req: NextRequest) {
   // Also log an interaction so the People timeline picks it up.
   if (personId) {
     await sb.from("interactions").insert({
-      user_id: USER_ID,
+      user_id: userId,
       person_id: personId,
       draft_id: draftId,
       agent_type: "reach_out",

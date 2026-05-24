@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { USER_ID } from "@/lib/utils";
+import { currentUserId } from "@/lib/user-context";
 
 export interface FollowupRow {
   id: string;
@@ -33,13 +33,14 @@ export interface ReplyRow {
 
 export async function loadTodayData() {
   const sb = supabaseAdmin();
+  const userId = currentUserId();
 
   const { data: dueRaw } = await sb
     .from("followups")
     .select(
       "id, due_at, source_interaction_id, person:people(id,name,email), draft:drafts(id,channel,subject,body)"
     )
-    .eq("user_id", USER_ID)
+    .eq("user_id", userId)
     .eq("status", "pending")
     .lte("due_at", new Date().toISOString())
     .order("due_at", { ascending: true });
@@ -88,7 +89,7 @@ export async function loadTodayData() {
     .select(
       "id, created_at, person_id, draft_id, person:people(id,name,email), draft:drafts(id,channel,subject,body)"
     )
-    .eq("user_id", USER_ID)
+    .eq("user_id", userId)
     .eq("interaction_type", "sent")
     .gte("created_at", since)
     .order("created_at", { ascending: false });
@@ -101,7 +102,7 @@ export async function loadTodayData() {
     const { data: closures } = await sb
       .from("interactions")
       .select("person_id, interaction_type, created_at")
-      .eq("user_id", USER_ID)
+      .eq("user_id", userId)
       .in("person_id", personIds)
       .in("interaction_type", ["replied", "no_reply"]);
     for (const c of closures ?? []) closedPersonIds.add(c.person_id as string);
@@ -124,7 +125,7 @@ export async function loadTodayData() {
     .select(
       "id, from_email, subject, body, sentiment, summary, suggested_reply, intro_offered, meeting, created_at, person:people(id,name,email)",
     )
-    .eq("user_id", USER_ID)
+    .eq("user_id", userId)
     .gte("created_at", replySince)
     .order("created_at", { ascending: false });
 
