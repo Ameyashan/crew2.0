@@ -59,7 +59,6 @@ export async function POST(req: NextRequest) {
             type: "error",
             message: `${walled} job links are behind a login wall, so Jugaadu can't read them. Paste a public posting URL instead — the company's careers page, or a Greenhouse / Lever / Ashby link.`,
           });
-          controller.close();
           return;
         }
 
@@ -73,7 +72,6 @@ export async function POST(req: NextRequest) {
           if (evt.type === "error") {
             send({ type: "step", id: "resume", status: "error", message: evt.message });
             send({ type: "error", message: evt.message });
-            controller.close();
             return;
           }
           // Pass progress through so the UI can render byte counts if we ever
@@ -98,7 +96,6 @@ export async function POST(req: NextRequest) {
             message:
               "Couldn't pull a company off the job posting. Try a more direct posting URL.",
           });
-          controller.close();
           return;
         }
 
@@ -156,7 +153,15 @@ export async function POST(req: NextRequest) {
       } catch (e) {
         send({ type: "error", message: String(e instanceof Error ? e.message : e) });
       } finally {
-        controller.close();
+        // Sole close for every path (early returns above just `return`). Guard
+        // against a double-close throwing out of start() — on buffered
+        // serverless streaming that rejection surfaces as an HTTP 500 and
+        // discards the graceful SSE error we already enqueued.
+        try {
+          controller.close();
+        } catch {
+          // already closed
+        }
       }
       });
     },
