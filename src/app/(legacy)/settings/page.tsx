@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CONTEXT_PROMPT_TEMPLATE } from "@/lib/profile";
+import { CONTEXT_PROMPT_TEMPLATE } from "@/lib/profile-constants";
 
 type FollowupChoice = 3 | 5 | 7 | 10 | "never";
 
