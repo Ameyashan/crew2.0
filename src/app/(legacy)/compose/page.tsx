@@ -312,7 +312,7 @@ export default function ComposePage() {
             href="/onboarding"
             className="rounded-md bg-[color:var(--color-clay)] px-3 py-1 text-xs text-white hover:bg-[color:var(--color-clay-dark)]"
           >
-            Set up Crew →
+            Set up Jugaadu →
           </Link>
         </div>
       )}

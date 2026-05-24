@@ -33,7 +33,7 @@ function PeopleV3({ p, go, PEOPLE_V3 = [] }) {
     return (
       <div style={{ flex: 1, padding: 48, background: p.paper, color: p.ink }}>
         <PaperEmpty p={p} hindi="लोग" title="No people yet."
-          sub="Reach out to someone via Compose and they'll show up here with a full timeline of every Crew interaction." />
+          sub="Reach out to someone via Compose and they'll show up here with a full timeline of every Jugaadu interaction." />
       </div>
     );
   }

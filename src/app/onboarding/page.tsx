@@ -96,13 +96,13 @@ function OnboardingV3({ p, onDone, onBack }) {
               textTransform: 'uppercase', cursor: 'pointer', padding: 0,
             }}>← landing</button>
           </div>
-          <Eyebrow p={p} hindi="शुरुआत" en="Crew · let's get you set up"/>
+          <Eyebrow p={p} hindi="शुरुआत" en="Jugaadu · let's get you set up"/>
           <h1 style={{
             margin: '8px 0 0', fontFamily: PAPER_FONTS.display, fontWeight: 400,
             fontSize: 'clamp(40px, 4.4vw, 60px)', lineHeight: .95, letterSpacing: '-.025em',
             color: p.ink, maxWidth: 500,
           }}>
-            Tell Crew about you. <span style={{ fontStyle: 'italic', color: p.stamp }}>All of it is optional.</span>
+            Tell Jugaadu about you. <span style={{ fontStyle: 'italic', color: p.stamp }}>All of it is optional.</span>
           </h1>
           <p style={{
             margin: '18px 0 0', fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
@@ -119,7 +119,7 @@ function OnboardingV3({ p, onDone, onBack }) {
             <div style={{
               fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute,
               letterSpacing: '.16em', textTransform: 'uppercase', marginBottom: 10,
-            }}>Context Crew will use</div>
+            }}>Context Jugaadu will use</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               <PreviewChip p={p} on={!!resume}            label={resume ? `Resume · ${resume.name}` : 'Resume'}/>
               <PreviewChip p={p} on={!!linkedin.trim()}    label={linkedin.trim() ? `LinkedIn · ${linkedin}` : 'LinkedIn'}/>
@@ -153,7 +153,7 @@ function OnboardingV3({ p, onDone, onBack }) {
       }}>
         <OnbCardV3 p={p} num={1} done={!!resume} optional
           title="Drop your resume"
-          sub="PDF or DOCX. Helps Crew describe you in your own words."
+          sub="PDF or DOCX. Helps Jugaadu describe you in your own words."
           color={p.marigold}
         >
           <ResumeDropV3 p={p} resume={resume} setResume={setResume}/>
@@ -183,7 +183,7 @@ function OnboardingV3({ p, onDone, onBack }) {
 
         <OnbCardV3 p={p} num={3} done={samples.length > 0} optional
           title="Writing samples"
-          sub="Paste 1–2 things you've actually written so Crew matches your voice."
+          sub="Paste 1–2 things you've actually written so Jugaadu matches your voice."
           color={p.leaf}
         >
           <SampleEditorV3 p={p} samples={samples} setSamples={setSamples}/>
@@ -191,7 +191,7 @@ function OnboardingV3({ p, onDone, onBack }) {
 
         <OnbCardV3 p={p} num={4} done={!!goals.trim()} optional
           title="Goals & context"
-          sub="Paste the prompt below into your favourite LLM, answer its questions, then paste the summary back. Crew uses it to write drafts that match what you're working toward."
+          sub="Paste the prompt below into your favourite LLM, answer its questions, then paste the summary back. Jugaadu uses it to write drafts that match what you're working toward."
           color={p.tea}
         >
           <div style={{
@@ -237,7 +237,7 @@ function OnboardingV3({ p, onDone, onBack }) {
 
         <OnbCardV3 p={p} num={5} done required
           title="Followup cadence"
-          sub="When someone doesn't reply, when should Crew nudge?"
+          sub="When someone doesn't reply, when should Jugaadu nudge?"
           color={p.stamp}
         >
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -259,7 +259,7 @@ function OnboardingV3({ p, onDone, onBack }) {
           display: 'flex', alignItems: 'center', gap: 14, marginTop: 18,
         }}>
           <InkButton p={p} size="lg" color={p.stamp} disabled={submitting} onClick={handleDone}>
-            {submitting ? 'Saving…' : 'Take me to Crew'}  <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 17 }}>→</span>
+            {submitting ? 'Saving…' : 'Take me to Jugaadu'}  <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 17 }}>→</span>
           </InkButton>
           {submitError && (
             <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.stamp }}>{submitError}</span>

@@ -182,7 +182,7 @@ function ComposeV3({ p, seed, setSeed, go }) {
 
   const titles = {
     idle:    { eyebrow: 'Compose · the crew is ready',     title: 'Who are you reaching out to?',                    italic: 'Or what job today?' },
-    parsing: { eyebrow: 'Compose · reading what you sent', title: 'Crew is reading…',                                italic: '' },
+    parsing: { eyebrow: 'Compose · reading what you sent', title: 'Jugaadu is reading…',                                italic: '' },
     review:  { eyebrow: kind === 'job' ? 'Compose · the job' : 'Compose · the target',
                title: 'Confirm and ',
                italic: 'send the crew?' },
@@ -362,7 +362,7 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
       </div>
 
       <div style={{ marginTop: 22 }}>
-        <Marginalia p={p} rotate={-1}>paste anything — Crew sorts out what to do ↗</Marginalia>
+        <Marginalia p={p} rotate={-1}>paste anything — Jugaadu sorts out what to do ↗</Marginalia>
       </div>
     </>
   );
@@ -423,7 +423,7 @@ function ParsedCard({ p, stage, kind, parsed, onConfirm, onChoose }) {
 
         {picking && (
           <div style={{ marginTop: 12, paddingTop: 14, borderTop: `1.5px dashed ${p.ink}30` }}>
-            <Eyebrow p={p} en="Other candidates Crew found" color={p.inkMute}/>
+            <Eyebrow p={p} en="Other candidates Jugaadu found" color={p.inkMute}/>
             <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {candidates.filter(c => c.name !== chosen.name).map(c => (
                 <button key={c.name} onClick={() => { onChoose({ candidates, chosen: c }); setPicking(false); }} style={{
@@ -798,7 +798,7 @@ function JobPackage({ p, parsed, drafts, enrichment, go }) {
         }}>
           <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 14 }}>Sam Altman</div>
           <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 7, color: p.inkMute, marginTop: 2 }}>
-            sam@crew.app · SF · sam.work
+            sam@jugaadu.app · SF · sam.work
           </div>
           <div style={{ height: 1, background: p.ink + '30', margin: '6px 0' }}/>
           <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 9 }}>Stripe-flavored experience</div>

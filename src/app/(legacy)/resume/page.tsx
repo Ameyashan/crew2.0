@@ -295,7 +295,7 @@ export default function ResumePage() {
           Tailor a resume for a role
         </h1>
         <p className="text-sm text-[color:var(--color-ink-muted)]">
-          Upload a resume in onboarding first so Crew has something to tailor.
+          Upload a resume in onboarding first so Jugaadu has something to tailor.
         </p>
         <Link
           href="/onboarding"
@@ -317,7 +317,7 @@ export default function ResumePage() {
           Tailor your resume to one job.
         </h1>
         <p className="text-sm text-[color:var(--color-ink-muted)]">
-          Crew reads the job posting, rewrites the bullets that matter, and previews a fresh draft.
+          Jugaadu reads the job posting, rewrites the bullets that matter, and previews a fresh draft.
           You approve the PDF or take the Word version to finish by hand.
         </p>
       </header>
@@ -361,13 +361,13 @@ export default function ResumePage() {
           <div className="mt-2 text-xs text-red-700">{resumeStatus.error}</div>
         )}
         <p className="mt-2 text-[11px] text-[color:var(--color-ink-muted)]">
-          Replacing here also updates the resume Crew uses for outreach drafts.
+          Replacing here also updates the resume Jugaadu uses for outreach drafts.
         </p>
       </Card>
 
       <Card title="The brief">
         <p className="text-xs text-[color:var(--color-ink-muted)] mb-3">
-          Give Crew at least one of these — a job posting to tailor to, or a description of how to
+          Give Jugaadu at least one of these — a job posting to tailor to, or a description of how to
           change the resume. Both is best.
         </p>
 

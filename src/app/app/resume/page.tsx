@@ -102,7 +102,7 @@ function ResumeV3({ p, go }) {
         eyebrow="Resume · agent"
         title="Tailor your resume "
         italic="to one job."
-        sub="Crew reads the job posting, rewrites the bullets that matter, and previews a fresh draft. You approve the PDF or take the Word version to finish by hand."
+        sub="Jugaadu reads the job posting, rewrites the bullets that matter, and previews a fresh draft. You approve the PDF or take the Word version to finish by hand."
         right={
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute, letterSpacing: '.14em', textTransform: 'uppercase' }}>
@@ -142,7 +142,7 @@ function ResumeV3({ p, go }) {
               </div>
             </div>
             <p style={{ margin: '12px 0 0', fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 14, color: p.inkSoft }}>
-              Replacing here also updates the resume Crew uses for outreach drafts.
+              Replacing here also updates the resume Jugaadu uses for outreach drafts.
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -411,7 +411,7 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
           gridTemplateColumns: '1.4fr 1fr', gap: 22,
         }}>
           <div>
-            <Eyebrow p={p} en="What Crew changed" color={p.stamp}/>
+            <Eyebrow p={p} en="What Jugaadu changed" color={p.stamp}/>
             <ul style={{
               margin: '10px 0 0', paddingLeft: 18,
               fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
@@ -450,7 +450,7 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
             }}>
               <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 14 }}>Ameya Shanbhag</div>
               <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 7, color: p.inkMute, marginTop: 2 }}>
-                ameya@crew.app · NYC · ameya.work
+                ameya@jugaadu.app · NYC · ameya.work
               </div>
               <div style={{ height: 1, background: p.ink + '24', margin: '6px 0' }}/>
               <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 10 }}>{row.co}-flavored experience</div>
