@@ -338,34 +338,6 @@ function OnbCardV3({ p, num, done, required, optional, title, sub, color, childr
 
 function ResumeDropV3({ p, resume, setResume }) {
   const [hover, setHover] = useState(false);
-  if (resume) {
-    return (
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 14,
-        padding: '12px 14px', background: p.paper, border: `1.5px solid ${p.marigold}`,
-      }}>
-        <div style={{
-          width: 36, height: 44, background: p.card, color: p.marigoldDeep,
-          border: `1px solid ${p.marigold}`, display: 'grid', placeItems: 'center',
-          fontFamily: PAPER_FONTS.mono, fontSize: 10, fontWeight: 700, letterSpacing: '.04em',
-        }}>PDF</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: PAPER_FONTS.sans, fontSize: 14, color: p.ink }}>
-            <span style={{ color: p.leaf, marginRight: 4 }}>✓</span>{resume.name}
-          </div>
-          <div style={{
-            fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute,
-            marginTop: 2, letterSpacing: '.04em',
-          }}>{resume.size} · 7,204 chars · parsed in 1.2s</div>
-        </div>
-        <button onClick={() => setResume(null)} style={{
-          padding: '6px 10px', background: 'transparent', color: p.inkSoft,
-          border: `1.5px solid ${p.ink}30`, fontFamily: PAPER_FONTS.mono, fontSize: 11,
-          cursor: 'pointer',
-        }}>remove</button>
-      </div>
-    );
-  }
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   async function handleFile(file) {
@@ -385,6 +357,34 @@ function ResumeDropV3({ p, resume, setResume }) {
     } finally {
       setUploading(false);
     }
+  }
+  if (resume) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 14,
+        padding: '12px 14px', background: p.paper, border: `1.5px solid ${p.marigold}`,
+      }}>
+        <div style={{
+          width: 36, height: 44, background: p.card, color: p.marigoldDeep,
+          border: `1px solid ${p.marigold}`, display: 'grid', placeItems: 'center',
+          fontFamily: PAPER_FONTS.mono, fontSize: 10, fontWeight: 700, letterSpacing: '.04em',
+        }}>PDF</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: PAPER_FONTS.sans, fontSize: 14, color: p.ink }}>
+            <span style={{ color: p.leaf, marginRight: 4 }}>✓</span>{resume.name}
+          </div>
+          <div style={{
+            fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute,
+            marginTop: 2, letterSpacing: '.04em',
+          }}>{resume.size}{resume.characters ? ` · ${resume.characters.toLocaleString()} chars` : ''} · parsed</div>
+        </div>
+        <button onClick={() => setResume(null)} style={{
+          padding: '6px 10px', background: 'transparent', color: p.inkSoft,
+          border: `1.5px solid ${p.ink}30`, fontFamily: PAPER_FONTS.mono, fontSize: 11,
+          cursor: 'pointer',
+        }}>remove</button>
+      </div>
+    );
   }
   return (
     <label
