@@ -348,8 +348,8 @@ function ResumeDropV3({ p, resume, setResume }) {
       const fd = new FormData();
       fd.append('file', file);
       const res = await fetch('/api/profile/resume', { method: 'POST', body: fd });
-      if (!res.ok) throw new Error(`upload failed: ${res.status}`);
-      const j = await res.json();
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || `upload failed: ${res.status}`);
       const kb = Math.max(1, Math.round(file.size / 1024));
       setResume({ name: j.filename || file.name, size: `${kb} KB`, characters: j.characters });
     } catch (e) {
