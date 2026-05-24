@@ -27,6 +27,22 @@ function daysToLabel(d) {
   return match?.label ?? `${d}d`;
 }
 
+// writing_samples is a `text` column, so an array written at onboarding comes
+// back as a JSON-encoded string. Normalize to an array of non-empty samples.
+function parseWritingSamples(raw) {
+  if (Array.isArray(raw)) return raw.filter((s) => typeof s === "string" && s.trim());
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.filter((s) => typeof s === "string" && s.trim());
+    } catch {
+      // not JSON — treat the whole string as a single sample
+    }
+    return [raw];
+  }
+  return [];
+}
+
 function SettingsV3({ p, t, setTweak, profile, saveProfile, onBack }) {
   const [savingFollowup, setSavingFollowup] = useState(false);
   const followupLabel = daysToLabel(profile?.followup_days);
@@ -56,13 +72,16 @@ function SettingsV3({ p, t, setTweak, profile, saveProfile, onBack }) {
       sub: profile?.linkedin_url || "Not yet linked",
       on: !!profile?.linkedin_url,
     },
-    {
-      name: "Writing voice",
-      sub: profile?.writing_samples
-        ? `${Array.isArray(profile.writing_samples) ? profile.writing_samples.length : 0} samples learned`
-        : "No samples on file yet",
-      on: Array.isArray(profile?.writing_samples) && profile.writing_samples.length > 0,
-    },
+    (() => {
+      const samples = parseWritingSamples(profile?.writing_samples);
+      return {
+        name: "Writing voice",
+        sub: samples.length
+          ? `${samples.length} sample${samples.length === 1 ? "" : "s"} learned`
+          : "No samples on file yet",
+        on: samples.length > 0,
+      };
+    })(),
     {
       name: "Goals summary",
       sub: profile?.context_prompt
