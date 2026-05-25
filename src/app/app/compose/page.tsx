@@ -644,7 +644,34 @@ function AgentRowV3({ p, kind, stage, progress }) {
 
 /* ─────────────────────── package (done) ─────────────────────── */
 
+// The email draft surfaced in the package. Shared so the header CTA and the
+// per-card "Open in Gmail" button open the exact same message.
+function buildEmailDraft({ kind, parsed, drafts, enrichment }) {
+  const emailDraft = Array.isArray(drafts) ? drafts.find((d) => d.channel === 'email') : null;
+
+  if (kind === 'job') {
+    // Real outreach draft + verified email only — honest blanks when an agent
+    // returned nothing, never fabricated sample copy.
+    return {
+      to: enrichment?.email || '',
+      subject: emailDraft?.subject || '',
+      body: emailDraft?.body || '',
+    };
+  }
+
+  const chosen = parsed.chosen;
+  const verifiedEmail = enrichment?.email || `${chosen.firstName.toLowerCase()}@${chosen.companySlug}.com`;
+  return emailDraft
+    ? { to: verifiedEmail, subject: emailDraft.subject || '', body: emailDraft.body }
+    : {
+        to: verifiedEmail,
+        subject: `the bit about ${chosen.angle} — a 3 min thought`,
+        body: `${chosen.firstName} — caught your ${chosen.recent} and the way you handled the ${chosen.detail} is the cleanest take I've seen on it. I ran into a similar tension at Razorpay last year. Sketched two ways out (3-min watch).\n\nI'd love your take. Either way — hope this finds you well between sprints.\n\n— Sam`,
+      };
+}
+
 function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, onReset, go }) {
+  const headerEmail = buildEmailDraft({ kind, parsed, drafts, enrichment });
   return (
     <div style={{ marginTop: 18 }}>
       <PaperCard p={p} hardShadow color={p.stamp} style={{ padding: '20px 24px' }}>
@@ -663,7 +690,7 @@ function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, onRese
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <InkButton p={p} kind="outline" onClick={onReset}>↺ Another</InkButton>
-            <InkButton p={p} color={p.stamp}>
+            <InkButton p={p} color={p.stamp} onClick={() => headerEmail.body && openGmailCompose(headerEmail)}>
               <span style={{
                 width: 18, height: 18, background: p.paper, color: p.stamp,
                 display: 'grid', placeItems: 'center', fontFamily: PAPER_FONTS.mono,
@@ -690,16 +717,9 @@ function PersonPackage({ p, parsed, drafts, enrichment, go }) {
   // Real drafts from /api/compose override the prototype's mocked messages.
   const draftByChannel = {};
   if (Array.isArray(drafts)) for (const d of drafts) draftByChannel[d.channel] = d;
-  const verifiedEmail = enrichment?.email || `${chosen.firstName.toLowerCase()}@${chosen.companySlug}.com`;
 
   const messages = {
-    email: draftByChannel.email
-      ? { to: verifiedEmail, subject: draftByChannel.email.subject || '', body: draftByChannel.email.body }
-      : {
-          to: verifiedEmail,
-          subject: `the bit about ${chosen.angle} — a 3 min thought`,
-          body: `${chosen.firstName} — caught your ${chosen.recent} and the way you handled the ${chosen.detail} is the cleanest take I've seen on it. I ran into a similar tension at Razorpay last year. Sketched two ways out (3-min watch).\n\nI'd love your take. Either way — hope this finds you well between sprints.\n\n— Sam`,
-        },
+    email: buildEmailDraft({ kind: 'person', parsed, drafts, enrichment }),
     linkedin: draftByChannel.linkedin
       ? { to: `linkedin.com/in/${chosen.companySlug}-${chosen.firstName.toLowerCase()}`, subject: null, body: draftByChannel.linkedin.body }
       : {
@@ -833,10 +853,9 @@ function JobPackage({ p, parsed, drafts, enrichment, person, go }) {
   const atsScore = parsed?.ats_score;
   const resume = parsed?.resume;
 
-  const emailDraft = Array.isArray(drafts) ? drafts.find((d) => d.channel === 'email') : null;
-  const emailTo = enrichment?.email || '';
-  const emailSubject = emailDraft?.subject || '';
-  const emailBody = emailDraft?.body || '';
+  // Real outreach draft + verified email via the shared builder.
+  const { to: emailTo, subject: emailSubject, body: emailBody } =
+    buildEmailDraft({ kind: 'job', parsed, drafts, enrichment });
 
   const personName = person?.name || null;
   const personRole = person?.role || null;
