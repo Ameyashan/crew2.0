@@ -1,7 +1,7 @@
 // @ts-nocheck — verbatim port of Crew prototype v3 compose
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PAPER_FONTS } from "@/components/paper/fonts";
 import { usePaperTheme } from "@/components/paper/use-paper-theme";
@@ -13,245 +13,152 @@ import {
   Marginalia,
 } from "@/components/paper/primitives";
 import { openGmailCompose } from "@/lib/gmail";
+import {
+  useRuns,
+  startRun,
+  dismissRun,
+  clearAllRuns,
+  retryRun,
+  jobHost,
+} from "@/lib/runs-store";
 
-function ComposeV3({ p, seed, setSeed, go }) {
-  const [input, setInput]   = useState(seed?.input || '');
+function ComposeV3({ p, go }) {
+  // Paste-entry state only. Each submitted link becomes an independent run in
+  // the module store (src/lib/runs-store.ts), so many can stream at once and
+  // survive navigation between /app pages.
+  const [input, setInput]   = useState('');
   const [intent, setIntent] = useState('');
   const [haveEmail, setHaveEmail] = useState(false);
   const [screenshot, setScreenshot] = useState(null);
-  const [stage, setStage]   = useState('idle'); // idle|parsing|review|working|done
-  const [kind, setKind]     = useState(null);   // 'person'|'job'
-  const [parsed, setParsed] = useState(null);
-  const [progress, setProgress] = useState({});
-  const [drafts, setDrafts] = useState(null);   // person path: drafts returned by /api/compose
-  const [runError, setRunError] = useState(null);
-  const [enrichment, setEnrichment] = useState(null);
-  const [person, setPerson] = useState(null);
+  const runs = useRuns();
 
-  function reset() {
-    setInput(''); setIntent(''); setHaveEmail(false); setScreenshot(null);
-    setStage('idle'); setKind(null); setParsed(null); setProgress({});
-    setDrafts(null); setEnrichment(null); setPerson(null); setRunError(null);
-    setSeed?.(null);
-  }
-
-  function detectKind(s) {
-    const lo = (s || '').toLowerCase();
-    if (/\b(jobs?|careers?|hiring|posting|positions?)\b/.test(lo)) return 'job';
-    if (/(greenhouse|lever|ashbyhq|workable|wellfound|builtin|workday)\.io|com/.test(lo)) return 'job';
-    if (lo.includes('/jobs/') || lo.includes('/careers/') || lo.includes('careers.')) return 'job';
-    return 'person';
-  }
-
-  function run() {
+  function onGo() {
     if (!input.trim()) return;
-    setStage('parsing');
-    setProgress({});
-    const k = detectKind(input);
-    setKind(k);
-    setTimeout(() => {
-      setParsed(k === 'job' ? inferJobV3(input) : inferPersonV3(input));
-      setStage('review');
-    }, 900);
+    startRun(input, { intent, providedEmail: haveEmail });
+    // clear so the next link can be pasted immediately
+    setInput(''); setIntent(''); setHaveEmail(false); setScreenshot(null);
   }
-
-  async function confirm() {
-    setStage('working');
-    setRunError(null);
-    setDrafts(null);
-
-    if (kind === 'job') {
-      // ── job path ── stream from /api/compose/apply (tailor + reach-out)
-      const collectedDrafts = [];
-      let collectedEnrichment = null;
-      let collectedPerson = null;
-      let bundle = { ats_score: null, target_role: null, target_company: null, resume: null };
-      const jobUrl = input.trim().match(/^https?:\/\//) ? input.trim() : `https://${input.trim()}`;
-      try {
-        const res = await fetch('/api/compose/apply', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
-          body: JSON.stringify({ job_url: jobUrl, intent: intent || undefined }),
-        });
-        if (!res.ok || !res.body) throw new Error(`apply failed: ${res.status}`);
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = '';
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          const parts = buf.split('\n\n');
-          buf = parts.pop() || '';
-          for (const raw of parts) {
-            const line = raw.split('\n').find((l) => l.startsWith('data: '));
-            if (!line) continue;
-            let evt;
-            try { evt = JSON.parse(line.slice(6)); } catch { continue; }
-            if (evt.type === 'step') {
-              const k = evt.id; // resume | person | email | outreach
-              if (evt.status === 'start') setProgress((p) => ({ ...p, [k]: 10 }));
-              else if (evt.status === 'done' || evt.status === 'skipped') setProgress((p) => ({ ...p, [k]: 100 }));
-              if (k === 'resume' && evt.status === 'done' && evt.data) {
-                bundle = { ...bundle, ...evt.data };
-              }
-              if (k === 'person' && evt.status === 'done' && evt.data) collectedPerson = evt.data;
-              if (k === 'email' && evt.data) collectedEnrichment = evt.data;
-              if (k === 'outreach' && evt.status === 'done' && evt.data) {
-                collectedDrafts.push(evt.data);
-              }
-            } else if (evt.type === 'error') {
-              throw new Error(evt.message || 'apply error');
-            }
-          }
-        }
-        if (collectedDrafts.length) setDrafts(collectedDrafts);
-        if (collectedEnrichment) setEnrichment(collectedEnrichment);
-        if (collectedPerson) setPerson(collectedPerson);
-        // Stuff the bundle into parsed so PackageV3's JobPackage can render it.
-        // The API speaks target_role/target_company; the card reads role/company —
-        // map them across so a successful parse actually replaces the preview.
-        setParsed((prev) => ({
-          ...(prev || {}),
-          ...bundle,
-          unparsed: false,
-          role: bundle.target_role || prev?.role,
-          company: bundle.target_company || prev?.company,
-          ats_score: bundle.ats_score ?? prev?.ats_score,
-          resume: bundle.resume ?? prev?.resume,
-        }));
-        setProgress({ resume: 100, person: 100, email: 100, outreach: 100 });
-        setStage('done');
-      } catch (e) {
-        setRunError(String(e?.message || e));
-        setStage('review');
-      }
-      return;
-    }
-
-    // ── person path ── stream from /api/compose (reach-out agent)
-    // Maps SSE step events to the prototype's three progress keys so the
-    // existing AgentRowV3 keeps animating without changes.
-    const stepToKey = { research: 'person', email_lookup: 'email', draft: 'outreach' };
-    const collectedDrafts = [];
-    let collectedEnrichment = null;
-
-    try {
-      const res = await fetch('/api/compose', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
-        body: JSON.stringify({ text: input, intent: intent || undefined }),
-      });
-      if (!res.ok || !res.body) throw new Error(`compose failed: ${res.status}`);
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = '';
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        // SSE events split by blank line
-        const parts = buf.split('\n\n');
-        buf = parts.pop() || '';
-        for (const raw of parts) {
-          const line = raw.split('\n').find((l) => l.startsWith('data: '));
-          if (!line) continue;
-          let evt;
-          try { evt = JSON.parse(line.slice(6)); } catch { continue; }
-          if (evt.type === 'step') {
-            const key = stepToKey[evt.id];
-            if (key) {
-              if (evt.status === 'start') setProgress((p) => ({ ...p, [key]: 10 }));
-              else if (evt.status === 'done') setProgress((p) => ({ ...p, [key]: 100 }));
-              else if (evt.status === 'skipped') setProgress((p) => ({ ...p, [key]: 100 }));
-            }
-            if (evt.id === 'email_lookup' && evt.data) collectedEnrichment = evt.data;
-            if (evt.id === 'draft' && evt.status === 'done' && evt.data) {
-              collectedDrafts.push(evt.data);
-            }
-          } else if (evt.type === 'needs_disambiguation') {
-            setRunError('Multiple candidates matched. Open Compose with a more specific name.');
-          } else if (evt.type === 'complete') {
-            // surface enrichment + drafts to the done view
-            if (collectedEnrichment) setEnrichment(collectedEnrichment);
-            if (collectedDrafts.length) setDrafts(collectedDrafts);
-            setProgress({ person: 100, email: 100, outreach: 100 });
-            setStage('done');
-          } else if (evt.type === 'error') {
-            throw new Error(evt.message || 'compose error');
-          }
-        }
-      }
-      // Some streams complete without an explicit 'complete' event — fall through.
-      if (collectedDrafts.length && !drafts) {
-        setEnrichment(collectedEnrichment);
-        setDrafts(collectedDrafts);
-        setProgress({ person: 100, email: 100, outreach: 100 });
-        setStage('done');
-      }
-    } catch (e) {
-      setRunError(String(e?.message || e));
-      setStage('review');
-    }
-  }
-
-  const titles = {
-    idle:    { eyebrow: 'Compose · the crew is ready',     title: 'Who are you reaching out to?',                    italic: 'Or what job today?' },
-    parsing: { eyebrow: 'Compose · reading what you sent', title: 'Jugaadu is reading…',                                italic: '' },
-    review:  { eyebrow: kind === 'job' ? 'Compose · the job' : 'Compose · the target',
-               title: 'Confirm and ',
-               italic: 'send the crew?' },
-    working: { eyebrow: 'Compose · the crew is working',   title: kind === 'job' ? 'Four agents on it.' : 'Three agents on it.', italic: '' },
-    done:    { eyebrow: 'Compose · ready to send',         title: 'Your package is ready,',                          italic: 'polished.' },
-  };
-  const ttl = titles[stage];
 
   return (
     <div className="scroll" style={{
       flex: 1, overflow: 'auto', padding: '40px 56px 80px', background: p.paper, color: p.ink,
     }}>
       <PageHead p={p}
-        eyebrow={ttl.eyebrow}
-        title={ttl.title}
-        italic={ttl.italic}
-        right={stage !== 'idle' && (
-          <InkButton p={p} kind="outline" size="sm" onClick={reset}>↺ Start over</InkButton>
+        eyebrow="Compose · the crew is ready"
+        title="Who are you reaching out to?"
+        italic="Fire off as many as you like."
+        right={runs.length > 0 && (
+          <InkButton p={p} kind="outline" size="sm" onClick={clearAllRuns}>↺ Clear all</InkButton>
         )}
       />
 
-      {/* ─── paste field ─── */}
-      {stage === 'idle' && (
-        <PasteFieldV3
-          p={p} input={input} setInput={setInput}
-          intent={intent} setIntent={setIntent}
-          haveEmail={haveEmail} setHaveEmail={setHaveEmail}
-          screenshot={screenshot} setScreenshot={setScreenshot}
-          onGo={run}
-        />
-      )}
+      {/* ─── paste field (always available) ─── */}
+      <PasteFieldV3
+        p={p} input={input} setInput={setInput}
+        intent={intent} setIntent={setIntent}
+        haveEmail={haveEmail} setHaveEmail={setHaveEmail}
+        screenshot={screenshot} setScreenshot={setScreenshot}
+        onGo={onGo}
+      />
 
-      {/* ─── parsed/review card ─── */}
-      {(stage === 'parsing' || stage === 'review') && (
-        <ParsedCard p={p} stage={stage} kind={kind} parsed={parsed} onConfirm={confirm} onChoose={(np) => setParsed(np)}/>
-      )}
+      {/* ─── one card per run, newest on top ─── */}
+      <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {runs.map((run) => (
+          <RunCard key={run.id} p={p} run={run} go={go}/>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-      {/* ─── working agents ─── */}
-      {(stage === 'working' || stage === 'done') && (
-        <AgentRowV3 p={p} kind={kind} stage={stage} progress={progress}/>
-      )}
+/* ─────────────────────── one run, all its lifecycle stages ─────────────────────── */
 
-      {/* ─── package ─── */}
-      {stage === 'done' && (
-        <PackageV3 p={p} kind={kind} parsed={parsed} intent={intent} drafts={drafts} enrichment={enrichment} person={person} onReset={reset} go={go}/>
-      )}
-      {runError && (
-        <div style={{
-          marginTop: 16, padding: '12px 16px', background: p.card,
-          border: `1.5px solid ${p.stamp}`, color: p.stamp,
-          fontFamily: PAPER_FONTS.mono, fontSize: 12,
-        }}>
-          {runError}
+function RunCard({ p, run, go }) {
+  const stageLabel = {
+    parsing: 'reading…',
+    working: run.kind === 'job' ? 'four agents on it' : 'three agents on it',
+    done:    'package ready',
+    error:   'needs attention',
+  }[run.stage];
+
+  return (
+    <div style={{
+      border: `1.5px solid ${p.ink}24`, background: p.paper, padding: '16px 18px',
+    }}>
+      {/* card header: kind · stage · echoed input · dismiss */}
+      <div style={{
+        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12,
+      }}>
+        <div style={{ minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{
+            fontFamily: PAPER_FONTS.mono, fontSize: 10, letterSpacing: '.16em',
+            textTransform: 'uppercase', color: p.stamp,
+          }}>{run.kind} · {stageLabel}</span>
+          <span style={{
+            fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 460,
+          }}>{run.input}</span>
         </div>
+        <button onClick={() => dismissRun(run.id)} title="dismiss" style={{
+          background: 'transparent', border: 'none', color: p.inkMute,
+          fontFamily: PAPER_FONTS.mono, fontSize: 16, lineHeight: 1, cursor: 'pointer', flexShrink: 0,
+        }}>×</button>
+      </div>
+
+      {/* parsing → shimmer preview */}
+      {run.stage === 'parsing' && (
+        <ParsedCard p={p} stage="parsing" kind={run.kind} parsed={run.parsed} hideConfirm/>
+      )}
+
+      {/* working / done → the agent row */}
+      {(run.stage === 'working' || run.stage === 'done') && (
+        <AgentRowV3 p={p} kind={run.kind} stage={run.stage} progress={run.progress}/>
+      )}
+
+      {/* done → the finished package */}
+      {run.stage === 'done' && (
+        <PackageV3 p={p} kind={run.kind} parsed={run.parsed} intent={run.intent}
+          drafts={run.drafts} enrichment={run.enrichment} person={run.person}
+          onReset={() => dismissRun(run.id)} go={go}/>
+      )}
+
+      {/* error → message, optional candidate picker, retry */}
+      {run.stage === 'error' && (
+        <>
+          <div style={{
+            marginTop: 12, padding: '12px 16px', background: p.card,
+            border: `1.5px solid ${p.stamp}`, color: p.stamp,
+            fontFamily: PAPER_FONTS.mono, fontSize: 12,
+          }}>{run.error}</div>
+          {Array.isArray(run.candidates) && run.candidates.length > 0 && (
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {run.candidates.map((c, i) => (
+                <button key={c.name || i} onClick={() => retryRun(run.id, {
+                  name: c.name, role: c.role ?? null, company: c.company ?? null, linkedin: c.linkedin ?? null,
+                })} style={{
+                  display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center',
+                  padding: '10px 12px', background: p.paper,
+                  border: `1.5px solid ${p.ink}24`, cursor: 'pointer', textAlign: 'left',
+                }}>
+                  <div>
+                    <div style={{ fontFamily: PAPER_FONTS.sans, fontSize: 14, color: p.ink }}>{c.name}</div>
+                    {(c.role || c.company) && (
+                      <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute }}>
+                        {[c.role, c.company].filter(Boolean).join(' · ')}
+                      </div>
+                    )}
+                  </div>
+                  {c.confidence != null && (
+                    <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.stamp }}>{c.confidence}%</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+          <div style={{ marginTop: 10 }}>
+            <InkButton p={p} kind="outline" size="sm" onClick={() => retryRun(run.id)}>↻ Retry</InkButton>
+          </div>
+        </>
       )}
     </div>
   );
@@ -385,7 +292,7 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
 
 /* ─────────────────────── parsed / review ─────────────────────── */
 
-function ParsedCard({ p, stage, kind, parsed, onConfirm, onChoose }) {
+function ParsedCard({ p, stage, kind, parsed, onConfirm, onChoose, hideConfirm }) {
   const parsing = stage === 'parsing';
   const [picking, setPicking] = useState(false);
 
@@ -427,7 +334,7 @@ function ParsedCard({ p, stage, kind, parsed, onConfirm, onChoose }) {
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <InkButton p={p} color={p.stamp} onClick={onConfirm} disabled={parsing}>Send the crew →</InkButton>
+            {!hideConfirm && <InkButton p={p} color={p.stamp} onClick={onConfirm} disabled={parsing}>Send the crew →</InkButton>}
             <button onClick={() => setPicking(!picking)} style={{
               background: 'transparent', border: 'none', color: p.inkSoft,
               fontFamily: PAPER_FONTS.mono, fontSize: 11, letterSpacing: '.06em',
@@ -496,7 +403,7 @@ function ParsedCard({ p, stage, kind, parsed, onConfirm, onChoose }) {
               Jugaadu reads the full posting when you send the crew.
             </div>
           </div>
-          <InkButton p={p} color={p.stamp} onClick={onConfirm} disabled={parsing}>Send the crew →</InkButton>
+          {!hideConfirm && <InkButton p={p} color={p.stamp} onClick={onConfirm} disabled={parsing}>Send the crew →</InkButton>}
         </div>
       </PaperCard>
     );
@@ -528,7 +435,7 @@ function ParsedCard({ p, stage, kind, parsed, onConfirm, onChoose }) {
             ))}
           </div>
         </div>
-        <InkButton p={p} color={p.stamp} onClick={onConfirm} disabled={parsing}>Send the crew →</InkButton>
+        {!hideConfirm && <InkButton p={p} color={p.stamp} onClick={onConfirm} disabled={parsing}>Send the crew →</InkButton>}
       </div>
     </PaperCard>
   );
@@ -1049,100 +956,12 @@ function KV({ p, k, v, chip }) {
   );
 }
 
-/* ─────────────────────── data helpers ─────────────────────── */
-
-function inferPersonV3(input) {
-  const lo = (input || '').toLowerCase();
-  if (lo.includes('maya')) {
-    return {
-      chosen: makeP('Maya Rao', 'MR', 'Head of Ops', 'Ramp', 'ramp', 'Maya', 92, 'NYC',
-        'posted 4h ago about hiring ops', ['shipped Bill Pay ops in 8mo', 'ex-Brex, Capital One', 'replies long-form', 'allergic to "circling back"']),
-      candidates: [
-        makeP('Maya Rao', 'MR', 'Head of Ops', 'Ramp', 'ramp', 'Maya', 92, 'NYC'),
-        makeP('Maya Patel', 'MP', 'Sr Ops Lead', 'Ramp · Bill Pay', 'ramp', 'Maya', 78, 'NYC'),
-        makeP('Maya Gupta', 'MG', 'Ops PM', 'Ramp', 'ramp', 'Maya', 64, 'Remote'),
-      ],
-    };
-  }
-  if (lo.includes('anika') || lo.includes('stripe')) {
-    return {
-      chosen: makeP('Anika Mehta', 'AM', 'Senior Product Designer', 'Stripe', 'stripe', 'Anika', 96, 'NYC',
-        'last post 4h · Atlas pricing thread', ['shipped Atlas pricing redesign', 'long-form > 1-liners', 'IIT-D · Stanford d.school', 'hates "hope this finds you well"']),
-      candidates: [
-        makeP('Anika Mehta', 'AM', 'Senior Product Designer', 'Stripe', 'stripe', 'Anika', 96, 'NYC'),
-        makeP('Aniket Sharma', 'AS', 'Product Designer', 'Stripe', 'stripe', 'Aniket', 71, 'SF'),
-        makeP('Anita Rao', 'AR', 'PM · Atlas', 'Stripe', 'stripe', 'Anita', 68, 'NYC'),
-      ],
-    };
-  }
-  // generic fallback
-  return {
-    chosen: makeP('Vishnu Sivaji', 'VS', 'Product Director', 'Google DeepMind', 'google', 'Vishnu', 88, 'London',
-      'recently joined · 1mo ago', ['ex-Anthropic research', 'transitioning to / recently joined Google DeepMind', 'writes long-form', 'prefers cold DMs over emails']),
-    candidates: [
-      makeP('Vishnu Sivaji', 'VS', 'Product Director', 'Google DeepMind', 'google', 'Vishnu', 88, 'London'),
-      makeP('Vinod Shankar', 'VS', 'Engineering Director', 'Google DeepMind', 'google', 'Vinod', 62, 'Mountain View'),
-      makeP('Vivek Singh', 'VS', 'Product Lead', 'Google', 'google', 'Vivek', 58, 'Bangalore'),
-    ],
-  };
-}
-
-function makeP(name, initials, role, company, slug, firstName, confidence, location, signal = 'replies long-form', facts = []) {
-  return {
-    name, initials, role, company,
-    companySlug: slug, firstName, confidence, location,
-    signal,
-    angle: 'pricing tables in Atlas',
-    recent: 'Atlas pricing redesign',
-    detail: 'discount-stacking edge case',
-    facts: facts.length ? facts : ['recent product launches', 'replies long-form', 'writes on x weekly'],
-  };
-}
-
-function inferJobV3(input) {
-  const lo = (input || '').toLowerCase();
-  if (lo.includes('stripe')) return {
-    logo: 'S', company: 'Stripe · Payments', role: 'Senior Product Designer · Atlas',
-    location: 'NYC · hybrid', comp: '$220k–$280k', posted: 'Posted 3d ago',
-    tags: ['design systems', 'fintech', 'b2b', 'shipped products', 'figma + prototyping'],
-  };
-  if (lo.includes('ramp')) return {
-    logo: 'R', company: 'Ramp', role: 'Staff Engineer · Bill Pay',
-    location: 'NYC · onsite 3d', comp: '$260k–$340k', posted: 'Posted 6d ago',
-    tags: ['typescript', 'postgres', 'high-throughput', 'payments rails', 'led teams 5+'],
-  };
-  if (lo.includes('anthropic')) return {
-    logo: 'A', company: 'Anthropic', role: 'Design Engineer · Claude',
-    location: 'SF · onsite 3d', comp: '$240k–$320k', posted: 'Posted 1d ago',
-    tags: ['react + typescript', 'tight design taste', 'shipped LLM UX', 'systems thinking'],
-  };
-  // Unknown input: we have NOT parsed anything yet. The real fetch+parse runs
-  // server-side on confirm(). Return an honest "not parsed yet" shape instead
-  // of fabricated company/role/skills so the review card can't masquerade as
-  // a parsed posting.
-  return { unparsed: true, source: (input || '').trim() };
-}
-
-function jobHost(source) {
-  const s = (source || '').trim();
-  if (!s) return '';
-  try {
-    return new URL(s.match(/^https?:\/\//) ? s : `https://${s}`).hostname.replace(/^www\./, '');
-  } catch {
-    return s;
-  }
-}
-
-
 export default function ComposePage() {
   const router = useRouter();
   const { p } = usePaperTheme();
-  // seed/setSeed/go come from the prototype shell — provide safe defaults.
   return (
     <ComposeV3
       p={p}
-      seed={null}
-      setSeed={() => {}}
       go={(route) => router.push(`/app/${route}`)}
     />
   );
