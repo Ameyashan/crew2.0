@@ -118,7 +118,7 @@ function RunCard({ p, run, go }) {
       {/* done → the finished package */}
       {run.stage === 'done' && (
         <PackageV3 p={p} kind={run.kind} parsed={run.parsed} intent={run.intent}
-          drafts={run.drafts} enrichment={run.enrichment}
+          drafts={run.drafts} enrichment={run.enrichment} person={run.person}
           onReset={() => dismissRun(run.id)} go={go}/>
       )}
 
@@ -551,7 +551,34 @@ function AgentRowV3({ p, kind, stage, progress }) {
 
 /* ─────────────────────── package (done) ─────────────────────── */
 
-function PackageV3({ p, kind, parsed, intent, drafts, enrichment, onReset, go }) {
+// The email draft surfaced in the package. Shared so the header CTA and the
+// per-card "Open in Gmail" button open the exact same message.
+function buildEmailDraft({ kind, parsed, drafts, enrichment }) {
+  const emailDraft = Array.isArray(drafts) ? drafts.find((d) => d.channel === 'email') : null;
+
+  if (kind === 'job') {
+    // Real outreach draft + verified email only — honest blanks when an agent
+    // returned nothing, never fabricated sample copy.
+    return {
+      to: enrichment?.email || '',
+      subject: emailDraft?.subject || '',
+      body: emailDraft?.body || '',
+    };
+  }
+
+  const chosen = parsed.chosen;
+  const verifiedEmail = enrichment?.email || `${chosen.firstName.toLowerCase()}@${chosen.companySlug}.com`;
+  return emailDraft
+    ? { to: verifiedEmail, subject: emailDraft.subject || '', body: emailDraft.body }
+    : {
+        to: verifiedEmail,
+        subject: `the bit about ${chosen.angle} — a 3 min thought`,
+        body: `${chosen.firstName} — caught your ${chosen.recent} and the way you handled the ${chosen.detail} is the cleanest take I've seen on it. I ran into a similar tension at Razorpay last year. Sketched two ways out (3-min watch).\n\nI'd love your take. Either way — hope this finds you well between sprints.\n\n— Sam`,
+      };
+}
+
+function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, onReset, go }) {
+  const headerEmail = buildEmailDraft({ kind, parsed, drafts, enrichment });
   return (
     <div style={{ marginTop: 18 }}>
       <PaperCard p={p} hardShadow color={p.stamp} style={{ padding: '20px 24px' }}>
@@ -570,7 +597,7 @@ function PackageV3({ p, kind, parsed, intent, drafts, enrichment, onReset, go })
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <InkButton p={p} kind="outline" onClick={onReset}>↺ Another</InkButton>
-            <InkButton p={p} color={p.stamp}>
+            <InkButton p={p} color={p.stamp} onClick={() => headerEmail.body && openGmailCompose(headerEmail)}>
               <span style={{
                 width: 18, height: 18, background: p.paper, color: p.stamp,
                 display: 'grid', placeItems: 'center', fontFamily: PAPER_FONTS.mono,
@@ -584,7 +611,7 @@ function PackageV3({ p, kind, parsed, intent, drafts, enrichment, onReset, go })
 
       {kind === 'person'
         ? <PersonPackage p={p} parsed={parsed} drafts={drafts} enrichment={enrichment} go={go}/>
-        : <JobPackage    p={p} parsed={parsed} drafts={drafts} enrichment={enrichment} go={go}/>
+        : <JobPackage    p={p} parsed={parsed} drafts={drafts} enrichment={enrichment} person={person} go={go}/>
       }
     </div>
   );
@@ -597,16 +624,9 @@ function PersonPackage({ p, parsed, drafts, enrichment, go }) {
   // Real drafts from /api/compose override the prototype's mocked messages.
   const draftByChannel = {};
   if (Array.isArray(drafts)) for (const d of drafts) draftByChannel[d.channel] = d;
-  const verifiedEmail = enrichment?.email || `${chosen.firstName.toLowerCase()}@${chosen.companySlug}.com`;
 
   const messages = {
-    email: draftByChannel.email
-      ? { to: verifiedEmail, subject: draftByChannel.email.subject || '', body: draftByChannel.email.body }
-      : {
-          to: verifiedEmail,
-          subject: `the bit about ${chosen.angle} — a 3 min thought`,
-          body: `${chosen.firstName} — caught your ${chosen.recent} and the way you handled the ${chosen.detail} is the cleanest take I've seen on it. I ran into a similar tension at Razorpay last year. Sketched two ways out (3-min watch).\n\nI'd love your take. Either way — hope this finds you well between sprints.\n\n— Sam`,
-        },
+    email: buildEmailDraft({ kind: 'person', parsed, drafts, enrichment }),
     linkedin: draftByChannel.linkedin
       ? { to: `linkedin.com/in/${chosen.companySlug}-${chosen.firstName.toLowerCase()}`, subject: null, body: draftByChannel.linkedin.body }
       : {
@@ -730,18 +750,33 @@ function PersonPackage({ p, parsed, drafts, enrichment, go }) {
   );
 }
 
-function JobPackage({ p, parsed, drafts, enrichment, go }) {
-  // Real values from the tailor agent, mapped in on confirm(). Fall back to the
-  // prototype's mock copy only when a field genuinely wasn't returned.
+function JobPackage({ p, parsed, drafts, enrichment, person, go }) {
+  // Everything here is real data produced by the crew for the job URL the user
+  // pasted: the tailor agent's resume, the research agent's hiring manager, the
+  // email lookup, and the outreach draft. Fall back to honest placeholders only
+  // when an agent genuinely returned nothing — never to fabricated sample copy.
   const jobRole = parsed?.role;
   const jobCompany = parsed?.company;
   const atsScore = parsed?.ats_score;
-  // Prefer real drafts/enrichment over the prototype's mocked strings.
-  const emailDraft = Array.isArray(drafts) ? drafts.find((d) => d.channel === 'email') : null;
-  const emailTo = enrichment?.email || 'anika@stripe.com';
-  const emailSubject = emailDraft?.subject || 'the bit about pricing tables in Atlas — a 3 min thought';
-  const emailBody = emailDraft?.body
-    || `Anika — caught the Atlas pricing-table redesign and the way you handled the discount-stacking edge case is the cleanest take I've seen on it. I rebuilt onboarding at Razorpay last year and ran into a similar spec-vs-edge tension. I sketched two ways out (3-min watch).\n\nI'm also applying for the Senior PD role open on your team — resume attached. Either way, would love your take.\n\n— Sam`;
+  const resume = parsed?.resume;
+
+  // Real outreach draft + verified email via the shared builder.
+  const { to: emailTo, subject: emailSubject, body: emailBody } =
+    buildEmailDraft({ kind: 'job', parsed, drafts, enrichment });
+
+  const personName = person?.name || null;
+  const personRole = person?.role || null;
+  const personCompany = person?.company || jobCompany || null;
+  const personFacts = (person?.context_lines || []).filter(Boolean);
+  const personLinks = person?.links || {};
+  const initials = personName
+    ? personName.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
+    : '?';
+  const emailChip = enrichment?.confidence != null
+    ? `${Math.round(enrichment.confidence * 100)}%`
+    : null;
+  const matchLabel = person?.match_confidence ? `${person.match_confidence} match` : null;
+
   return (
     <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr', gap: 12 }}>
       {/* resume */}
@@ -750,7 +785,7 @@ function JobPackage({ p, parsed, drafts, enrichment, go }) {
           <Eyebrow p={p} hindi="रेज़्यूमे" en="Tailored resume" color={p.marigold}/>
           <span style={{
             fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.leaf, letterSpacing: '.06em',
-          }}>{atsScore != null ? `ATS ${atsScore}/100` : 'ATS 96/100'}</span>
+          }}>{atsScore != null ? `ATS ${atsScore}/100` : 'ATS —'}</span>
         </div>
         {(jobRole || jobCompany) && (
           <div style={{
@@ -764,18 +799,43 @@ function JobPackage({ p, parsed, drafts, enrichment, go }) {
           aspectRatio: '8.5/11', padding: '14px 14px', position: 'relative',
           fontFamily: PAPER_FONTS.serif, color: p.ink, fontSize: 8, lineHeight: 1.3, overflow: 'hidden',
         }}>
-          <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 14 }}>Sam Altman</div>
-          <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 7, color: p.inkMute, marginTop: 2 }}>
-            sam@jugaadu.app · SF · sam.work
-          </div>
-          <div style={{ height: 1, background: p.ink + '30', margin: '6px 0' }}/>
-          <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 9 }}>Stripe-flavored experience</div>
-          <div style={{ marginTop: 2 }}>· Cut onboarding drop-off <span style={{ background: p.marigold }}>41%</span> · KYC photo-first</div>
-          <div>· Shipped Atlas-style design system, 6 surfaces</div>
-          <div>· 0→1 of Bill Pay; 8mo to GA</div>
-          <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 9, marginTop: 6 }}>Tooling</div>
-          <div>· React + TS, Figma, OKLCH systems</div>
-          <div>· Wrote the design tokens spec used by 4 teams</div>
+          {resume ? (
+            <>
+              <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 14 }}>
+                {resume.header?.full_name || 'Your name'}
+              </div>
+              {(resume.header?.email || resume.header?.location || resume.header?.links?.website) && (
+                <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 7, color: p.inkMute, marginTop: 2 }}>
+                  {[resume.header?.email, resume.header?.location, resume.header?.links?.website]
+                    .filter(Boolean).join(' · ')}
+                </div>
+              )}
+              <div style={{ height: 1, background: p.ink + '30', margin: '6px 0' }}/>
+              {resume.summary && <div style={{ marginBottom: 4 }}>{resume.summary}</div>}
+              {(resume.experience || []).slice(0, 2).map((exp, i) => (
+                <div key={i} style={{ marginTop: i ? 6 : 0 }}>
+                  <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 9 }}>
+                    {[exp.role, exp.company].filter(Boolean).join(' · ')}
+                  </div>
+                  {(exp.bullets || []).slice(0, 3).map((b, j) => (
+                    <div key={j}>· {b}</div>
+                  ))}
+                </div>
+              ))}
+              {(resume.skills || []).length > 0 && (
+                <>
+                  <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 9, marginTop: 6 }}>Skills</div>
+                  {resume.skills.slice(0, 2).map((s, i) => (
+                    <div key={i}>· {s.group ? `${s.group}: ` : ''}{(s.items || []).join(', ')}</div>
+                  ))}
+                </>
+              )}
+            </>
+          ) : (
+            <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', color: p.inkMute }}>
+              The tailored resume preview will appear here once the Resume agent finishes.
+            </div>
+          )}
           <div style={{
             position: 'absolute', left: 0, right: 0, bottom: 0, height: 50,
             background: `linear-gradient(to bottom, transparent, ${p.paper})`,
@@ -805,25 +865,21 @@ function JobPackage({ p, parsed, drafts, enrichment, go }) {
           padding: '12px 14px', fontFamily: PAPER_FONTS.sans, fontSize: 13, lineHeight: 1.55,
         }}>
           <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute }}>
-            <span>To &nbsp;</span><span style={{ color: p.ink }}>{emailTo}</span>
+            <span>To &nbsp;</span><span style={{ color: p.ink }}>{emailTo || '(email pending)'}</span>
             {enrichment?.email && <span style={{ color: p.leaf, marginLeft: 8 }}>· verified</span>}
           </div>
-          <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, marginTop: 4 }}>
-            <span>Re &nbsp;</span><span style={{ color: p.ink }}>{emailSubject}</span>
-          </div>
+          {emailSubject && (
+            <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, marginTop: 4 }}>
+              <span>Re &nbsp;</span><span style={{ color: p.ink }}>{emailSubject}</span>
+            </div>
+          )}
           <div style={{ height: 1, background: p.ink + '14', margin: '8px 0' }}/>
-          <p style={{ margin: 0, color: p.ink, whiteSpace: 'pre-wrap' }}>{emailBody}</p>
-        </div>
-        <div style={{
-          marginTop: 10, display: 'flex', gap: 14, fontFamily: PAPER_FONTS.mono, fontSize: 11,
-          color: p.inkSoft, letterSpacing: '.04em',
-        }}>
-          <span>● spam 0.04</span>
-          <span style={{ color: p.inkMute }}>· best send Tue 10:42am</span>
-          <span style={{ color: p.inkMute }}>· followup in 3d</span>
+          <p style={{ margin: 0, color: p.ink, whiteSpace: 'pre-wrap' }}>
+            {emailBody || 'The cold email draft will appear here once the Outreach agent finishes.'}
+          </p>
         </div>
         <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <InkButton p={p} color={p.stamp} size="sm" style={{ flex: 1 }} onClick={() => {
+          <InkButton p={p} color={p.stamp} size="sm" style={{ flex: 1 }} disabled={!emailBody} onClick={() => {
             openGmailCompose({ to: emailTo, subject: emailSubject, body: emailBody });
           }}>Open in Gmail →</InkButton>
           <InkButton p={p} kind="outline" size="sm" style={{ flex: 1 }}>↻ Another angle</InkButton>
@@ -832,44 +888,56 @@ function JobPackage({ p, parsed, drafts, enrichment, go }) {
 
       {/* person */}
       <PaperCard p={p} style={{ padding: '20px 22px' }}>
-        <Eyebrow p={p} hindi="वो" en="Hiring manager · 92%" color={p.leaf}/>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
-          <div style={{
-            width: 52, height: 52, background: p.marigold, color: p.paper,
-            display: 'grid', placeItems: 'center', fontFamily: PAPER_FONTS.display, fontSize: 18,
-            border: `1.5px solid ${p.ink}`,
-          }}>AM</div>
-          <div>
-            <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 18, color: p.ink }}>Anika Mehta</div>
-            <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 13, color: p.inkSoft }}>
-              Senior Product Designer · Stripe
+        <Eyebrow p={p} hindi="वो" en={matchLabel ? `Hiring manager · ${matchLabel}` : 'Hiring manager'} color={p.leaf}/>
+        {personName ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
+              <div style={{
+                width: 52, height: 52, background: p.marigold, color: p.paper,
+                display: 'grid', placeItems: 'center', fontFamily: PAPER_FONTS.display, fontSize: 18,
+                border: `1.5px solid ${p.ink}`,
+              }}>{initials}</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 18, color: p.ink }}>{personName}</div>
+                {(personRole || personCompany) && (
+                  <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 13, color: p.inkSoft }}>
+                    {[personRole, personCompany].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+              </div>
             </div>
+            {personFacts.length > 0 && (
+              <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {personFacts.map((f) => (
+                  <span key={f} style={{
+                    padding: '4px 10px', background: p.paper, border: `1px solid ${p.ink}30`,
+                    fontFamily: PAPER_FONTS.sans, fontSize: 11.5, color: p.ink,
+                  }}>{f}</span>
+                ))}
+              </div>
+            )}
+            <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
+              {enrichment?.email && <KV p={p} k="email"    v={enrichment.email} chip={emailChip}/>}
+              {personLinks.linkedin && <KV p={p} k="linkedin" v={personLinks.linkedin.replace(/^https?:\/\//, '')}/>}
+              {personLinks.x && <KV p={p} k="x" v={personLinks.x.replace(/^https?:\/\//, '')}/>}
+              {personLinks.website && <KV p={p} k="website" v={personLinks.website.replace(/^https?:\/\//, '')}/>}
+            </div>
+            <button onClick={() => go('people')} style={{
+              marginTop: 12, width: '100%', padding: '10px 12px', background: 'transparent',
+              border: `1.5px dashed ${p.ink}40`, color: p.ink,
+              fontFamily: PAPER_FONTS.mono, fontSize: 11.5, letterSpacing: '.08em',
+              textTransform: 'uppercase', cursor: 'pointer',
+            }}>Save to People ↗</button>
+          </>
+        ) : (
+          <div style={{
+            marginTop: 12, fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
+            fontSize: 13, color: p.inkMute,
+          }}>
+            The crew couldn&apos;t pin down a specific hiring manager for this role.
+            The email is drafted to the best contact found.
           </div>
-        </div>
-        <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {[
-            'shipped Atlas pricing redesign',
-            'long-form > 1-liners',
-            'IIT-D · Stanford d.school',
-            'hates "hope this finds you well"',
-          ].map(f => (
-            <span key={f} style={{
-              padding: '4px 10px', background: p.paper, border: `1px solid ${p.ink}30`,
-              fontFamily: PAPER_FONTS.sans, fontSize: 11.5, color: p.ink,
-            }}>{f}</span>
-          ))}
-        </div>
-        <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
-          <KV p={p} k="email"    v="anika@stripe.com" chip="96%"/>
-          <KV p={p} k="linkedin" v="linkedin.com/in/anikamehta" chip="active"/>
-          <KV p={p} k="x"        v="@anika_designs" chip="4h ago"/>
-        </div>
-        <button onClick={() => go('people')} style={{
-          marginTop: 12, width: '100%', padding: '10px 12px', background: 'transparent',
-          border: `1.5px dashed ${p.ink}40`, color: p.ink,
-          fontFamily: PAPER_FONTS.mono, fontSize: 11.5, letterSpacing: '.08em',
-          textTransform: 'uppercase', cursor: 'pointer',
-        }}>Save to People ↗</button>
+        )}
       </PaperCard>
     </div>
   );
@@ -883,7 +951,7 @@ function KV({ p, k, v, chip }) {
     }}>
       <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute, letterSpacing: '.04em', width: 64 }}>{k}</span>
       <span style={{ flex: 1, fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
-      <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.stamp, padding: '2px 6px', background: p.stamp + '14', whiteSpace: 'nowrap', letterSpacing: '.04em' }}>{chip}</span>
+      {chip && <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.stamp, padding: '2px 6px', background: p.stamp + '14', whiteSpace: 'nowrap', letterSpacing: '.04em' }}>{chip}</span>}
     </div>
   );
 }

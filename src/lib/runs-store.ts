@@ -18,6 +18,7 @@ export type Run = {
   progress: Record<string, number>;
   drafts: unknown[] | null;
   enrichment: unknown;
+  person: unknown;
   candidates: unknown[] | null;
   error: string | null;
   createdAt: number;
@@ -85,6 +86,7 @@ export function startRun(
     progress: {},
     drafts: null,
     enrichment: null,
+    person: null,
     candidates: null,
     error: null,
     createdAt: Date.now(),
@@ -133,6 +135,7 @@ export function retryRun(id: string, picked?: unknown) {
     progress: {},
     drafts: null,
     enrichment: null,
+    person: null,
     error: null,
   }));
   launch(id, picked);
@@ -160,7 +163,8 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
       // ── job path ── stream /api/compose/apply (tailor + reach-out)
       const collectedDrafts: unknown[] = [];
       let collectedEnrichment: unknown = null;
-      let bundle = { ats_score: null, target_role: null, target_company: null };
+      let collectedPerson: unknown = null;
+      let bundle = { ats_score: null, target_role: null, target_company: null, resume: null };
       const jobUrl = run.input.match(/^https?:\/\//)
         ? run.input
         : `https://${run.input}`;
@@ -198,6 +202,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
             if (k === "resume" && evt.status === "done" && evt.data) {
               bundle = { ...bundle, ...evt.data };
             }
+            if (k === "person" && evt.status === "done" && evt.data) collectedPerson = evt.data;
             if (k === "email" && evt.data) collectedEnrichment = evt.data;
             if (k === "outreach" && evt.status === "done" && evt.data) {
               collectedDrafts.push(evt.data);
@@ -210,6 +215,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
       patch(id, (r) => ({
         drafts: collectedDrafts.length ? collectedDrafts : r.drafts,
         enrichment: collectedEnrichment || r.enrichment,
+        person: collectedPerson || r.person,
         // Map the API's target_role/target_company onto the card's role/company
         // so a successful parse replaces the preview.
         parsed: {
@@ -219,6 +225,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           role: bundle.target_role || r.parsed?.role,
           company: bundle.target_company || r.parsed?.company,
           ats_score: bundle.ats_score ?? r.parsed?.ats_score,
+          resume: bundle.resume ?? r.parsed?.resume,
         },
         progress: { resume: 100, person: 100, email: 100, outreach: 100 },
         stage: "done",

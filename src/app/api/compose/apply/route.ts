@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
             target_role: tailored?.meta?.target_role,
             target_company: tailored?.meta?.target_company,
             ats_score: tailored?.meta?.ats_score,
+            resume: tailored,
           },
         });
 
