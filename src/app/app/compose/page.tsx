@@ -638,7 +638,33 @@ function AgentRowV3({ p, kind, stage, progress }) {
 
 /* ─────────────────────── package (done) ─────────────────────── */
 
+// The email draft surfaced in the package. Shared so the header CTA and the
+// per-card "Open in Gmail" button open the exact same message.
+function buildEmailDraft({ kind, parsed, drafts, enrichment }) {
+  const emailDraft = Array.isArray(drafts) ? drafts.find((d) => d.channel === 'email') : null;
+
+  if (kind === 'job') {
+    return {
+      to: enrichment?.email || 'anika@stripe.com',
+      subject: emailDraft?.subject || 'the bit about pricing tables in Atlas — a 3 min thought',
+      body: emailDraft?.body
+        || `Anika — caught the Atlas pricing-table redesign and the way you handled the discount-stacking edge case is the cleanest take I've seen on it. I rebuilt onboarding at Razorpay last year and ran into a similar spec-vs-edge tension. I sketched two ways out (3-min watch).\n\nI'm also applying for the Senior PD role open on your team — resume attached. Either way, would love your take.\n\n— Sam`,
+    };
+  }
+
+  const chosen = parsed.chosen;
+  const verifiedEmail = enrichment?.email || `${chosen.firstName.toLowerCase()}@${chosen.companySlug}.com`;
+  return emailDraft
+    ? { to: verifiedEmail, subject: emailDraft.subject || '', body: emailDraft.body }
+    : {
+        to: verifiedEmail,
+        subject: `the bit about ${chosen.angle} — a 3 min thought`,
+        body: `${chosen.firstName} — caught your ${chosen.recent} and the way you handled the ${chosen.detail} is the cleanest take I've seen on it. I ran into a similar tension at Razorpay last year. Sketched two ways out (3-min watch).\n\nI'd love your take. Either way — hope this finds you well between sprints.\n\n— Sam`,
+      };
+}
+
 function PackageV3({ p, kind, parsed, intent, drafts, enrichment, onReset, go }) {
+  const headerEmail = buildEmailDraft({ kind, parsed, drafts, enrichment });
   return (
     <div style={{ marginTop: 18 }}>
       <PaperCard p={p} hardShadow color={p.stamp} style={{ padding: '20px 24px' }}>
@@ -657,7 +683,7 @@ function PackageV3({ p, kind, parsed, intent, drafts, enrichment, onReset, go })
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <InkButton p={p} kind="outline" onClick={onReset}>↺ Another</InkButton>
-            <InkButton p={p} color={p.stamp}>
+            <InkButton p={p} color={p.stamp} onClick={() => openGmailCompose(headerEmail)}>
               <span style={{
                 width: 18, height: 18, background: p.paper, color: p.stamp,
                 display: 'grid', placeItems: 'center', fontFamily: PAPER_FONTS.mono,
@@ -684,16 +710,9 @@ function PersonPackage({ p, parsed, drafts, enrichment, go }) {
   // Real drafts from /api/compose override the prototype's mocked messages.
   const draftByChannel = {};
   if (Array.isArray(drafts)) for (const d of drafts) draftByChannel[d.channel] = d;
-  const verifiedEmail = enrichment?.email || `${chosen.firstName.toLowerCase()}@${chosen.companySlug}.com`;
 
   const messages = {
-    email: draftByChannel.email
-      ? { to: verifiedEmail, subject: draftByChannel.email.subject || '', body: draftByChannel.email.body }
-      : {
-          to: verifiedEmail,
-          subject: `the bit about ${chosen.angle} — a 3 min thought`,
-          body: `${chosen.firstName} — caught your ${chosen.recent} and the way you handled the ${chosen.detail} is the cleanest take I've seen on it. I ran into a similar tension at Razorpay last year. Sketched two ways out (3-min watch).\n\nI'd love your take. Either way — hope this finds you well between sprints.\n\n— Sam`,
-        },
+    email: buildEmailDraft({ kind: 'person', parsed, drafts, enrichment }),
     linkedin: draftByChannel.linkedin
       ? { to: `linkedin.com/in/${chosen.companySlug}-${chosen.firstName.toLowerCase()}`, subject: null, body: draftByChannel.linkedin.body }
       : {
@@ -824,11 +843,8 @@ function JobPackage({ p, parsed, drafts, enrichment, go }) {
   const jobCompany = parsed?.company;
   const atsScore = parsed?.ats_score;
   // Prefer real drafts/enrichment over the prototype's mocked strings.
-  const emailDraft = Array.isArray(drafts) ? drafts.find((d) => d.channel === 'email') : null;
-  const emailTo = enrichment?.email || 'anika@stripe.com';
-  const emailSubject = emailDraft?.subject || 'the bit about pricing tables in Atlas — a 3 min thought';
-  const emailBody = emailDraft?.body
-    || `Anika — caught the Atlas pricing-table redesign and the way you handled the discount-stacking edge case is the cleanest take I've seen on it. I rebuilt onboarding at Razorpay last year and ran into a similar spec-vs-edge tension. I sketched two ways out (3-min watch).\n\nI'm also applying for the Senior PD role open on your team — resume attached. Either way, would love your take.\n\n— Sam`;
+  const { to: emailTo, subject: emailSubject, body: emailBody } =
+    buildEmailDraft({ kind: 'job', parsed, drafts, enrichment });
   return (
     <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr', gap: 12 }}>
       {/* resume */}
