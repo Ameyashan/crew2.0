@@ -248,6 +248,7 @@ function parseTailored(text: string, input: ResumeTailorInput): TailoredResume {
     meta: {
       target_role: raw.meta?.target_role ?? undefined,
       target_company: raw.meta?.target_company ?? undefined,
+      team: raw.meta?.team ?? null,
       job_url: input.job_url,
       page_count: input.page_count,
       model: MODEL,

@@ -30,6 +30,7 @@ export type TailoredResume = {
   meta: {
     target_role?: string;
     target_company?: string;
+    team?: string | null; // team/department/org the role sits in, from the JD
     job_url?: string;
     page_count: 1 | 2;
     model: string;

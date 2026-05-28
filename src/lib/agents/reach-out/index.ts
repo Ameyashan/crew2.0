@@ -61,6 +61,10 @@ export async function* runReachOutStream(
         }
       : {
           ...classify(input.text),
+          // When a candidate was picked (job flow / disambiguation retry), force
+          // the name so research anchors on it and never dead-ends into another
+          // disambiguation prompt — parseResearch falls back to this name.
+          ...(input.picked?.name ? { name: input.picked.name } : {}),
           intent: input.intent,
           intent_image: input.intent_image,
         };
