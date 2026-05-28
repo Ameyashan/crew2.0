@@ -524,7 +524,6 @@ function AgentRowV3({ p, kind, stage, progress }) {
               }}>{a.tag}</span>
             </div>
             <div>
-              <div style={{ fontFamily: PAPER_FONTS.devan, fontSize: 12, color: p.inkSoft, fontWeight: 700 }}>{a.nameHi}</div>
               <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 19, lineHeight: 1.05, color: p.ink }}>{a.nameEn}</div>
             </div>
             <div style={{
