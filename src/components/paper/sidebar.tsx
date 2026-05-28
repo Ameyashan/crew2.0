@@ -1,16 +1,19 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { PAPER_FONTS } from "./fonts";
 import type { Palette } from "./palette";
 
 const APP_NAV = [
-  { id: "compose", label: "Compose", hindi: "लिखो", glyph: "✎" },
-  { id: "today", label: "Today", hindi: "आज", glyph: "◐" },
-  { id: "resume", label: "Resume", hindi: "रेज़्यूमे", glyph: "§" },
-  { id: "people", label: "People", hindi: "लोग", glyph: "◆" },
-  { id: "settings", label: "Settings", hindi: "सेटिंग्स", glyph: "✦" },
+  { id: "compose", label: "Compose", glyph: "✎" },
+  { id: "today", label: "Today", glyph: "◐" },
+  { id: "resume", label: "Resume", glyph: "§" },
+  { id: "people", label: "People", glyph: "◆" },
+  { id: "settings", label: "Settings", glyph: "✦" },
 ] as const;
+
+type WeekStats = { drafted: number; sent: number; replied: number };
 
 const COMING_SOON = [
   { id: "lekhak", label: "Article Publisher", glyph: "✎" },
@@ -23,6 +26,33 @@ export function SidebarV3({ p }: { p: Palette }) {
   const pathname = usePathname();
   const router = useRouter();
   const current = APP_NAV.find((n) => pathname?.startsWith(`/app/${n.id}`))?.id ?? "compose";
+
+  const [name, setName] = useState<string | null>(null);
+  const [stats, setStats] = useState<WeekStats>({ drafted: 0, sent: 0, replied: 0 });
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((j) => {
+        if (!cancelled) setName(j?.profile?.full_name ?? null);
+      })
+      .catch(() => {});
+    fetch("/api/stats/week")
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled || !j) return;
+        setStats({
+          drafted: Number(j.drafted) || 0,
+          sent: Number(j.sent) || 0,
+          replied: Number(j.replied) || 0,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <aside
@@ -114,7 +144,7 @@ export function SidebarV3({ p }: { p: Palette }) {
             textTransform: "uppercase",
           }}
         >
-          SAM · ALPHA
+          {`${name?.toUpperCase() || "GUEST"} · ALPHA`}
         </div>
       </div>
 
@@ -128,7 +158,7 @@ export function SidebarV3({ p }: { p: Palette }) {
               onClick={() => router.push(`/app/${n.id}`)}
               style={{
                 display: "grid",
-                gridTemplateColumns: "28px 1fr auto",
+                gridTemplateColumns: "28px 1fr",
                 alignItems: "center",
                 gap: 10,
                 padding: "9px 10px",
@@ -161,17 +191,6 @@ export function SidebarV3({ p }: { p: Palette }) {
                 }}
               >
                 {n.label}
-              </span>
-              <span
-                style={{
-                  fontFamily: PAPER_FONTS.devan,
-                  fontSize: 11,
-                  color: p.inkMute,
-                  fontWeight: 700,
-                  opacity: active ? 1 : 0.6,
-                }}
-              >
-                {n.hindi}
               </span>
             </button>
           );
@@ -284,7 +303,7 @@ export function SidebarV3({ p }: { p: Palette }) {
                 fontStyle: "normal",
               }}
             >
-              11
+              {stats.drafted}
             </b>{" "}
             messages, sent{" "}
             <b
@@ -294,19 +313,18 @@ export function SidebarV3({ p }: { p: Palette }) {
                 fontStyle: "normal",
               }}
             >
-              8
+              {stats.sent}
             </b>
             .{" "}
-            <span
+            <b
               style={{
                 color: p.stamp,
-                fontFamily: PAPER_FONTS.devan,
+                fontFamily: PAPER_FONTS.display,
                 fontStyle: "normal",
-                fontWeight: 700,
               }}
             >
-              दो
-            </span>{" "}
+              {stats.replied}
+            </b>{" "}
             replied.
           </div>
         </div>

@@ -170,7 +170,6 @@ function TodayV3({ p, go }) {
           { hindi: 'मौके',  label: '2 fresh signals',    sub: 'X · Devon Park, Sophia Singh' },
         ].map((t, i) => (
           <div key={i}>
-            <div style={{ fontFamily: PAPER_FONTS.devan, fontSize: 12, color: p.tea, fontWeight: 700 }}>{t.hindi}</div>
             <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 19, marginTop: 2 }}>{t.label}</div>
             <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute, marginTop: 4, letterSpacing: '.04em' }}>{t.sub}</div>
           </div>

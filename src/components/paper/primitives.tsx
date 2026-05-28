@@ -165,25 +165,11 @@ export function PaperCard({
 
 export function Eyebrow({
   p,
-  hindi,
   en,
   color,
 }: PProp & { hindi?: ReactNode; en: ReactNode; color?: string }) {
   return (
     <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-      {hindi && (
-        <span
-          style={{
-            fontFamily: PAPER_FONTS.devan,
-            fontWeight: 700,
-            fontSize: 12,
-            color: color || p.stamp,
-            letterSpacing: ".02em",
-          }}
-        >
-          {hindi}
-        </span>
-      )}
       <span
         style={{
           fontFamily: PAPER_FONTS.mono,
@@ -295,7 +281,6 @@ export function Marginalia({
 
 export function PaperEmpty({
   p,
-  hindi,
   title,
   sub,
   children,
@@ -309,19 +294,6 @@ export function PaperEmpty({
         background: "transparent",
       }}
     >
-      {hindi && (
-        <div
-          style={{
-            fontFamily: PAPER_FONTS.devan,
-            fontSize: 14,
-            color: p.stamp,
-            fontWeight: 700,
-            marginBottom: 6,
-          }}
-        >
-          {hindi}
-        </div>
-      )}
       <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 26, color: p.ink, lineHeight: 1.1 }}>
         {title}
       </div>
