@@ -275,6 +275,90 @@ export async function identify(input: IdentifyInput): Promise<IdentifyResult> {
   };
 }
 
+// ---------- PARSE JOB META ----------
+// A deliberately tiny, fast call: read a job posting and return only the
+// role / company / team. This exists so the sourcing agent ("Person Khoji")
+// can start in PARALLEL with the much heavier resume tailoring instead of
+// waiting for it — both branches only need these three fields off the posting,
+// not the tailored resume body or ATS scores.
+
+export interface JobMeta {
+  role: string | null;
+  company: string | null;
+  team: string | null;
+}
+
+const PARSE_JOB_META_SYSTEM = `You read a single job posting and extract only three fields. Use the web_search tool to fetch the posting at the given URL.
+
+Identify:
+- "role": the target role/job title exactly as posted (e.g. "Senior Backend Engineer"). null if you can't read it.
+- "company": the hiring company. null if you can't read it.
+- "team": the team/department/org this role sits in (e.g. "Research", "Product", "Platform"). null if the posting doesn't say.
+
+Rules:
+- Do NOT summarize the posting, list skills, or tailor anything. Only these three fields.
+- NEVER fabricate. If the posting can't be fetched (auth wall, 404, login required), return all three as null.
+
+Output strict JSON only, no prose, no markdown fences:
+{ "role": string|null, "company": string|null, "team": string|null }`;
+
+export async function parseJobMeta(job_url: string): Promise<JobMeta> {
+  const started = Date.now();
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 300,
+      system: PARSE_JOB_META_SYSTEM,
+      tools: [
+        {
+          type: "web_search_20250305",
+          name: "web_search",
+          max_uses: 2,
+        } as unknown as Anthropic.Messages.Tool,
+      ],
+      messages: [{ role: "user", content: `# Job URL\n${job_url}` }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") text += block.text;
+    }
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: "compose:parse_job_meta",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { job_url },
+    });
+  }
+
+  let parsed: Partial<JobMeta> = {};
+  try {
+    parsed = JSON.parse(extractJson(text)) as Partial<JobMeta>;
+  } catch {
+    parsed = {};
+  }
+  return {
+    role: parsed.role ?? null,
+    company: parsed.company ?? null,
+    team: parsed.team ?? null,
+  };
+}
+
 // ---------- SOURCE HIRING MANAGERS ----------
 // Job-application variant of identify(): given a role + company (+ optional team),
 // source a shortlist of the people most likely to be the hiring manager or the
