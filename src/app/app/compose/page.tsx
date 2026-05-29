@@ -807,32 +807,14 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
   const atsScoreBefore = parsed?.ats_score_before;
   const resume = parsed?.resume;
 
-  // Real outreach draft + verified email via the shared builder.
+  // Real outreach draft + best-available email via the shared builder.
   const { to: emailTo, subject: emailSubject, body: emailBody } =
     buildEmailDraft({ kind: 'job', parsed, drafts, enrichment });
-  const emailGuesses = Array.isArray(enrichment?.guesses) ? enrichment.guesses : [];
-  const emailConfidence = typeof enrichment?.confidence === 'number' ? enrichment.confidence : 0;
-  // "verified" = a confident, real hit (Apollo-verified, user-provided, or high
-  // confidence). A low-confidence Apollo email is treated as a probable guess.
-  const emailVerified =
-    !!enrichment?.email &&
-    (enrichment.source === 'apollo_verified' ||
-      enrichment.source === 'user_provided' ||
-      emailConfidence >= 0.9);
-  // Likely addresses when there's no verified hit: any email Apollo returned
-  // (low confidence), then the format guesses — de-duped, best first.
-  const probableEmails = (() => {
-    const out = [];
-    const seen = new Set();
-    if (enrichment?.email && !emailVerified) {
-      out.push({ email: enrichment.email, pattern: 'apollo' });
-      seen.add(enrichment.email);
-    }
-    for (const g of emailGuesses) {
-      if (g?.email && !seen.has(g.email)) { out.push(g); seen.add(g.email); }
-    }
-    return out;
-  })();
+  // Discovered/guessed addresses ranked into confidence tiers (high=verified,
+  // medium=plausible, low=pure guess). The first is the primary recipient.
+  const emailCandidates = buildEmailCandidates(enrichment);
+  const emailPrimary = emailCandidates[0] || null;
+  const emailOthers = emailCandidates.slice(1);
 
   const personName = person?.name || null;
   const personRole = person?.role || null;
@@ -1011,12 +993,11 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
             <span style={{ color: emailTo ? p.ink : p.inkMute }}>
               {emailTo || '(no public email found — add it in Gmail)'}
             </span>
-            {emailVerified
-              ? <span style={{ color: p.leaf, marginLeft: 8 }}>· verified</span>
-              : (emailTo && <span style={{ color: p.marigoldDeep, marginLeft: 8 }}>· best guess</span>)}
+            {emailPrimary && <TierBadge p={p} tier={emailPrimary.tier}/>}
           </div>
-          {!emailVerified && probableEmails.length > 0 && (
-            <ProbableEmails p={p} guesses={probableEmails} subject={emailSubject} body={emailBody}/>
+          {emailOthers.length > 0 && (
+            <EmailOptions p={p} candidates={emailOthers} subject={emailSubject} body={emailBody}
+              header="other addresses · click to use"/>
           )}
           {emailSubject && (
             <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, marginTop: 4 }}>
@@ -1078,11 +1059,15 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
               </div>
             )}
             <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
-              {emailVerified
-                ? <KV p={p} k="email" v={enrichment.email} chip="verified" chipColor={p.leaf}/>
-                : (probableEmails.length > 0 && (
-                    <ProbableEmails p={p} guesses={probableEmails} subject={emailSubject} body={emailBody}/>
-                  ))}
+              {emailPrimary && (
+                <KV p={p} k="email" v={emailPrimary.email}
+                  chip={tierMeta(p, emailPrimary.tier).label}
+                  chipColor={tierMeta(p, emailPrimary.tier).color}/>
+              )}
+              {emailOthers.length > 0 && (
+                <EmailOptions p={p} candidates={emailOthers} subject={emailSubject} body={emailBody}
+                  header="other addresses · click to use"/>
+              )}
               {personLinks.linkedin && <KV p={p} k="linkedin" v={personLinks.linkedin.replace(/^https?:\/\//, '')}/>}
               {personLinks.x && <KV p={p} k="x" v={personLinks.x.replace(/^https?:\/\//, '')}/>}
               {personLinks.website && <KV p={p} k="website" v={personLinks.website.replace(/^https?:\/\//, '')}/>}
@@ -1350,28 +1335,92 @@ function AtsBadge({ p, before, after, size = 10.5 }) {
   );
 }
 
-// Surface the likely email addresses (format guesses / low-confidence hits) as
-// clickable chips that open Gmail with that recipient. Shown when we couldn't
-// verify an address. Shared by the cold-email card and the hiring-manager panel.
-function ProbableEmails({ p, guesses, subject, body, max = 5 }) {
-  if (!guesses?.length) return null;
+// Email confidence tiers:
+//  high   = Apollo-verified or user-provided — we believe this mailbox exists.
+//  medium = Apollo matched the person and returned/derived an email but couldn't
+//           verify the mailbox — plausible, tied to a real person match.
+//  low    = pure format guess (pattern × domain), no person match.
+function emailTier(source, confidence) {
+  if (
+    source === 'apollo_verified' ||
+    source === 'user_provided' ||
+    (typeof confidence === 'number' && confidence >= 0.9)
+  ) return 'high';
+  return 'medium';
+}
+
+function tierMeta(p, tier) {
+  if (tier === 'high') return { label: 'verified', color: p.leaf };
+  if (tier === 'medium') return { label: 'plausible', color: p.marigoldDeep };
+  return { label: 'guess', color: p.inkMute };
+}
+
+// Rank discovered/guessed emails into tiers, best first. Any email Apollo
+// returned leads (high or medium); the format guesses follow as low. De-duped.
+function buildEmailCandidates(enrichment) {
+  const out = [];
+  const seen = new Set();
+  if (enrichment?.email) {
+    out.push({
+      email: enrichment.email,
+      tier: emailTier(enrichment.source, enrichment.confidence),
+      pattern: enrichment.source,
+    });
+    seen.add(enrichment.email.toLowerCase());
+  }
+  const guesses = Array.isArray(enrichment?.guesses) ? enrichment.guesses : [];
+  for (const g of guesses) {
+    if (g?.email && !seen.has(g.email.toLowerCase())) {
+      out.push({ email: g.email, tier: 'low', pattern: g.pattern });
+      seen.add(g.email.toLowerCase());
+    }
+  }
+  return out;
+}
+
+// Inline tier tag for the "To" line — "· verified" / "· plausible" / "· guess".
+function TierBadge({ p, tier }) {
+  const tm = tierMeta(p, tier);
+  return <span style={{ color: tm.color, marginLeft: 8 }}>· {tm.label}</span>;
+}
+
+// A list of candidate addresses, each a clickable chip (opens Gmail to it) with
+// its confidence tier. Shared by the cold-email card and the hiring-manager panel.
+function EmailOptions({ p, candidates, subject, body, header }) {
+  if (!candidates?.length) return null;
   return (
     <div style={{ marginTop: 6 }}>
-      <div style={{
-        fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute,
-        letterSpacing: '.04em', marginBottom: 4,
-      }}>probable addresses · unverified — click to use</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-        {guesses.slice(0, max).map((g) => (
-          <button
-            key={g.email}
-            title={`Open Gmail to ${g.email}${g.pattern ? ` (${g.pattern})` : ''}`}
-            onClick={() => openGmailCompose({ to: g.email, subject, body })}
-            style={{
-              padding: '3px 8px', background: p.paper, border: `1px solid ${p.ink}24`,
-              fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.ink, cursor: 'pointer',
-            }}>{g.email}</button>
-        ))}
+      {header && (
+        <div style={{
+          fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute,
+          letterSpacing: '.04em', marginBottom: 4,
+        }}>{header}</div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {candidates.map((c) => {
+          const tm = tierMeta(p, c.tier);
+          return (
+            <button
+              key={c.email}
+              title={`Open Gmail to ${c.email}${c.pattern ? ` (${c.pattern})` : ''}`}
+              onClick={() => openGmailCompose({ to: c.email, subject, body })}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                width: '100%', textAlign: 'left', padding: '4px 8px',
+                background: p.paper, border: `1px solid ${p.ink}24`, cursor: 'pointer',
+              }}>
+              <span style={{
+                fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.ink,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{c.email}</span>
+              <span style={{
+                fontFamily: PAPER_FONTS.mono, fontSize: 9, color: tm.color,
+                background: tm.color + '1f', padding: '2px 6px', letterSpacing: '.06em',
+                whiteSpace: 'nowrap', textTransform: 'uppercase',
+              }}>{tm.label}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
