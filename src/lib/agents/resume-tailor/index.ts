@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "@/lib/claude";
 import { logAgentRun } from "@/lib/agent-runs";
 import { getProfile } from "@/lib/profile";
+import { lintAntiAi, describeViolations, antiAiWritingGuide } from "@/lib/writing/anti-ai";
 import { SYSTEM_PROMPT, buildUserPrompt } from "./prompt";
 import type {
   ResumeTailorInput,
@@ -167,6 +168,15 @@ export async function* runResumeTailorStream(
       return;
     }
 
+    // Enforce the anti-AI writing skill on the generated copy: lint every bullet,
+    // the summary, and the headline, and rewrite only the offending fragments.
+    // Best-effort — a failure here must not block the resume.
+    try {
+      await humanizeResume(parsed);
+    } catch (e) {
+      console.error("[resume-tailor] humanize failed", e);
+    }
+
     yield {
       type: "step",
       id: "research",
@@ -267,4 +277,92 @@ function parseTailored(text: string, input: ResumeTailorInput): TailoredResume {
           : undefined,
     },
   };
+}
+
+// Lint every piece of generated copy on the resume (bullets, summary, headline)
+// and rewrite ONLY the fragments that trip the anti-AI linter, in a single call.
+// Mutates `resume` in place. No-op when the copy is already clean.
+async function humanizeResume(resume: TailoredResume): Promise<void> {
+  // Addressable handles for every rewritable string on the resume.
+  const fields: { text: string; set: (s: string) => void }[] = [];
+  if (resume.summary) fields.push({ text: resume.summary, set: (s) => (resume.summary = s) });
+  if (resume.header.headline) {
+    fields.push({ text: resume.header.headline, set: (s) => (resume.header.headline = s) });
+  }
+  for (const exp of resume.experience) {
+    exp.bullets.forEach((b, i) => fields.push({ text: b, set: (s) => (exp.bullets[i] = s) }));
+  }
+  for (const proj of resume.projects ?? []) {
+    proj.bullets.forEach((b, i) => fields.push({ text: b, set: (s) => (proj.bullets[i] = s) }));
+  }
+
+  // Only the fragments that actually trip the linter get sent for rewrite.
+  const dirty = fields
+    .map((f, i) => ({ i, text: f.text, tells: lintAntiAi(f.text) }))
+    .filter((x) => x.tells.length > 0)
+    .slice(0, 40);
+  if (!dirty.length) return;
+
+  const system = `You are a resume line editor. You will receive resume fragments (bullets, a summary, or a headline) that contain AI-sounding tells. Rewrite each to remove the tells while keeping its EXACT meaning and every fact, number, company, title, skill, and date. Never invent or inflate anything. Keep each fragment about the same length or shorter.
+
+${antiAiWritingGuide("fragments")}
+
+Output strict JSON only, one entry for EVERY fragment you were given, reusing the same "i":
+{ "fields": [ { "i": number, "text": string } ] }`;
+
+  const userPrompt = `# Fragments to fix\n${JSON.stringify(
+    dirty.map((d) => ({ i: d.i, text: d.text, tells: d.tells.map((t) => t.match) })),
+    null,
+    2
+  )}\n\n# Reference: the specific tells caught\n${describeViolations(dirty.flatMap((d) => d.tells))}`;
+
+  const started = Date.now();
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 1500,
+      system,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") text += block.text;
+    }
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: "resume:humanize",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { dirty_fields: dirty.length },
+    });
+  }
+
+  let parsed: { fields?: { i: number; text: string }[] } = {};
+  try {
+    parsed = JSON.parse(extractJson(text));
+  } catch {
+    return; // unparseable rewrite — keep the original copy
+  }
+  for (const f of parsed.fields ?? []) {
+    const target = fields[f.i];
+    const next = (f.text ?? "").trim();
+    // Only accept a rewrite that is non-empty AND actually cleaner than before.
+    if (target && next && lintAntiAi(next).length < lintAntiAi(target.text).length) {
+      target.set(next);
+    }
+  }
 }

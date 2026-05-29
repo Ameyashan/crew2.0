@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { runResumeTailorStream } from "@/lib/agents/resume-tailor";
 import { runReachOutStream } from "@/lib/agents/reach-out";
-import { sourceHiringManagers } from "@/lib/claude";
+import { sourceHiringManagers, parseJobMeta, type JobMeta } from "@/lib/claude";
 import { authWalledJobHost } from "@/lib/job-url";
 import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -57,10 +57,16 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       await runWithUser(userId, async () => {
-      const send = (obj: unknown) =>
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+      const send = (obj: unknown) => {
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+        } catch {
+          // Stream already closed/cancelled (e.g. the client navigated away, or
+          // one parallel branch errored and the client stopped reading). Drop
+          // the event rather than let a late enqueue from the other branch throw.
+        }
+      };
 
-      let tailored: TailoredResume | null = null;
       let resumeGenerationId: string | null = null;
       let personId: string | null = null;
       let draftId: string | null = null;
@@ -121,94 +127,155 @@ export async function POST(req: NextRequest) {
           return;
         }
 
-        // ── Step 1: tailor the resume to this job
-        send({ type: "step", id: "resume", status: "start" });
-        for await (const evt of runResumeTailorStream({ job_url, page_count: 2 })) {
-          if (evt.type === "step" && evt.id === "tailor" && evt.status === "done") {
-            tailored = evt.data.resume;
-          }
-          if (evt.type === "saved") resumeGenerationId = evt.id;
-          if (evt.type === "error") {
-            send({ type: "step", id: "resume", status: "error", message: evt.message });
-            send({ type: "error", message: evt.message });
-            return;
-          }
-          // Pass progress through so the UI can render byte counts if we ever
-          // want to surface them.
-          if (evt.type === "progress") send({ type: "progress", id: "resume", chars: evt.chars, bullets: evt.bullets });
-        }
-        send({
-          type: "step",
-          id: "resume",
-          status: "done",
-          data: {
-            resume_generation_id: resumeGenerationId,
-            target_role: tailored?.meta?.target_role,
-            target_company: tailored?.meta?.target_company,
-            team: tailored?.meta?.team ?? null,
-            ats_score: tailored?.meta?.ats_score,
-            ats_score_before: tailored?.meta?.ats_score_before,
-            resume: tailored,
-          },
+        // ── Run the resume tailor and the people pipeline CONCURRENTLY.
+        // Person Khoji (+ Email Wallah + Outreach Bhai) only needs the job's
+        // role/company/team, which we read straight off the posting with a fast
+        // parseJobMeta call — so it no longer waits for the much slower resume
+        // tailoring. The resume's own meta is exposed via resumeMetaReady as a
+        // fallback, preserving the old behavior when parseJobMeta flakes.
+        let settleResumeMeta!: (m: JobMeta | null) => void;
+        let resumeMetaSettled = false;
+        const resumeMetaReady = new Promise<JobMeta | null>((resolve) => {
+          settleResumeMeta = (m) => {
+            if (resumeMetaSettled) return;
+            resumeMetaSettled = true;
+            resolve(m);
+          };
         });
 
-        if (!tailored?.meta?.target_company) {
-          send({
-            type: "error",
-            message:
-              "Couldn't pull a company off the job posting. Try a more direct posting URL.",
-          });
-          return;
-        }
-
-        // ── Steps 2-4: source the hiring manager, then email + outreach draft.
-        const role = tailored.meta.target_role ?? null;
-        const company = tailored.meta.target_company;
-        const team = tailored.meta.team ?? null;
-        const composeIntent =
-          intent || [role, company].filter(Boolean).join(" at ");
-
-        // Step 2: source a ranked shortlist of likely hiring managers by
-        // searching "[team] [role] [company]" (the way a candidate would).
-        send({ type: "step", id: "person", status: "start" });
-        let candidates: Awaited<ReturnType<typeof sourceHiringManagers>>["candidates"] = [];
-        try {
-          const sourced = await sourceHiringManagers({ role, company, team });
-          candidates = sourced.candidates ?? [];
-        } catch (e) {
-          console.error("[apply] sourceHiringManagers failed", e);
-        }
-        send({ type: "candidates", data: candidates });
-
-        const top = candidates[0] ?? null;
-        if (!top) {
-          // Honest dead-end: name the query we ran so the user knows what to fix.
-          const query = [team, role, company].filter(Boolean).join(" ");
+        // ── Branch A: tailor the resume (the long pole). Returns the tailored
+        // resume so the outer scope can record it — assignments inside this
+        // closure aren't visible to the outer flow analysis.
+        const resumeTask = async (): Promise<TailoredResume | null> => {
+          send({ type: "step", id: "resume", status: "start" });
+          let resume: TailoredResume | null = null;
+          try {
+            for await (const evt of runResumeTailorStream({ job_url, page_count: 2 })) {
+              if (evt.type === "step" && evt.id === "tailor" && evt.status === "done") {
+                resume = evt.data.resume;
+              }
+              if (evt.type === "saved") resumeGenerationId = evt.id;
+              if (evt.type === "error") {
+                send({ type: "step", id: "resume", status: "error", message: evt.message });
+                send({ type: "error", message: evt.message });
+                return null;
+              }
+              // Pass progress through so the UI can render byte counts if we ever
+              // want to surface them.
+              if (evt.type === "progress") send({ type: "progress", id: "resume", chars: evt.chars, bullets: evt.bullets });
+            }
+          } finally {
+            // Hand the resume's own metadata to the people branch as a fallback,
+            // and never leave it awaiting a resolution that won't arrive.
+            settleResumeMeta(
+              resume?.meta
+                ? {
+                    role: resume.meta.target_role ?? null,
+                    company: resume.meta.target_company ?? null,
+                    team: resume.meta.team ?? null,
+                  }
+                : null
+            );
+          }
           send({
             type: "step",
-            id: "person",
+            id: "resume",
             status: "done",
-            data: { name: null, role, company, searched: query, candidates: [] },
-          });
-          send({ type: "step", id: "email", status: "done", data: { email: null, guesses: [] } });
-          send({ type: "step", id: "outreach", status: "done", channel: "email", data: null });
-        } else {
-          // Step 3-4: anchor the proven downstream pipeline on the chosen person.
-          await pipeReachOut({
-            text: top.name,
-            intent: composeIntent || undefined,
-            picked: {
-              name: top.name,
-              role: top.role ?? null,
-              company: top.company ?? null,
-              linkedin: top.linkedin ?? null,
+            data: {
+              resume_generation_id: resumeGenerationId,
+              target_role: resume?.meta?.target_role,
+              target_company: resume?.meta?.target_company,
+              team: resume?.meta?.team ?? null,
+              ats_score: resume?.meta?.ats_score,
+              ats_score_before: resume?.meta?.ats_score_before,
+              resume,
             },
-            // Anchor the cold email on the JOB's role/company (not the intent),
-            // so the subject/body never drift to a company the user only
-            // mentioned in passing.
-            job_context: { role, company },
           });
-        }
+          return resume;
+        };
+
+        // ── Branch B: Person Khoji → Email Wallah → Outreach Bhai.
+        const peopleTask = async () => {
+          // Light Agent 2 up immediately so the parallelism is visible, instead
+          // of sitting "queued…" until the resume finishes.
+          send({ type: "step", id: "person", status: "start" });
+
+          // Fast path: pull role/company/team straight off the posting. Fall
+          // back to the resume's own meta only if this flakes.
+          let meta = await parseJobMeta(job_url).catch((e) => {
+            console.error("[apply] parseJobMeta failed", e);
+            return null as JobMeta | null;
+          });
+          if (!meta?.company) meta = await resumeMetaReady;
+
+          const role = meta?.role ?? null;
+          const company = meta?.company ?? null;
+          const team = meta?.team ?? null;
+
+          if (!company) {
+            // No company from either source — honest dead-end for the people
+            // steps (the resume branch reports its own status separately).
+            send({
+              type: "step",
+              id: "person",
+              status: "done",
+              data: { name: null, role, company: null, searched: null, candidates: [] },
+            });
+            send({ type: "step", id: "email", status: "done", data: { email: null, guesses: [] } });
+            send({ type: "step", id: "outreach", status: "done", channel: "email", data: null });
+            return;
+          }
+
+          const composeIntent = intent || [role, company].filter(Boolean).join(" at ");
+
+          // Source a ranked shortlist of likely hiring managers by searching
+          // "[team] [role] [company]" (the way a candidate would).
+          let candidates: Awaited<ReturnType<typeof sourceHiringManagers>>["candidates"] = [];
+          try {
+            const sourced = await sourceHiringManagers({ role, company, team });
+            candidates = sourced.candidates ?? [];
+          } catch (e) {
+            console.error("[apply] sourceHiringManagers failed", e);
+          }
+          send({ type: "candidates", data: candidates });
+
+          const top = candidates[0] ?? null;
+          if (!top) {
+            // Honest dead-end: name the query we ran so the user knows what to fix.
+            const query = [team, role, company].filter(Boolean).join(" ");
+            send({
+              type: "step",
+              id: "person",
+              status: "done",
+              data: { name: null, role, company, searched: query, candidates: [] },
+            });
+            send({ type: "step", id: "email", status: "done", data: { email: null, guesses: [] } });
+            send({ type: "step", id: "outreach", status: "done", channel: "email", data: null });
+          } else {
+            // Anchor the proven downstream pipeline on the chosen person.
+            await pipeReachOut({
+              text: top.name,
+              intent: composeIntent || undefined,
+              picked: {
+                name: top.name,
+                role: top.role ?? null,
+                company: top.company ?? null,
+                linkedin: top.linkedin ?? null,
+              },
+              // Anchor the cold email on the JOB's role/company (not the intent),
+              // so the subject/body never drift to a company the user only
+              // mentioned in passing.
+              job_context: { role, company },
+            });
+          }
+        };
+
+        // Wait for BOTH branches before recording/closing. allSettled (not all)
+        // so a thrown error in one branch can't leave the other enqueuing onto a
+        // closed stream — each branch already surfaces its own errors via send().
+        const [resumeSettled] = await Promise.allSettled([resumeTask(), peopleTask()]);
+        const tailored: TailoredResume | null =
+          resumeSettled.status === "fulfilled" ? resumeSettled.value : null;
 
         // Record the bundle. Soft FKs — failure to insert is non-fatal so the
         // client still sees the drafts in the SSE stream.

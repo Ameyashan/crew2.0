@@ -1,6 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { logAgentRun } from "@/lib/agent-runs";
 import { loadVoiceSamples, type VoiceSample } from "@/lib/voice";
+import {
+  antiAiWritingGuide,
+  lintAntiAi,
+  describeViolations,
+  type AntiAiViolation,
+} from "@/lib/writing/anti-ai";
 
 const MODEL = "claude-sonnet-4-6";
 
@@ -275,6 +281,90 @@ export async function identify(input: IdentifyInput): Promise<IdentifyResult> {
   };
 }
 
+// ---------- PARSE JOB META ----------
+// A deliberately tiny, fast call: read a job posting and return only the
+// role / company / team. This exists so the sourcing agent ("Person Khoji")
+// can start in PARALLEL with the much heavier resume tailoring instead of
+// waiting for it — both branches only need these three fields off the posting,
+// not the tailored resume body or ATS scores.
+
+export interface JobMeta {
+  role: string | null;
+  company: string | null;
+  team: string | null;
+}
+
+const PARSE_JOB_META_SYSTEM = `You read a single job posting and extract only three fields. Use the web_search tool to fetch the posting at the given URL.
+
+Identify:
+- "role": the target role/job title exactly as posted (e.g. "Senior Backend Engineer"). null if you can't read it.
+- "company": the hiring company. null if you can't read it.
+- "team": the team/department/org this role sits in (e.g. "Research", "Product", "Platform"). null if the posting doesn't say.
+
+Rules:
+- Do NOT summarize the posting, list skills, or tailor anything. Only these three fields.
+- NEVER fabricate. If the posting can't be fetched (auth wall, 404, login required), return all three as null.
+
+Output strict JSON only, no prose, no markdown fences:
+{ "role": string|null, "company": string|null, "team": string|null }`;
+
+export async function parseJobMeta(job_url: string): Promise<JobMeta> {
+  const started = Date.now();
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 300,
+      system: PARSE_JOB_META_SYSTEM,
+      tools: [
+        {
+          type: "web_search_20250305",
+          name: "web_search",
+          max_uses: 2,
+        } as unknown as Anthropic.Messages.Tool,
+      ],
+      messages: [{ role: "user", content: `# Job URL\n${job_url}` }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") text += block.text;
+    }
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: "compose:parse_job_meta",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { job_url },
+    });
+  }
+
+  let parsed: Partial<JobMeta> = {};
+  try {
+    parsed = JSON.parse(extractJson(text)) as Partial<JobMeta>;
+  } catch {
+    parsed = {};
+  }
+  return {
+    role: parsed.role ?? null,
+    company: parsed.company ?? null,
+    team: parsed.team ?? null,
+  };
+}
+
 // ---------- SOURCE HIRING MANAGERS ----------
 // Job-application variant of identify(): given a role + company (+ optional team),
 // source a shortlist of the people most likely to be the hiring manager or the
@@ -407,25 +497,6 @@ export interface DraftResult {
   model: string;
 }
 
-const ANTI_PATTERNS = [
-  "Hope this finds you well",
-  "I hope you are doing well",
-  "I came across your work",
-  "I came across your profile",
-  "I'd love to learn more",
-  "I would love to learn more",
-  "I wanted to reach out",
-  "I am reaching out",
-  "your fascinating work",
-  "your incredible work",
-  "delve",
-  "leverage",
-  "synergy",
-  "circle back",
-  "Looking forward to hearing back",
-  "Looking forward to your response",
-];
-
 const LENGTH_BUDGETS: Record<Channel, string> = {
   email: "80–120 words. Subject line under 6 words, lowercase, specific.",
   x_dm: "40–60 words. No subject. No greeting. Get to the point in sentence one.",
@@ -444,27 +515,19 @@ SUBJECT LINE (cold email — the subject decides whether it gets opened):
 - No spam/clickbait words: "opportunity", "quick question", "urgent", "free", "amazing", "exciting".
 - The subject must be about the company/role this email is actually for — never a different company.`
       : "";
-  return `You write outreach messages in the user's voice. The user is a thoughtful operator who hates AI-sounding email. Treat that as a hard constraint, not a preference.
+  return `You write outreach messages in the user's voice. The user is a thoughtful operator who hates AI-sounding email.
 
 Channel: ${channel}.
 Length: ${LENGTH_BUDGETS[channel]}
 
-Forbidden phrases (do not use these or variations):
-${ANTI_PATTERNS.map((p) => `- ${p}`).join("\n")}
+${antiAiWritingGuide("prose")}
 
-Forbidden patterns:
-- Em-dashes used as a connector (—). Use periods or commas.
-- Three-part sentence rhythms ("X, Y, and Z" used three times in one message).
-- Multi-question closers. Pick exactly one ask.
-- Closers like "Best,", "Regards,", "Cheers," — match the user's voice samples instead. ${signOffName ? `Default sign-off: "${signOffName.split(/\s+/)[0]}" on a new line.` : "If no samples, sign off with first name only on a new line."}
-- Adjectives that flatter the recipient.
-
-Required:
+Outreach specifics:
 - Reference exactly ONE specific thing the recipient did, said, or shipped (from the research). Name the thing.
-- If the research has no specific facts, prefer a short message that ties the user's own background or intent to the recipient's company/role, rather than fabricating a reference. Honest > fluffy.
-- One concrete ask, single question.
-- Plain words. No jargon. No metaphors that did not exist 200 years ago.
-- Match the user's sentence length and rhythm from the voice samples if any are provided.
+- If the research has no specific facts, tie the user's own background or intent to the recipient's company/role rather than fabricating a reference. Honest > fluffy.
+- One concrete ask. A single question, not several.
+- No adjectives that flatter the recipient.
+- Closers: match the user's voice samples. ${signOffName ? `Default sign-off: "${signOffName.split(/\s+/)[0]}" on a new line.` : "If no samples, sign off with first name only on a new line."} Do not use "Best,", "Regards,", or "Cheers,".
 - Do NOT respond with meta-commentary like "I need more context" — write the best message you can with what you have.
 ${subjectRules}
 
@@ -474,6 +537,84 @@ ${
     ? '{ "subject": string, "body": string }'
     : '{ "body": string }'
 }`;
+}
+
+// Post-generation enforcement: when the deterministic linter catches AI tells
+// the model let slip, do ONE rewrite pass that fixes exactly those tells while
+// preserving meaning, facts, voice, and length. Best-effort — on any failure we
+// keep the original draft.
+async function humanizeDraft(opts: {
+  channel: Channel;
+  subject: string | null;
+  body: string;
+  violations: AntiAiViolation[];
+  signOffName?: string;
+}): Promise<{ subject: string | null; body: string }> {
+  const started = Date.now();
+  const system = `You are an editor. Rewrite the message below to remove AI-sounding tells while keeping its meaning, every fact, the sender's voice, and roughly the same length (never longer). Do not add new claims. Preserve proper nouns and names exactly, even if a name happens to contain a flagged word.
+
+${antiAiWritingGuide("prose")}
+
+Output strict JSON only:
+${opts.channel === "email" ? '{ "subject": string, "body": string }' : '{ "body": string }'}`;
+
+  const userPrompt = [
+    `# Tells to fix (each MUST be gone in your rewrite)`,
+    describeViolations(opts.violations),
+    opts.channel === "email" && opts.subject ? `\n# Current subject\n${opts.subject}` : "",
+    `\n# Current body\n${opts.body}`,
+    opts.signOffName ? `\n# Sign-off name\n${opts.signOffName.split(/\s+/)[0]}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 600,
+      system,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") text += block.text;
+    }
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: `reach_out:humanize:${opts.channel}`,
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { tells: opts.violations.map((v) => v.match) },
+    });
+  }
+
+  let parsed: { subject?: string; body?: string } = {};
+  try {
+    parsed = JSON.parse(extractJson(text));
+  } catch {
+    parsed = { body: text.trim() };
+  }
+  const body = (parsed.body ?? "").trim();
+  // If the rewrite came back empty, keep the original rather than ship nothing.
+  if (!body) return { subject: opts.subject, body: opts.body };
+  return {
+    subject: opts.channel === "email" ? parsed.subject ?? opts.subject : opts.subject,
+    body,
+  };
 }
 
 export async function draft(input: DraftInput): Promise<DraftResult> {
@@ -584,9 +725,33 @@ export async function draft(input: DraftInput): Promise<DraftResult> {
   } catch {
     parsed = { body: text.trim() };
   }
-  return {
-    subject: parsed.subject ?? null,
-    body: (parsed.body ?? "").trim(),
-    model: MODEL,
-  };
+  let subject = parsed.subject ?? null;
+  let body = (parsed.body ?? "").trim();
+
+  // Enforce the anti-AI writing skill: lint the output and, if any tells slipped
+  // through the prompt rules, do one rewrite pass to scrub them.
+  const violations = lintAntiAi([subject, body].filter(Boolean).join("\n"));
+  if (violations.length) {
+    try {
+      const fixed = await humanizeDraft({
+        channel: input.channel,
+        subject,
+        body,
+        violations,
+        signOffName: input.sender_full_name,
+      });
+      // Keep the rewrite only if it's actually cleaner — a single pass must
+      // never make the draft worse.
+      const before = violations.length;
+      const after = lintAntiAi([fixed.subject, fixed.body].filter(Boolean).join("\n")).length;
+      if (after < before) {
+        subject = fixed.subject;
+        body = fixed.body;
+      }
+    } catch (e) {
+      console.error("[draft] humanize rewrite failed", e);
+    }
+  }
+
+  return { subject, body, model: MODEL };
 }
