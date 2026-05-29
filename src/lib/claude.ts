@@ -275,6 +275,115 @@ export async function identify(input: IdentifyInput): Promise<IdentifyResult> {
   };
 }
 
+// ---------- SOURCE HIRING MANAGERS ----------
+// Job-application variant of identify(): given a role + company (+ optional team),
+// source a shortlist of the people most likely to be the hiring manager or the
+// right person to reach out to. Mirrors how a candidate searches LinkedIn by
+// "[team] [role] [company]". Reuses the IdentifyCandidate/IdentifyResult shape.
+
+export interface SourceHiringManagersInput {
+  role?: string | null;
+  company: string;
+  team?: string | null;
+  location?: string | null;
+}
+
+const SOURCE_HM_SYSTEM = `You are a sourcing researcher. Given a job's role, company, and (optionally) the team it sits in, return a SHORT ranked list of the real people most likely to be the HIRING MANAGER for that role — or, failing that, the most relevant person to cold-email about it. The user will pick one before we draft outreach.
+
+Search strategy (this is how a candidate would do it by hand):
+1. Primary query: "[team] [role] [company]" — e.g. "Research Product Manager Thinking Machines Lab". Also run it as "site:linkedin.com/in [team] [role] [company]".
+2. The hiring manager usually MANAGES this role, so also search for the team's leader: "[company] head of [team]", "[company] [team] lead/director/VP", and "site:linkedin.com/in [company] [team] manager".
+3. If no team is given, fall back to "[role] [company]" and "[company] hiring manager [role]".
+4. Check the company's team/about/leadership pages when LinkedIn is thin.
+
+Ranking:
+- Rank by likelihood of being the person who hires/manages this role (team leads, EMs, directors, founders at small companies) first, then close-adjacent senior people on the same team.
+- Prefer people whose current company clearly matches the company named below.
+
+Rules:
+- NEVER fabricate. Only return people you actually found evidence for. If you find nobody plausible, return an empty list.
+- Fill role, company, location, and the linkedin URL whenever you can find them.
+- "why" is one short line tying them to this role/team ("Head of Research at Thinking Machines — likely manager for this PM role"). Keep it factual.
+
+Output strict JSON only, no prose:
+{
+  "candidates": [
+    { "name": string, "role": string|null, "company": string|null, "location": string|null, "linkedin": string|null, "why": string|null }
+  ]
+}`;
+
+export async function sourceHiringManagers(
+  input: SourceHiringManagersInput
+): Promise<IdentifyResult> {
+  const started = Date.now();
+  const teamRolePhrase = [input.team, input.role].filter(Boolean).join(" ");
+  const userPrompt = [
+    `Company: ${input.company}`,
+    input.role && `Role: ${input.role}`,
+    input.team
+      ? `Team / org: ${input.team}`
+      : `Team / org: (not stated in the posting — fall back to "[role] [company]")`,
+    input.location && `Location: ${input.location}`,
+    `Primary search to run first: "${[teamRolePhrase, input.company].filter(Boolean).join(" ")}"`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 1400,
+      system: SOURCE_HM_SYSTEM,
+      tools: [
+        {
+          type: "web_search_20250305",
+          name: "web_search",
+          max_uses: 5,
+        } as unknown as Anthropic.Messages.Tool,
+      ],
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") text += block.text;
+    }
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: "reach_out:source_hm",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { company: input.company, role: input.role, team: input.team },
+    });
+  }
+
+  const json = extractJson(text);
+  let parsed: { candidates?: IdentifyCandidate[] } = {};
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    parsed = {};
+  }
+  return {
+    candidates: Array.isArray(parsed.candidates) ? parsed.candidates.slice(0, 5) : [],
+    raw: text,
+  };
+}
+
 // ---------- DRAFT ----------
 
 export interface DraftInput {

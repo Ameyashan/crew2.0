@@ -19,6 +19,7 @@ import {
   dismissRun,
   clearAllRuns,
   retryRun,
+  pickCandidate,
   jobHost,
 } from "@/lib/runs-store";
 
@@ -118,7 +119,7 @@ function RunCard({ p, run, go }) {
       {/* done → the finished package */}
       {run.stage === 'done' && (
         <PackageV3 p={p} kind={run.kind} parsed={run.parsed} intent={run.intent}
-          drafts={run.drafts} enrichment={run.enrichment} person={run.person}
+          drafts={run.drafts} enrichment={run.enrichment} person={run.person} run={run}
           onReset={() => dismissRun(run.id)} go={go}/>
       )}
 
@@ -556,10 +557,13 @@ function buildEmailDraft({ kind, parsed, drafts, enrichment }) {
   const emailDraft = Array.isArray(drafts) ? drafts.find((d) => d.channel === 'email') : null;
 
   if (kind === 'job') {
-    // Real outreach draft + verified email only — honest blanks when an agent
-    // returned nothing, never fabricated sample copy.
+    // Real outreach draft + email. Prefer a verified address; fall back to the
+    // top format-guess so "To" is never empty and Gmail can open. Honest blanks
+    // only when nothing at all was found — never fabricated sample copy.
+    const guess = Array.isArray(enrichment?.guesses) && enrichment.guesses.length
+      ? enrichment.guesses[0].email : '';
     return {
-      to: enrichment?.email || '',
+      to: enrichment?.email || guess || '',
       subject: emailDraft?.subject || '',
       body: emailDraft?.body || '',
     };
@@ -576,7 +580,7 @@ function buildEmailDraft({ kind, parsed, drafts, enrichment }) {
       };
 }
 
-function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, onReset, go }) {
+function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, run, onReset, go }) {
   const headerEmail = buildEmailDraft({ kind, parsed, drafts, enrichment });
   return (
     <div style={{ marginTop: 18 }}>
@@ -610,7 +614,7 @@ function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, onRese
 
       {kind === 'person'
         ? <PersonPackage p={p} parsed={parsed} drafts={drafts} enrichment={enrichment} go={go}/>
-        : <JobPackage    p={p} parsed={parsed} drafts={drafts} enrichment={enrichment} person={person} go={go}/>
+        : <JobPackage    p={p} parsed={parsed} drafts={drafts} enrichment={enrichment} person={person} run={run} go={go}/>
       }
     </div>
   );
@@ -749,7 +753,8 @@ function PersonPackage({ p, parsed, drafts, enrichment, go }) {
   );
 }
 
-function JobPackage({ p, parsed, drafts, enrichment, person, go }) {
+function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
+  const [picking, setPicking] = useState(false);
   // Everything here is real data produced by the crew for the job URL the user
   // pasted: the tailor agent's resume, the research agent's hiring manager, the
   // email lookup, and the outreach draft. Fall back to honest placeholders only
@@ -775,6 +780,8 @@ function JobPackage({ p, parsed, drafts, enrichment, person, go }) {
     ? `${Math.round(enrichment.confidence * 100)}%`
     : null;
   const matchLabel = person?.match_confidence ? `${person.match_confidence} match` : null;
+  const candidates = Array.isArray(run?.candidates) ? run.candidates : [];
+  const searched = person?.searched || null;
 
   return (
     <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr', gap: 12 }}>
@@ -842,7 +849,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, go }) {
           <div style={{
             position: 'absolute', right: 8, bottom: 6,
             fontFamily: PAPER_FONTS.mono, fontSize: 7, color: p.inkMute,
-          }}>PDF · 1 of 1</div>
+          }}>PDF · 1 of {resume?.meta?.page_count || 1}</div>
         </div>
         <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
           <InkButton p={p} kind="outline" size="sm" style={{ flex: 1 }}>↓ PDF</InkButton>
@@ -934,7 +941,52 @@ function JobPackage({ p, parsed, drafts, enrichment, person, go }) {
             fontSize: 13, color: p.inkMute,
           }}>
             The crew couldn&apos;t pin down a specific hiring manager for this role.
-            The email is drafted to the best contact found.
+            {searched && <> Searched <span style={{ fontStyle: 'normal', color: p.ink }}>&ldquo;{searched}&rdquo;</span>.</>}
+            {' '}Try pasting the team name in the intent box, or a LinkedIn profile.
+          </div>
+        )}
+
+        {/* shortlist → re-pick the contact the cold email is drafted to */}
+        {candidates.length > (personName ? 1 : 0) && (
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1.5px dashed ${p.ink}24` }}>
+            <button onClick={() => setPicking(!picking)} style={{
+              background: 'transparent', border: 'none', color: p.inkSoft, padding: 0,
+              fontFamily: PAPER_FONTS.mono, fontSize: 11, letterSpacing: '.06em',
+              textTransform: 'uppercase', cursor: 'pointer',
+            }}>{picking ? '× close' : `↓ other matches (${candidates.length})`}</button>
+            {picking && (
+              <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {candidates.map((c, i) => {
+                  const isCurrent = !!personName && c.name === personName;
+                  return (
+                    <button
+                      key={c.name || i}
+                      disabled={isCurrent}
+                      onClick={() => { if (!isCurrent) { pickCandidate(run.id, c); setPicking(false); } }}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left',
+                        padding: '10px 12px', background: p.paper,
+                        border: `1.5px solid ${p.ink}${isCurrent ? '12' : '24'}`,
+                        cursor: isCurrent ? 'default' : 'pointer', opacity: isCurrent ? 0.6 : 1,
+                      }}>
+                      <div style={{ fontFamily: PAPER_FONTS.sans, fontSize: 13.5, color: p.ink }}>
+                        {c.name}{isCurrent ? ' · current' : ''}
+                      </div>
+                      {(c.role || c.company) && (
+                        <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute, letterSpacing: '.02em' }}>
+                          {[c.role, c.company].filter(Boolean).join(' · ')}
+                        </div>
+                      )}
+                      {c.why && (
+                        <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 11.5, color: p.inkSoft, marginTop: 2 }}>
+                          {c.why}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </PaperCard>

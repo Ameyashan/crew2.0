@@ -145,6 +145,99 @@ export function updateRun(id: string, partial: Partial<Run>) {
   patch(id, () => partial);
 }
 
+// Re-pick a different hiring-manager candidate on a finished job run. Re-runs
+// only the email + draft for that person (server skips resume + sourcing) and
+// patches the email/person/draft in place — the package card stays visible.
+export async function pickCandidate(
+  id: string,
+  candidate: { name?: string; role?: string | null; company?: string | null; linkedin?: string | null },
+) {
+  const run = runs.find((r) => r.id === id);
+  if (!run || run.kind !== "job") return;
+  const picked = {
+    name: candidate?.name,
+    role: candidate?.role ?? null,
+    company: candidate?.company ?? null,
+    linkedin: candidate?.linkedin ?? null,
+  };
+  if (!picked.name) return;
+
+  const jobUrl = run.input.match(/^https?:\/\//) ? run.input : `https://${run.input}`;
+
+  // Reflect the click immediately, then light the email/outreach bars.
+  patch(id, (r) => ({
+    person: {
+      ...((r.person as object) || {}),
+      name: picked.name,
+      role: picked.role,
+      company: picked.company,
+      links: picked.linkedin ? { linkedin: picked.linkedin } : (r.person?.links || {}),
+      context_lines: [],
+    },
+    progress: { ...r.progress, person: 100, email: 10, outreach: 10 },
+  }));
+
+  controllers.get(id)?.abort();
+  const controller = new AbortController();
+  controllers.set(id, controller);
+  try {
+    const res = await fetch("/api/compose/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "text/event-stream" },
+      body: JSON.stringify({ job_url: jobUrl, picked, intent: run.intent || undefined }),
+      signal: controller.signal,
+    });
+    if (!res.ok || !res.body) throw new Error(`pick failed: ${res.status}`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    const collectedDrafts: unknown[] = [];
+    let collectedEnrichment: unknown = null;
+    let collectedPerson: unknown = null;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split("\n\n");
+      buf = parts.pop() || "";
+      for (const raw of parts) {
+        const line = raw.split("\n").find((l) => l.startsWith("data: "));
+        if (!line) continue;
+        let evt;
+        try {
+          evt = JSON.parse(line.slice(6));
+        } catch {
+          continue;
+        }
+        if (evt.type === "step") {
+          const k = evt.id;
+          if (evt.status === "start") patch(id, (r) => ({ progress: { ...r.progress, [k]: 10 } }));
+          else if (evt.status === "done" || evt.status === "skipped")
+            patch(id, (r) => ({ progress: { ...r.progress, [k]: 100 } }));
+          if (k === "person" && evt.status === "done" && evt.data) collectedPerson = evt.data;
+          if (k === "email" && evt.data) collectedEnrichment = evt.data;
+          if (k === "outreach" && evt.status === "done" && evt.data) collectedDrafts.push(evt.data);
+        } else if (evt.type === "error") {
+          throw new Error(evt.message || "pick error");
+        }
+      }
+    }
+    patch(id, (r) => ({
+      drafts: collectedDrafts.length ? collectedDrafts : r.drafts,
+      enrichment: collectedEnrichment || r.enrichment,
+      person: collectedPerson || r.person,
+      progress: { ...r.progress, person: 100, email: 100, outreach: 100 },
+    }));
+  } catch (e) {
+    if (controller.signal.aborted) return; // dismissed/cleared
+    // Keep the existing package; just restore the bars and log.
+    patch(id, (r) => ({ progress: { ...r.progress, email: 100, outreach: 100 } }));
+    console.error("[pickCandidate]", e);
+  } finally {
+    controllers.delete(id);
+  }
+}
+
 /* ─────────────────────── streaming ─────────────────────── */
 
 function launch(id: string, picked?: unknown) {
@@ -164,7 +257,8 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
       const collectedDrafts: unknown[] = [];
       let collectedEnrichment: unknown = null;
       let collectedPerson: unknown = null;
-      let bundle = { ats_score: null, target_role: null, target_company: null, resume: null };
+      let collectedCandidates: unknown[] | null = null;
+      let bundle = { ats_score: null, target_role: null, target_company: null, team: null, resume: null };
       const jobUrl = run.input.match(/^https?:\/\//)
         ? run.input
         : `https://${run.input}`;
@@ -207,6 +301,9 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
             if (k === "outreach" && evt.status === "done" && evt.data) {
               collectedDrafts.push(evt.data);
             }
+          } else if (evt.type === "candidates") {
+            collectedCandidates = Array.isArray(evt.data) ? evt.data : [];
+            patch(id, () => ({ candidates: collectedCandidates }));
           } else if (evt.type === "error") {
             throw new Error(evt.message || "apply error");
           }
@@ -216,6 +313,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
         drafts: collectedDrafts.length ? collectedDrafts : r.drafts,
         enrichment: collectedEnrichment || r.enrichment,
         person: collectedPerson || r.person,
+        candidates: collectedCandidates ?? r.candidates,
         // Map the API's target_role/target_company onto the card's role/company
         // so a successful parse replaces the preview.
         parsed: {
@@ -224,6 +322,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           unparsed: false,
           role: bundle.target_role || r.parsed?.role,
           company: bundle.target_company || r.parsed?.company,
+          team: bundle.team ?? r.parsed?.team,
           ats_score: bundle.ats_score ?? r.parsed?.ats_score,
           resume: bundle.resume ?? r.parsed?.resume,
         },

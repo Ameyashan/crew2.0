@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { runResumeTailorStream } from "@/lib/agents/resume-tailor";
 import { runReachOutStream } from "@/lib/agents/reach-out";
+import { sourceHiringManagers } from "@/lib/claude";
 import { authWalledJobHost } from "@/lib/job-url";
 import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -24,6 +25,17 @@ export async function POST(req: NextRequest) {
   const job_url = (body?.job_url ?? "").toString().trim();
   const intent = body?.intent ? body.intent.toString() : undefined;
 
+  // Re-pick: when the user clicks a different candidate in the UI, we re-run
+  // only the email + draft for that person (no resume, no sourcing).
+  const picked = body?.picked
+    ? {
+        name: (body.picked.name ?? "").toString(),
+        role: body.picked.role ? body.picked.role.toString() : null,
+        company: body.picked.company ? body.picked.company.toString() : null,
+        linkedin: body.picked.linkedin ? body.picked.linkedin.toString() : null,
+      }
+    : null;
+
   if (!job_url) {
     return Response.json({ error: "job_url is required" }, { status: 400 });
   }
@@ -43,7 +55,43 @@ export async function POST(req: NextRequest) {
       let personId: string | null = null;
       let draftId: string | null = null;
 
+      // Consume the reach-out agent (research → email → save → draft) for a
+      // single person and remap its step ids onto the four-bar job UI.
+      const pipeReachOut = async (reachInput: Parameters<typeof runReachOutStream>[0]) => {
+        for await (const evt of runReachOutStream(reachInput)) {
+          if (evt.type === "step" && evt.id === "research") {
+            send({ type: "step", id: "person", status: evt.status, data: (evt as { data?: unknown }).data });
+          } else if (evt.type === "step" && evt.id === "email_lookup") {
+            send({ type: "step", id: "email", status: evt.status, data: (evt as { data?: unknown }).data });
+          } else if (evt.type === "step" && evt.id === "person_saved") {
+            personId = evt.data.id;
+            send({ type: "person_saved", data: evt.data });
+          } else if (evt.type === "step" && evt.id === "draft") {
+            send({ type: "step", id: "outreach", status: evt.status, channel: evt.channel, data: (evt as { data?: unknown }).data });
+            if (evt.status === "done" && evt.data && !draftId) draftId = evt.data.id;
+          } else if (evt.type === "error") {
+            send({ type: "error", message: evt.message });
+          }
+          // needs_disambiguation is intentionally ignored: in the job flow the
+          // person is already chosen from the sourced shortlist (or re-picked),
+          // so we let the draft proceed to the anchored candidate.
+        }
+      };
+
       try {
+        // ── Re-pick path: the user clicked a different candidate. Skip resume +
+        // sourcing and just re-run email + draft for that person.
+        if (picked) {
+          send({ type: "step", id: "person", status: "start" });
+          await pipeReachOut({
+            text: picked.name,
+            intent: intent || [picked.role, picked.company].filter(Boolean).join(" at ") || undefined,
+            picked,
+          });
+          send({ type: "complete" });
+          return;
+        }
+
         // ── Step 0: bail early on login-walled boards (LinkedIn, etc.). Their
         // postings can't be fetched, so skip the doomed API call and tell the
         // user to use a public posting URL.
@@ -64,7 +112,7 @@ export async function POST(req: NextRequest) {
 
         // ── Step 1: tailor the resume to this job
         send({ type: "step", id: "resume", status: "start" });
-        for await (const evt of runResumeTailorStream({ job_url, page_count: 1 })) {
+        for await (const evt of runResumeTailorStream({ job_url, page_count: 2 })) {
           if (evt.type === "step" && evt.id === "tailor" && evt.status === "done") {
             tailored = evt.data.resume;
           }
@@ -86,6 +134,7 @@ export async function POST(req: NextRequest) {
             resume_generation_id: resumeGenerationId,
             target_role: tailored?.meta?.target_role,
             target_company: tailored?.meta?.target_company,
+            team: tailored?.meta?.team ?? null,
             ats_score: tailored?.meta?.ats_score,
             resume: tailored,
           },
@@ -100,32 +149,49 @@ export async function POST(req: NextRequest) {
           return;
         }
 
-        // ── Steps 2-4: identify hiring manager + email + outreach draft via reach-out.
-        // Phrasing the seed as a free-text query keeps the existing classify()
-        // happy and lets the research agent take over from there.
-        const seed = `hiring manager for ${tailored.meta.target_role || "this role"} at ${tailored.meta.target_company}`;
+        // ── Steps 2-4: source the hiring manager, then email + outreach draft.
+        const role = tailored.meta.target_role ?? null;
+        const company = tailored.meta.target_company;
+        const team = tailored.meta.team ?? null;
         const composeIntent =
-          intent ||
-          [tailored.meta.target_role, tailored.meta.target_company]
-            .filter(Boolean)
-            .join(" at ");
+          intent || [role, company].filter(Boolean).join(" at ");
 
-        for await (const evt of runReachOutStream({ text: seed, intent: composeIntent })) {
-          if (evt.type === "step" && evt.id === "research") {
-            send({ type: "step", id: "person", status: evt.status, data: (evt as { data?: unknown }).data });
-          } else if (evt.type === "step" && evt.id === "email_lookup") {
-            send({ type: "step", id: "email", status: evt.status, data: (evt as { data?: unknown }).data });
-          } else if (evt.type === "step" && evt.id === "person_saved") {
-            personId = evt.data.id;
-            send({ type: "person_saved", data: evt.data });
-          } else if (evt.type === "step" && evt.id === "draft") {
-            send({ type: "step", id: "outreach", status: evt.status, channel: evt.channel, data: (evt as { data?: unknown }).data });
-            if (evt.status === "done" && evt.data && !draftId) draftId = evt.data.id;
-          } else if (evt.type === "needs_disambiguation") {
-            send({ type: "needs_disambiguation", data: evt.data });
-          } else if (evt.type === "error") {
-            send({ type: "error", message: evt.message });
-          }
+        // Step 2: source a ranked shortlist of likely hiring managers by
+        // searching "[team] [role] [company]" (the way a candidate would).
+        send({ type: "step", id: "person", status: "start" });
+        let candidates: Awaited<ReturnType<typeof sourceHiringManagers>>["candidates"] = [];
+        try {
+          const sourced = await sourceHiringManagers({ role, company, team });
+          candidates = sourced.candidates ?? [];
+        } catch (e) {
+          console.error("[apply] sourceHiringManagers failed", e);
+        }
+        send({ type: "candidates", data: candidates });
+
+        const top = candidates[0] ?? null;
+        if (!top) {
+          // Honest dead-end: name the query we ran so the user knows what to fix.
+          const query = [team, role, company].filter(Boolean).join(" ");
+          send({
+            type: "step",
+            id: "person",
+            status: "done",
+            data: { name: null, role, company, searched: query, candidates: [] },
+          });
+          send({ type: "step", id: "email", status: "done", data: { email: null, guesses: [] } });
+          send({ type: "step", id: "outreach", status: "done", channel: "email", data: null });
+        } else {
+          // Step 3-4: anchor the proven downstream pipeline on the chosen person.
+          await pipeReachOut({
+            text: top.name,
+            intent: composeIntent || undefined,
+            picked: {
+              name: top.name,
+              role: top.role ?? null,
+              company: top.company ?? null,
+              linkedin: top.linkedin ?? null,
+            },
+          });
         }
 
         // Record the bundle. Soft FKs — failure to insert is non-fatal so the
