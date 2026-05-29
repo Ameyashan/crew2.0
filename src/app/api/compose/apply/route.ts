@@ -36,6 +36,16 @@ export async function POST(req: NextRequest) {
       }
     : null;
 
+  // The role/company of the job being applied to. On a re-pick the client sends
+  // it (the resume meta lives on the client by then); on a fresh run we derive
+  // it below from the tailored resume. Anchors the outreach draft.
+  const job_context = body?.job_context
+    ? {
+        role: body.job_context.role ? body.job_context.role.toString() : null,
+        company: body.job_context.company ? body.job_context.company.toString() : null,
+      }
+    : null;
+
   if (!job_url) {
     return Response.json({ error: "job_url is required" }, { status: 400 });
   }
@@ -87,6 +97,7 @@ export async function POST(req: NextRequest) {
             text: picked.name,
             intent: intent || [picked.role, picked.company].filter(Boolean).join(" at ") || undefined,
             picked,
+            job_context: job_context ?? { role: picked.role, company: picked.company },
           });
           send({ type: "complete" });
           return;
@@ -136,6 +147,7 @@ export async function POST(req: NextRequest) {
             target_company: tailored?.meta?.target_company,
             team: tailored?.meta?.team ?? null,
             ats_score: tailored?.meta?.ats_score,
+            ats_score_before: tailored?.meta?.ats_score_before,
             resume: tailored,
           },
         });
@@ -191,6 +203,10 @@ export async function POST(req: NextRequest) {
               company: top.company ?? null,
               linkedin: top.linkedin ?? null,
             },
+            // Anchor the cold email on the JOB's role/company (not the intent),
+            // so the subject/body never drift to a company the user only
+            // mentioned in passing.
+            job_context: { role, company },
           });
         }
 

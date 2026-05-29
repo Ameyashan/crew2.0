@@ -16,6 +16,9 @@ export interface RunReachOutInput {
     company?: string | null;
     linkedin?: string | null;
   };
+  // Job-application flow: the role/company this outreach is for. Anchors the
+  // draft so a stray intent can't point the email at the wrong company.
+  job_context?: { role?: string | null; company?: string | null };
 }
 
 export type StepEvent =
@@ -188,6 +191,7 @@ export async function* runReachOutStream(
         person_context: ctx,
         channel: c,
         intent: input.intent,
+        job_context: input.job_context,
         sender_context: senderCtx || undefined,
         sender_writing_samples: profile?.writing_samples ?? undefined,
         sender_full_name: profile?.full_name ?? undefined,

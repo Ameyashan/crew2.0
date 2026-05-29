@@ -51,10 +51,12 @@ Strict JSON only, no prose, no markdown fences. Schema:
   "skills"?:    [ { "group": string, "items": string[] } ],
   "projects"?:  [ { "name": string, "link"?: string, "bullets": string[] } ],
   "extras"?:    [ { "heading": string, "items": string[] } ],
-  "meta": { "target_role"?: string|null, "target_company"?: string|null, "team"?: string|null, "job_url"?: string, "page_count": 1|2, "ats_score"?: number }
+  "meta": { "target_role"?: string|null, "target_company"?: string|null, "team"?: string|null, "job_url"?: string, "page_count": 1|2, "ats_score_before"?: number, "ats_score"?: number }
 }
 
-"ats_score" is your honest 0-100 estimate of how well this tailored resume scores against the JD on a typical ATS (keyword coverage, role/level alignment, recency, signal density). Leave it out if you didn't see the JD.
+"ats_score" is your honest 0-100 estimate of how well THIS TAILORED resume scores against the JD on a typical ATS (keyword coverage, role/level alignment, recency, signal density).
+"ats_score_before" is the same honest 0-100 estimate for the candidate's ORIGINAL resume (the "Existing Resume" block, before any of your edits) against the same JD — so the user can see the lift your tailoring produced. Score the original as-is; do not credit it for changes you made.
+Leave BOTH out if you didn't see the JD. Be honest: if the candidate's real background is a weak fit, ats_score should reflect that — tailoring reorders and rephrases, it cannot manufacture missing experience.
 
 "headline" is a single tight line under the name, e.g. "Senior Backend Engineer · Python, Distributed Systems". Derive it from the JD + the candidate's strongest signal.`;
 

@@ -395,6 +395,10 @@ export interface DraftInput {
   sender_context?: string;                            // about the user — name, resume excerpt
   sender_writing_samples?: string;                    // pasted samples from onboarding
   sender_full_name?: string;                          // for sign-off
+  // Job-application flow: the role/company this outreach is actually about.
+  // Anchors the subject + body on this so a stray Intent can't redirect the
+  // email to a different company.
+  job_context?: { role?: string | null; company?: string | null };
 }
 
 export interface DraftResult {
@@ -429,6 +433,17 @@ const LENGTH_BUDGETS: Record<Channel, string> = {
 };
 
 function draftSystem(channel: Channel, signOffName?: string) {
+  const subjectRules =
+    channel === "email"
+      ? `
+
+SUBJECT LINE (cold email — the subject decides whether it gets opened):
+- 3–6 words, specific and concrete. Sentence case or lowercase. No ALL CAPS, no emoji, no trailing punctuation.
+- Anchor it to the real reason for writing: the specific role being applied to, or the single concrete thing you reference in the body. When this is a job application, name the role (and company if it fits).
+- Never fake a thread: do NOT begin with "Re:", "Re ", "Fwd:", or "Following up".
+- No spam/clickbait words: "opportunity", "quick question", "urgent", "free", "amazing", "exciting".
+- The subject must be about the company/role this email is actually for — never a different company.`
+      : "";
   return `You write outreach messages in the user's voice. The user is a thoughtful operator who hates AI-sounding email. Treat that as a hard constraint, not a preference.
 
 Channel: ${channel}.
@@ -451,6 +466,7 @@ Required:
 - Plain words. No jargon. No metaphors that did not exist 200 years ago.
 - Match the user's sentence length and rhythm from the voice samples if any are provided.
 - Do NOT respond with meta-commentary like "I need more context" — write the best message you can with what you have.
+${subjectRules}
 
 Output strict JSON only:
 ${
@@ -486,6 +502,18 @@ export async function draft(input: DraftInput): Promise<DraftResult> {
   userBlocks.push(
     `Research:\n${ctx.context_lines.filter(Boolean).map((l) => `- ${l}`).join("\n") || "(no specific facts found)"}`
   );
+
+  if (input.job_context && (input.job_context.role || input.job_context.company)) {
+    const jc = [
+      input.job_context.role && `Role: ${input.job_context.role}`,
+      input.job_context.company && `Company: ${input.job_context.company}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    userBlocks.push(
+      `# This outreach is a job application — anchor the subject AND body on THIS role/company\n${jc}\n\nIf the Intent below names a different company, treat that as background about the sender (where they've been / what they want), NOT the target. Do not write as if applying to a different company than the one above.`
+    );
+  }
 
   if (input.intent) userBlocks.push(`# Intent\n${input.intent}`);
 
