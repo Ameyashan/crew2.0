@@ -810,8 +810,29 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
   // Real outreach draft + verified email via the shared builder.
   const { to: emailTo, subject: emailSubject, body: emailBody } =
     buildEmailDraft({ kind: 'job', parsed, drafts, enrichment });
-  const emailVerified = !!enrichment?.email;
   const emailGuesses = Array.isArray(enrichment?.guesses) ? enrichment.guesses : [];
+  const emailConfidence = typeof enrichment?.confidence === 'number' ? enrichment.confidence : 0;
+  // "verified" = a confident, real hit (Apollo-verified, user-provided, or high
+  // confidence). A low-confidence Apollo email is treated as a probable guess.
+  const emailVerified =
+    !!enrichment?.email &&
+    (enrichment.source === 'apollo_verified' ||
+      enrichment.source === 'user_provided' ||
+      emailConfidence >= 0.9);
+  // Likely addresses when there's no verified hit: any email Apollo returned
+  // (low confidence), then the format guesses — de-duped, best first.
+  const probableEmails = (() => {
+    const out = [];
+    const seen = new Set();
+    if (enrichment?.email && !emailVerified) {
+      out.push({ email: enrichment.email, pattern: 'apollo' });
+      seen.add(enrichment.email);
+    }
+    for (const g of emailGuesses) {
+      if (g?.email && !seen.has(g.email)) { out.push(g); seen.add(g.email); }
+    }
+    return out;
+  })();
 
   const personName = person?.name || null;
   const personRole = person?.role || null;
@@ -821,9 +842,6 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
   const initials = personName
     ? personName.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
     : '?';
-  const emailChip = enrichment?.confidence != null
-    ? `${Math.round(enrichment.confidence * 100)}%`
-    : null;
   const matchLabel = person?.match_confidence ? `${person.match_confidence} match` : null;
   const candidates = Array.isArray(run?.candidates) ? run.candidates : [];
   const searched = person?.searched || null;
@@ -993,28 +1011,12 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
             <span style={{ color: emailTo ? p.ink : p.inkMute }}>
               {emailTo || '(no public email found — add it in Gmail)'}
             </span>
-            {enrichment?.email
+            {emailVerified
               ? <span style={{ color: p.leaf, marginLeft: 8 }}>· verified</span>
               : (emailTo && <span style={{ color: p.marigoldDeep, marginLeft: 8 }}>· best guess</span>)}
           </div>
-          {!emailVerified && emailGuesses.length > 0 && (
-            <div style={{ marginTop: 6 }}>
-              <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute, letterSpacing: '.04em', marginBottom: 4 }}>
-                probable addresses · unverified — click to use
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                {emailGuesses.slice(0, 5).map((g) => (
-                  <button
-                    key={g.email}
-                    title={`Open Gmail to ${g.email}${g.pattern ? ` (${g.pattern})` : ''}`}
-                    onClick={() => openGmailCompose({ to: g.email, subject: emailSubject, body: emailBody })}
-                    style={{
-                      padding: '3px 8px', background: p.paper, border: `1px solid ${p.ink}24`,
-                      fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.ink, cursor: 'pointer',
-                    }}>{g.email}</button>
-                ))}
-              </div>
-            </div>
+          {!emailVerified && probableEmails.length > 0 && (
+            <ProbableEmails p={p} guesses={probableEmails} subject={emailSubject} body={emailBody}/>
           )}
           {emailSubject && (
             <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, marginTop: 4 }}>
@@ -1076,7 +1078,11 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
               </div>
             )}
             <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
-              {enrichment?.email && <KV p={p} k="email"    v={enrichment.email} chip={emailChip}/>}
+              {emailVerified
+                ? <KV p={p} k="email" v={enrichment.email} chip="verified" chipColor={p.leaf}/>
+                : (probableEmails.length > 0 && (
+                    <ProbableEmails p={p} guesses={probableEmails} subject={emailSubject} body={emailBody}/>
+                  ))}
               {personLinks.linkedin && <KV p={p} k="linkedin" v={personLinks.linkedin.replace(/^https?:\/\//, '')}/>}
               {personLinks.x && <KV p={p} k="x" v={personLinks.x.replace(/^https?:\/\//, '')}/>}
               {personLinks.website && <KV p={p} k="website" v={personLinks.website.replace(/^https?:\/\//, '')}/>}
@@ -1344,7 +1350,35 @@ function AtsBadge({ p, before, after, size = 10.5 }) {
   );
 }
 
-function KV({ p, k, v, chip }) {
+// Surface the likely email addresses (format guesses / low-confidence hits) as
+// clickable chips that open Gmail with that recipient. Shown when we couldn't
+// verify an address. Shared by the cold-email card and the hiring-manager panel.
+function ProbableEmails({ p, guesses, subject, body, max = 5 }) {
+  if (!guesses?.length) return null;
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div style={{
+        fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute,
+        letterSpacing: '.04em', marginBottom: 4,
+      }}>probable addresses · unverified — click to use</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+        {guesses.slice(0, max).map((g) => (
+          <button
+            key={g.email}
+            title={`Open Gmail to ${g.email}${g.pattern ? ` (${g.pattern})` : ''}`}
+            onClick={() => openGmailCompose({ to: g.email, subject, body })}
+            style={{
+              padding: '3px 8px', background: p.paper, border: `1px solid ${p.ink}24`,
+              fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.ink, cursor: 'pointer',
+            }}>{g.email}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function KV({ p, k, v, chip, chipColor }) {
+  const cc = chipColor || p.stamp;
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
@@ -1352,7 +1386,7 @@ function KV({ p, k, v, chip }) {
     }}>
       <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute, letterSpacing: '.04em', width: 64 }}>{k}</span>
       <span style={{ flex: 1, fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
-      {chip && <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.stamp, padding: '2px 6px', background: p.stamp + '14', whiteSpace: 'nowrap', letterSpacing: '.04em' }}>{chip}</span>}
+      {chip && <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10, color: cc, padding: '2px 6px', background: cc + '14', whiteSpace: 'nowrap', letterSpacing: '.04em' }}>{chip}</span>}
     </div>
   );
 }
