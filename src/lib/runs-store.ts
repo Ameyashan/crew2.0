@@ -22,6 +22,9 @@ export type Run = {
   candidates: unknown[] | null;
   error: string | null;
   createdAt: number;
+  // Resume "regenerate with notes" state (job runs only).
+  regenerating?: boolean;
+  regenError?: string | null;
 };
 
 /* ─────────────────────── module store ─────────────────────── */
@@ -184,7 +187,14 @@ export async function pickCandidate(
     const res = await fetch("/api/compose/apply", {
       method: "POST",
       headers: { "content-type": "application/json", accept: "text/event-stream" },
-      body: JSON.stringify({ job_url: jobUrl, picked, intent: run.intent || undefined }),
+      body: JSON.stringify({
+        job_url: jobUrl,
+        picked,
+        intent: run.intent || undefined,
+        // Keep the cold email anchored on the job, not the picked person's own
+        // company, when we re-draft for a different candidate.
+        job_context: { role: run.parsed?.role ?? null, company: run.parsed?.company ?? null },
+      }),
       signal: controller.signal,
     });
     if (!res.ok || !res.body) throw new Error(`pick failed: ${res.status}`);
@@ -235,6 +245,74 @@ export async function pickCandidate(
     console.error("[pickCandidate]", e);
   } finally {
     controllers.delete(id);
+  }
+}
+
+// Re-run ONLY the resume agent for a finished job run, applying the user's
+// "what to change" notes. Streams /api/resume/tailor and patches the tailored
+// resume (+ ATS, role/company) in place — the rest of the package is untouched.
+export async function regenerateResume(id: string, notes: string) {
+  const run = runs.find((r) => r.id === id);
+  if (!run || run.kind !== "job") return;
+  const trimmed = (notes || "").trim();
+  if (!trimmed || run.regenerating) return;
+
+  const jobUrl = run.input.match(/^https?:\/\//) ? run.input : `https://${run.input}`;
+  const pageCount = run.parsed?.resume?.meta?.page_count === 2 ? 2 : 1;
+
+  patch(id, () => ({ regenerating: true, regenError: null }));
+
+  try {
+    const res = await fetch("/api/resume/tailor", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "text/event-stream" },
+      body: JSON.stringify({ job_url: jobUrl, regenerate_notes: trimmed, page_count: pageCount }),
+    });
+    if (!res.ok || !res.body) throw new Error(`regenerate failed: ${res.status}`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let newResume: unknown = null;
+    let newId: string | null = null;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split("\n\n");
+      buf = parts.pop() || "";
+      for (const raw of parts) {
+        const line = raw.split("\n").find((l) => l.startsWith("data: "));
+        if (!line) continue;
+        let evt;
+        try {
+          evt = JSON.parse(line.slice(6));
+        } catch {
+          continue;
+        }
+        if (evt.type === "step" && evt.id === "tailor" && evt.status === "done" && evt.data?.resume) {
+          newResume = evt.data.resume;
+        } else if (evt.type === "saved") {
+          newId = evt.id;
+        } else if (evt.type === "error") {
+          throw new Error(evt.message || "regenerate error");
+        }
+      }
+    }
+    if (!newResume) throw new Error("no resume returned");
+    patch(id, (r) => ({
+      parsed: {
+        ...(r.parsed || {}),
+        resume: newResume,
+        ats_score: newResume?.meta?.ats_score ?? r.parsed?.ats_score,
+        resume_generation_id: newId ?? r.parsed?.resume_generation_id,
+        role: newResume?.meta?.target_role ?? r.parsed?.role,
+        company: newResume?.meta?.target_company ?? r.parsed?.company,
+      },
+      regenerating: false,
+      regenError: null,
+    }));
+  } catch (e) {
+    patch(id, () => ({ regenerating: false, regenError: String(e?.message || e) }));
   }
 }
 

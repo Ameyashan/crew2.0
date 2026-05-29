@@ -20,8 +20,32 @@ import {
   clearAllRuns,
   retryRun,
   pickCandidate,
+  regenerateResume,
   jobHost,
 } from "@/lib/runs-store";
+
+// Hit the existing PDF/DOCX endpoints (they take the tailored-resume JSON) and
+// trigger a browser download. Shared by the ↓ PDF / ↓ Word buttons.
+async function downloadResumeBlob(resume, fmt) {
+  if (!resume) throw new Error("resume not ready yet");
+  const dl = await fetch(`/api/resume/${fmt}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ resume }),
+  });
+  if (!dl.ok) throw new Error(`download failed: ${dl.status}`);
+  const blob = await dl.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const base = (resume?.header?.full_name || "resume").replace(/[^\w.-]+/g, "_");
+  const role = (resume?.meta?.target_role || "").replace(/[^\w.-]+/g, "_");
+  a.download = [base, role || null].filter(Boolean).join("-").toLowerCase() + `.${fmt}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 function ComposeV3({ p, go }) {
   // Paste-entry state only. Each submitted link becomes an independent run in
@@ -688,7 +712,7 @@ function PersonPackage({ p, parsed, drafts, enrichment, go }) {
           </div>
           {m.subject && (
             <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute, marginBottom: 8 }}>
-              <span style={{ color: p.inkMute }}>Re &nbsp;</span><span style={{ color: p.ink }}>{m.subject}</span>
+              <span style={{ color: p.inkMute }}>Subject &nbsp;</span><span style={{ color: p.ink }}>{m.subject}</span>
             </div>
           )}
           <div style={{ height: 1, background: p.ink + '14', margin: '4px 0 10px' }}/>
@@ -755,6 +779,24 @@ function PersonPackage({ p, parsed, drafts, enrichment, go }) {
 
 function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
   const [picking, setPicking] = useState(false);
+  const [expanded, setExpanded] = useState(false);   // full-size resume modal
+  const [showNotes, setShowNotes] = useState(false);  // regenerate-with-notes panel
+  const [notes, setNotes] = useState('');
+  const [downloading, setDownloading] = useState(null); // 'pdf' | 'docx' | null
+  const [dlError, setDlError] = useState(null);
+  const regenerating = !!run?.regenerating;
+
+  async function handleDownload(fmt) {
+    setDlError(null);
+    setDownloading(fmt);
+    try {
+      await downloadResumeBlob(resume, fmt);
+    } catch (e) {
+      setDlError(String(e?.message || e));
+    } finally {
+      setDownloading(null);
+    }
+  }
   // Everything here is real data produced by the crew for the job URL the user
   // pasted: the tailor agent's resume, the research agent's hiring manager, the
   // email lookup, and the outreach draft. Fall back to honest placeholders only
@@ -800,11 +842,23 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
             for {[jobRole, jobCompany].filter(Boolean).join(' at ')}
           </div>
         )}
-        <div style={{
+        <div
+          onClick={() => resume && setExpanded(true)}
+          title={resume ? 'Click to read the full resume' : undefined}
+          style={{
           marginTop: 12, background: p.paper, border: `1.5px solid ${p.ink}30`,
           aspectRatio: '8.5/11', padding: '14px 14px', position: 'relative',
           fontFamily: PAPER_FONTS.serif, color: p.ink, fontSize: 8, lineHeight: 1.3, overflow: 'hidden',
+          cursor: resume ? 'zoom-in' : 'default',
         }}>
+          {resume && (
+            <div style={{
+              position: 'absolute', top: 8, right: 8, zIndex: 2,
+              padding: '3px 8px', background: p.ink, color: p.paper,
+              fontFamily: PAPER_FONTS.mono, fontSize: 8, letterSpacing: '.08em',
+              textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 4,
+            }}>⤢ expand</div>
+          )}
           {resume ? (
             <>
               <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 14 }}>
@@ -852,11 +906,74 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
           }}>PDF · 1 of {resume?.meta?.page_count || 1}</div>
         </div>
         <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
-          <InkButton p={p} kind="outline" size="sm" style={{ flex: 1 }}>↓ PDF</InkButton>
-          <InkButton p={p} kind="outline" size="sm" style={{ flex: 1 }}>↓ Word</InkButton>
-          <InkButton p={p} kind="outline" size="sm" style={{ flex: 1 }} onClick={() => go('resume')}>history</InkButton>
+          <InkButton p={p} kind="outline" size="sm" style={{ flex: 1 }}
+            disabled={!resume || downloading === 'pdf'}
+            onClick={() => handleDownload('pdf')}>
+            {downloading === 'pdf' ? '…PDF' : '↓ PDF'}
+          </InkButton>
+          <InkButton p={p} kind="outline" size="sm" style={{ flex: 1 }}
+            disabled={!resume || downloading === 'docx'}
+            onClick={() => handleDownload('docx')}>
+            {downloading === 'docx' ? '…Word' : '↓ Word'}
+          </InkButton>
+          <InkButton p={p} kind={showNotes ? 'solid' : 'outline'} size="sm" style={{ flex: 1 }}
+            disabled={!resume}
+            onClick={() => setShowNotes((s) => !s)}>
+            ✎ Notes
+          </InkButton>
         </div>
+        {dlError && (
+          <div style={{
+            marginTop: 8, fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.stamp,
+          }}>{dlError}</div>
+        )}
+
+        {/* regenerate with notes — reruns ONLY the resume agent */}
+        {showNotes && (
+          <div style={{
+            marginTop: 10, paddingTop: 10, borderTop: `1.5px dashed ${p.ink}24`,
+          }}>
+            <div style={{
+              fontFamily: PAPER_FONTS.mono, fontSize: 10, letterSpacing: '.1em',
+              textTransform: 'uppercase', color: p.inkMute, marginBottom: 6,
+            }}>What should change?</div>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              disabled={regenerating}
+              placeholder="e.g. lead with my platform work, cut the older bullets, push the AI/ML angle harder, make it one page"
+              rows={3}
+              style={{
+                width: '100%', resize: 'vertical', minHeight: 64,
+                padding: '10px 12px', background: p.paper,
+                border: `1.5px solid ${p.ink}30`,
+                fontFamily: PAPER_FONTS.mono, fontSize: 12, lineHeight: 1.5, color: p.ink,
+                outline: 'none',
+              }}
+            />
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <InkButton p={p} color={p.marigold} size="sm"
+                disabled={!notes.trim() || regenerating}
+                onClick={async () => { await regenerateResume(run.id, notes); setNotes(''); }}>
+                {regenerating ? 'Regenerating…' : '↻ Regenerate resume'}
+              </InkButton>
+              <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute }}>
+                reruns the Resume agent only
+              </span>
+            </div>
+            {run?.regenError && (
+              <div style={{
+                marginTop: 8, fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.stamp,
+              }}>{run.regenError}</div>
+            )}
+          </div>
+        )}
       </PaperCard>
+
+      {expanded && resume && (
+        <ResumeModal p={p} resume={resume} jobRole={jobRole} jobCompany={jobCompany}
+          atsScore={atsScore} onClose={() => setExpanded(false)}/>
+      )}
 
       {/* email draft */}
       <PaperCard p={p} style={{ padding: '20px 22px' }}>
@@ -871,12 +988,17 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
           padding: '12px 14px', fontFamily: PAPER_FONTS.sans, fontSize: 13, lineHeight: 1.55,
         }}>
           <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute }}>
-            <span>To &nbsp;</span><span style={{ color: p.ink }}>{emailTo || '(email pending)'}</span>
-            {enrichment?.email && <span style={{ color: p.leaf, marginLeft: 8 }}>· verified</span>}
+            <span>To &nbsp;</span>
+            <span style={{ color: emailTo ? p.ink : p.inkMute }}>
+              {emailTo || '(no public email found — add it in Gmail)'}
+            </span>
+            {enrichment?.email
+              ? <span style={{ color: p.leaf, marginLeft: 8 }}>· verified</span>
+              : (emailTo && <span style={{ color: p.marigoldDeep, marginLeft: 8 }}>· best guess</span>)}
           </div>
           {emailSubject && (
             <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, marginTop: 4 }}>
-              <span>Re &nbsp;</span><span style={{ color: p.ink }}>{emailSubject}</span>
+              <span>Subject &nbsp;</span><span style={{ color: p.ink }}>{emailSubject}</span>
             </div>
           )}
           <div style={{ height: 1, background: p.ink + '14', margin: '8px 0' }}/>
@@ -909,6 +1031,17 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
                   <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 13, color: p.inkSoft }}>
                     {[personRole, personCompany].filter(Boolean).join(' · ')}
                   </div>
+                )}
+                {personLinks.linkedin && (
+                  <a
+                    href={personLinks.linkedin.match(/^https?:\/\//) ? personLinks.linkedin : `https://${personLinks.linkedin}`}
+                    target="_blank" rel="noopener noreferrer"
+                    title="Open LinkedIn profile in a new tab"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 5,
+                      fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.stamp,
+                      textDecoration: 'none', letterSpacing: '.04em',
+                    }}>in · View LinkedIn ↗</a>
                 )}
               </div>
             </div>
@@ -958,31 +1091,54 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
               <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {candidates.map((c, i) => {
                   const isCurrent = !!personName && c.name === personName;
+                  const li = c.linkedin
+                    ? (c.linkedin.match(/^https?:\/\//) ? c.linkedin : `https://${c.linkedin}`)
+                    : null;
                   return (
-                    <button
+                    <div
                       key={c.name || i}
-                      disabled={isCurrent}
-                      onClick={() => { if (!isCurrent) { pickCandidate(run.id, c); setPicking(false); } }}
                       style={{
-                        display: 'block', width: '100%', textAlign: 'left',
-                        padding: '10px 12px', background: p.paper,
+                        position: 'relative', background: p.paper,
                         border: `1.5px solid ${p.ink}${isCurrent ? '12' : '24'}`,
-                        cursor: isCurrent ? 'default' : 'pointer', opacity: isCurrent ? 0.6 : 1,
+                        opacity: isCurrent ? 0.6 : 1,
                       }}>
-                      <div style={{ fontFamily: PAPER_FONTS.sans, fontSize: 13.5, color: p.ink }}>
-                        {c.name}{isCurrent ? ' · current' : ''}
-                      </div>
-                      {(c.role || c.company) && (
-                        <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute, letterSpacing: '.02em' }}>
-                          {[c.role, c.company].filter(Boolean).join(' · ')}
+                      <button
+                        disabled={isCurrent}
+                        onClick={() => { if (!isCurrent) { pickCandidate(run.id, c); setPicking(false); } }}
+                        style={{
+                          display: 'block', width: '100%', textAlign: 'left',
+                          padding: `10px ${li ? '58px' : '12px'} 10px 12px`,
+                          background: 'transparent', border: 'none',
+                          cursor: isCurrent ? 'default' : 'pointer',
+                        }}>
+                        <div style={{ fontFamily: PAPER_FONTS.sans, fontSize: 13.5, color: p.ink }}>
+                          {c.name}{isCurrent ? ' · current' : ''}
                         </div>
+                        {(c.role || c.company) && (
+                          <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute, letterSpacing: '.02em' }}>
+                            {[c.role, c.company].filter(Boolean).join(' · ')}
+                          </div>
+                        )}
+                        {c.why && (
+                          <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 11.5, color: p.inkSoft, marginTop: 2 }}>
+                            {c.why}
+                          </div>
+                        )}
+                      </button>
+                      {li && (
+                        <a
+                          href={li}
+                          target="_blank" rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          title="Open LinkedIn profile in a new tab"
+                          style={{
+                            position: 'absolute', top: 8, right: 8, padding: '3px 8px',
+                            fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.stamp,
+                            border: `1px solid ${p.stamp}40`, background: p.paper,
+                            textDecoration: 'none', letterSpacing: '.04em',
+                          }}>in ↗</a>
                       )}
-                      {c.why && (
-                        <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 11.5, color: p.inkSoft, marginTop: 2 }}>
-                          {c.why}
-                        </div>
-                      )}
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -990,6 +1146,142 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
           </div>
         )}
       </PaperCard>
+    </div>
+  );
+}
+
+// Full-size, readable view of the tailored resume. The card preview is
+// deliberately tiny (it's a thumbnail); this is the "actually read it" view.
+function ResumeSection({ p, title }) {
+  return (
+    <div style={{
+      fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.16em',
+      textTransform: 'uppercase', color: p.marigoldDeep,
+      borderBottom: `1.5px solid ${p.ink}20`, paddingBottom: 4, margin: '20px 0 10px',
+    }}>{title}</div>
+  );
+}
+
+function ResumeModal({ p, resume, jobRole, jobCompany, atsScore, onClose }) {
+  const h = resume.header || {};
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.55)',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        padding: '40px 20px', overflow: 'auto',
+      }}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 820, background: p.paper,
+          border: `1.5px solid ${p.ink}`, boxShadow: `8px 8px 0 ${p.ink}24`,
+          padding: '32px 44px 40px', position: 'relative', color: p.ink,
+        }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
+          <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.14em', textTransform: 'uppercase', color: p.marigoldDeep }}>
+            Tailored resume{(jobRole || jobCompany) ? ` · for ${[jobRole, jobCompany].filter(Boolean).join(' at ')}` : ''}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+            {atsScore != null && (
+              <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.leaf }}>ATS {atsScore}/100</span>
+            )}
+            <button onClick={onClose} style={{
+              background: 'transparent', border: 'none', color: p.inkMute,
+              fontFamily: PAPER_FONTS.mono, fontSize: 12, letterSpacing: '.08em',
+              textTransform: 'uppercase', cursor: 'pointer',
+            }}>× close</button>
+          </div>
+        </div>
+
+        <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 30, lineHeight: 1.05 }}>
+          {h.full_name || 'Your name'}
+        </div>
+        {h.headline && (
+          <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 15, color: p.inkSoft, marginTop: 3 }}>
+            {h.headline}
+          </div>
+        )}
+        {(h.email || h.phone || h.location || h.links?.website || h.links?.linkedin || h.links?.github) && (
+          <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute, marginTop: 6 }}>
+            {[h.email, h.phone, h.location, h.links?.website, h.links?.linkedin, h.links?.github].filter(Boolean).join('  ·  ')}
+          </div>
+        )}
+        <div style={{ height: 1.5, background: p.ink + '30', margin: '16px 0' }}/>
+
+        {resume.summary && (
+          <p style={{ margin: 0, fontFamily: PAPER_FONTS.sans, fontSize: 14, lineHeight: 1.55 }}>{resume.summary}</p>
+        )}
+
+        {(resume.experience || []).length > 0 && <ResumeSection p={p} title="Experience"/>}
+        {(resume.experience || []).map((exp, i) => (
+          <div key={i} style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+              <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 15.5 }}>
+                {[exp.role, exp.company].filter(Boolean).join(' · ')}
+              </div>
+              {(exp.start || exp.end) && (
+                <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, whiteSpace: 'nowrap' }}>
+                  {[exp.start, exp.end].filter(Boolean).join(' – ')}
+                </div>
+              )}
+            </div>
+            {exp.location && (
+              <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute }}>{exp.location}</div>
+            )}
+            <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+              {(exp.bullets || []).map((b, j) => (
+                <li key={j} style={{ fontFamily: PAPER_FONTS.sans, fontSize: 13.5, lineHeight: 1.5, marginBottom: 3 }}>{b}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+
+        {(resume.education || []).length > 0 && <ResumeSection p={p} title="Education"/>}
+        {(resume.education || []).map((ed, i) => (
+          <div key={i} style={{ marginBottom: 10 }}>
+            <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 14.5 }}>
+              {[[ed.degree, ed.field].filter(Boolean).join(', '), ed.school].filter(Boolean).join(' · ')}
+            </div>
+            {(ed.notes || []).length > 0 && (
+              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                {ed.notes.map((n, j) => (
+                  <li key={j} style={{ fontFamily: PAPER_FONTS.sans, fontSize: 13, color: p.inkSoft }}>{n}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+
+        {(resume.skills || []).length > 0 && <ResumeSection p={p} title="Skills"/>}
+        {(resume.skills || []).map((s, i) => (
+          <div key={i} style={{ fontFamily: PAPER_FONTS.sans, fontSize: 13.5, lineHeight: 1.55, marginBottom: 3 }}>
+            {s.group ? <strong>{s.group}: </strong> : null}{(s.items || []).join(', ')}
+          </div>
+        ))}
+
+        {(resume.projects || []).length > 0 && <ResumeSection p={p} title="Projects"/>}
+        {(resume.projects || []).map((pr, i) => (
+          <div key={i} style={{ marginBottom: 10 }}>
+            <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 14.5 }}>
+              {pr.link ? (
+                <a href={pr.link} target="_blank" rel="noopener noreferrer" style={{ color: p.ink }}>{pr.name} ↗</a>
+              ) : pr.name}
+            </div>
+            <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+              {(pr.bullets || []).map((b, j) => (
+                <li key={j} style={{ fontFamily: PAPER_FONTS.sans, fontSize: 13.5, lineHeight: 1.5 }}>{b}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+
+        <div style={{ marginTop: 24, display: 'flex', gap: 8 }}>
+          <InkButton p={p} kind="outline" size="sm" onClick={() => downloadResumeBlob(resume, 'pdf').catch(() => {})}>↓ PDF</InkButton>
+          <InkButton p={p} kind="outline" size="sm" onClick={() => downloadResumeBlob(resume, 'docx').catch(() => {})}>↓ Word</InkButton>
+        </div>
+      </div>
     </div>
   );
 }
