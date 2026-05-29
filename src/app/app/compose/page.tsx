@@ -804,11 +804,14 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
   const jobRole = parsed?.role;
   const jobCompany = parsed?.company;
   const atsScore = parsed?.ats_score;
+  const atsScoreBefore = parsed?.ats_score_before;
   const resume = parsed?.resume;
 
   // Real outreach draft + verified email via the shared builder.
   const { to: emailTo, subject: emailSubject, body: emailBody } =
     buildEmailDraft({ kind: 'job', parsed, drafts, enrichment });
+  const emailVerified = !!enrichment?.email;
+  const emailGuesses = Array.isArray(enrichment?.guesses) ? enrichment.guesses : [];
 
   const personName = person?.name || null;
   const personRole = person?.role || null;
@@ -831,9 +834,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
       <PaperCard p={p} style={{ padding: '20px 22px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Eyebrow p={p} hindi="रेज़्यूमे" en="Tailored resume" color={p.marigold}/>
-          <span style={{
-            fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.leaf, letterSpacing: '.06em',
-          }}>{atsScore != null ? `ATS ${atsScore}/100` : 'ATS —'}</span>
+          <AtsBadge p={p} before={atsScoreBefore} after={atsScore}/>
         </div>
         {(jobRole || jobCompany) && (
           <div style={{
@@ -972,7 +973,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
 
       {expanded && resume && (
         <ResumeModal p={p} resume={resume} jobRole={jobRole} jobCompany={jobCompany}
-          atsScore={atsScore} onClose={() => setExpanded(false)}/>
+          atsScore={atsScore} atsScoreBefore={atsScoreBefore} onClose={() => setExpanded(false)}/>
       )}
 
       {/* email draft */}
@@ -996,6 +997,25 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
               ? <span style={{ color: p.leaf, marginLeft: 8 }}>· verified</span>
               : (emailTo && <span style={{ color: p.marigoldDeep, marginLeft: 8 }}>· best guess</span>)}
           </div>
+          {!emailVerified && emailGuesses.length > 0 && (
+            <div style={{ marginTop: 6 }}>
+              <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute, letterSpacing: '.04em', marginBottom: 4 }}>
+                probable addresses · unverified — click to use
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {emailGuesses.slice(0, 5).map((g) => (
+                  <button
+                    key={g.email}
+                    title={`Open Gmail to ${g.email}${g.pattern ? ` (${g.pattern})` : ''}`}
+                    onClick={() => openGmailCompose({ to: g.email, subject: emailSubject, body: emailBody })}
+                    style={{
+                      padding: '3px 8px', background: p.paper, border: `1px solid ${p.ink}24`,
+                      fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.ink, cursor: 'pointer',
+                    }}>{g.email}</button>
+                ))}
+              </div>
+            </div>
+          )}
           {emailSubject && (
             <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, marginTop: 4 }}>
               <span>Subject &nbsp;</span><span style={{ color: p.ink }}>{emailSubject}</span>
@@ -1162,7 +1182,7 @@ function ResumeSection({ p, title }) {
   );
 }
 
-function ResumeModal({ p, resume, jobRole, jobCompany, atsScore, onClose }) {
+function ResumeModal({ p, resume, jobRole, jobCompany, atsScore, atsScoreBefore, onClose }) {
   const h = resume.header || {};
   return (
     <div
@@ -1184,9 +1204,7 @@ function ResumeModal({ p, resume, jobRole, jobCompany, atsScore, onClose }) {
             Tailored resume{(jobRole || jobCompany) ? ` · for ${[jobRole, jobCompany].filter(Boolean).join(' at ')}` : ''}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
-            {atsScore != null && (
-              <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.leaf }}>ATS {atsScore}/100</span>
-            )}
+            {atsScore != null && <AtsBadge p={p} before={atsScoreBefore} after={atsScore} size={11}/>}
             <button onClick={onClose} style={{
               background: 'transparent', border: 'none', color: p.inkMute,
               fontFamily: PAPER_FONTS.mono, fontSize: 12, letterSpacing: '.08em',
@@ -1283,6 +1301,46 @@ function ResumeModal({ p, resume, jobRole, jobCompany, atsScore, onClose }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ATS match estimate. When we have the original resume's baseline score we show
+// the lift (before → after, +delta); otherwise just the single score. The score
+// is Claude's own honest estimate against the JD, not a real ATS scan.
+function AtsBadge({ p, before, after, size = 10.5 }) {
+  if (after == null) {
+    return (
+      <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: size, color: p.inkMute, letterSpacing: '.06em' }}>
+        ATS —
+      </span>
+    );
+  }
+  const hasBefore = before != null;
+  const delta = hasBefore ? after - before : 0;
+  const up = delta > 0;
+  return (
+    <span
+      title={hasBefore
+        ? `Estimated ATS match vs this job: your original resume ${before}/100 → tailored ${after}/100`
+        : `Estimated ATS match vs this job: ${after}/100`}
+      style={{
+        fontFamily: PAPER_FONTS.mono, fontSize: size, letterSpacing: '.06em',
+        display: 'inline-flex', alignItems: 'baseline', gap: 4, whiteSpace: 'nowrap',
+      }}>
+      <span style={{ color: p.inkMute, textTransform: 'uppercase' }}>ATS</span>
+      {hasBefore && delta !== 0 && (
+        <>
+          <span style={{ color: p.inkMute }}>{before}</span>
+          <span style={{ color: p.inkMute }}>→</span>
+        </>
+      )}
+      <span style={{ color: up ? p.leaf : (delta < 0 ? p.stamp : p.leaf) }}>
+        {after}{(!hasBefore || delta === 0) && <span style={{ color: p.inkMute }}>/100</span>}
+      </span>
+      {hasBefore && delta !== 0 && (
+        <span style={{ color: up ? p.leaf : p.stamp }}>({up ? '+' : ''}{delta})</span>
+      )}
+    </span>
   );
 }
 

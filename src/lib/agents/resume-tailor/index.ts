@@ -259,6 +259,12 @@ function parseTailored(text: string, input: ResumeTailorInput): TailoredResume {
         raw.meta.ats_score <= 100
           ? Math.round(raw.meta.ats_score)
           : undefined,
+      ats_score_before:
+        typeof raw.meta?.ats_score_before === "number" &&
+        raw.meta.ats_score_before >= 0 &&
+        raw.meta.ats_score_before <= 100
+          ? Math.round(raw.meta.ats_score_before)
+          : undefined,
     },
   };
 }

@@ -304,6 +304,7 @@ export async function regenerateResume(id: string, notes: string) {
         ...(r.parsed || {}),
         resume: newResume,
         ats_score: newResume?.meta?.ats_score ?? r.parsed?.ats_score,
+        ats_score_before: newResume?.meta?.ats_score_before ?? r.parsed?.ats_score_before,
         resume_generation_id: newId ?? r.parsed?.resume_generation_id,
         role: newResume?.meta?.target_role ?? r.parsed?.role,
         company: newResume?.meta?.target_company ?? r.parsed?.company,
@@ -336,7 +337,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
       let collectedEnrichment: unknown = null;
       let collectedPerson: unknown = null;
       let collectedCandidates: unknown[] | null = null;
-      let bundle = { ats_score: null, target_role: null, target_company: null, team: null, resume: null };
+      let bundle = { ats_score: null, ats_score_before: null, target_role: null, target_company: null, team: null, resume: null };
       const jobUrl = run.input.match(/^https?:\/\//)
         ? run.input
         : `https://${run.input}`;
@@ -402,6 +403,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           company: bundle.target_company || r.parsed?.company,
           team: bundle.team ?? r.parsed?.team,
           ats_score: bundle.ats_score ?? r.parsed?.ats_score,
+          ats_score_before: bundle.ats_score_before ?? r.parsed?.ats_score_before,
           resume: bundle.resume ?? r.parsed?.resume,
         },
         progress: { resume: 100, person: 100, email: 100, outreach: 100 },

@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 import { runReachOutStream, type RunReachOutInput } from "@/lib/agents/reach-out";
+import { resolveUserId } from "@/lib/auth";
+import { runWithUser } from "@/lib/user-context";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -76,6 +78,12 @@ async function parseInput(req: NextRequest): Promise<
 }
 
 export async function POST(req: NextRequest) {
+  // The reach-out agent reads the current user (getProfile, people dedupe, draft
+  // persistence) via the AsyncLocalStorage context. Establish it here or every
+  // currentUserId() call deep in the pipeline throws.
+  const userId = await resolveUserId();
+  if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
+
   const parsed = await parseInput(req);
   if ("error" in parsed) {
     return Response.json({ error: parsed.error }, { status: parsed.status });
@@ -88,19 +96,21 @@ export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      try {
-        for await (const evt of runReachOutStream(input)) {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(evt)}\n\n`));
+      await runWithUser(userId, async () => {
+        try {
+          for await (const evt of runReachOutStream(input)) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(evt)}\n\n`));
+          }
+        } catch (e) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: "error", message: String(e) })}\n\n`
+            )
+          );
+        } finally {
+          controller.close();
         }
-      } catch (e) {
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ type: "error", message: String(e) })}\n\n`
-          )
-        );
-      } finally {
-        controller.close();
-      }
+      });
     },
   });
 

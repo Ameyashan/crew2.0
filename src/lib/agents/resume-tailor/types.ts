@@ -35,7 +35,8 @@ export type TailoredResume = {
     page_count: 1 | 2;
     model: string;
     generated_at: string;
-    ats_score?: number; // 0-100, self-scored against the JD; null when JD wasn't reachable
+    ats_score?: number; // 0-100, tailored resume self-scored against the JD; null when JD wasn't reachable
+    ats_score_before?: number; // 0-100, the ORIGINAL resume scored against the same JD (the baseline before tailoring)
   };
 };
 
