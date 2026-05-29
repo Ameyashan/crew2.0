@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { PAPER_FONTS } from "./fonts";
 import type { Palette } from "./palette";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 const APP_NAV = [
   { id: "compose", label: "Compose", glyph: "✎" },
@@ -13,7 +14,16 @@ const APP_NAV = [
   { id: "settings", label: "Settings", glyph: "✦" },
 ] as const;
 
-type WeekStats = { drafted: number; sent: number; replied: number };
+// Turn an email local-part into a readable name, e.g. "ameya.shanbhag" → "Ameya Shanbhag".
+function nameFromEmail(email?: string | null): string {
+  if (!email) return "";
+  const local = email.split("@")[0] ?? "";
+  return local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
 
 const COMING_SOON = [
   { id: "lekhak", label: "Article Publisher", glyph: "✎" },
@@ -28,27 +38,37 @@ export function SidebarV3({ p }: { p: Palette }) {
   const current = APP_NAV.find((n) => pathname?.startsWith(`/app/${n.id}`))?.id ?? "compose";
 
   const [name, setName] = useState<string | null>(null);
-  const [stats, setStats] = useState<WeekStats>({ drafted: 0, sent: 0, replied: 0 });
 
   useEffect(() => {
     let cancelled = false;
+
+    // Prefer the name saved on the profile; fall back to the signed-in account
+    // (Google metadata or the email) so we never refer to a logged-in user as "Guest".
     fetch("/api/profile")
       .then((r) => r.json())
       .then((j) => {
-        if (!cancelled) setName(j?.profile?.full_name ?? null);
+        const fromProfile =
+          typeof j?.profile?.full_name === "string" ? j.profile.full_name.trim() : "";
+        if (!cancelled && fromProfile) setName(fromProfile);
       })
       .catch(() => {});
-    fetch("/api/stats/week")
-      .then((r) => r.json())
-      .then((j) => {
-        if (cancelled || !j) return;
-        setStats({
-          drafted: Number(j.drafted) || 0,
-          sent: Number(j.sent) || 0,
-          replied: Number(j.replied) || 0,
-        });
+
+    supabaseBrowser()
+      .auth.getUser()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const u = data?.user;
+        if (!u) return;
+        const meta = (u.user_metadata ?? {}) as Record<string, unknown>;
+        const fallback =
+          (typeof meta.full_name === "string" && meta.full_name.trim()) ||
+          (typeof meta.name === "string" && meta.name.trim()) ||
+          nameFromEmail(u.email);
+        // Don't override a name already resolved from the profile.
+        setName((prev) => prev ?? (fallback || null));
       })
       .catch(() => {});
+
     return () => {
       cancelled = true;
     };
@@ -69,18 +89,7 @@ export function SidebarV3({ p }: { p: Palette }) {
     >
       {/* Masthead-y logo */}
       <div style={{ padding: "2px 8px 16px", borderBottom: `1px solid ${p.ink}40`, marginBottom: 14 }}>
-        <div
-          style={{
-            fontFamily: PAPER_FONTS.mono,
-            fontSize: 9,
-            letterSpacing: ".16em",
-            color: p.inkMute,
-            textTransform: "uppercase",
-          }}
-        >
-          Vol. II · Console
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div
             style={{
               position: "relative",
@@ -144,7 +153,7 @@ export function SidebarV3({ p }: { p: Palette }) {
             textTransform: "uppercase",
           }}
         >
-          {`${name?.toUpperCase() || "GUEST"} · ALPHA`}
+          {name ? `${name.toUpperCase()} · ALPHA` : "ALPHA"}
         </div>
       </div>
 
@@ -261,72 +270,6 @@ export function SidebarV3({ p }: { p: Palette }) {
               </span>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* Footer dispatch */}
-      <div style={{ marginTop: "auto" }}>
-        <div
-          style={{
-            padding: "12px 14px",
-            background: p.card,
-            border: `1.5px solid ${p.ink}`,
-            boxShadow: `3px 3px 0 ${p.stamp}`,
-          }}
-        >
-          <div
-            style={{
-              fontFamily: PAPER_FONTS.mono,
-              fontSize: 9.5,
-              color: p.stamp,
-              letterSpacing: ".16em",
-              textTransform: "uppercase",
-              marginBottom: 6,
-            }}
-          >
-            This week
-          </div>
-          <div
-            style={{
-              fontFamily: PAPER_FONTS.serif,
-              fontStyle: "italic",
-              fontSize: 13.5,
-              lineHeight: 1.4,
-              color: p.inkSoft,
-            }}
-          >
-            You drafted{" "}
-            <b
-              style={{
-                color: p.ink,
-                fontFamily: PAPER_FONTS.display,
-                fontStyle: "normal",
-              }}
-            >
-              {stats.drafted}
-            </b>{" "}
-            messages, sent{" "}
-            <b
-              style={{
-                color: p.ink,
-                fontFamily: PAPER_FONTS.display,
-                fontStyle: "normal",
-              }}
-            >
-              {stats.sent}
-            </b>
-            .{" "}
-            <b
-              style={{
-                color: p.stamp,
-                fontFamily: PAPER_FONTS.display,
-                fontStyle: "normal",
-              }}
-            >
-              {stats.replied}
-            </b>{" "}
-            replied.
-          </div>
         </div>
       </div>
     </aside>

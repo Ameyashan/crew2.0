@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getProfile, upsertProfile } from "@/lib/profile";
+import { getProfile, upsertProfile, type ProfilePatch } from "@/lib/profile";
 import { extractUserContext } from "@/lib/agents/extract-context";
 import { withUser } from "@/lib/auth";
 
@@ -40,18 +40,23 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  await upsertProfile({
-    full_name: body.full_name ?? null,
-    linkedin_url: body.linkedin_url ?? null,
-    writing_samples: body.writing_samples ?? null,
-    followup_days:
-      typeof body.followup_days === "number" ? body.followup_days : null,
-    context_prompt: incomingContext,
-    context_structured,
-    resume_text: body.resume_text ?? undefined,
-    resume_filename: body.resume_filename ?? undefined,
-    onboarded_at: body.onboarded ? new Date().toISOString() : undefined,
-  });
+  // Partial update: only touch the fields the caller actually sent. This lets the
+  // settings page update one section (e.g. LinkedIn) without clobbering the rest
+  // of the profile.
+  const patch: ProfilePatch = {};
+  if ("full_name" in body) patch.full_name = body.full_name ?? null;
+  if ("linkedin_url" in body) patch.linkedin_url = body.linkedin_url ?? null;
+  if ("writing_samples" in body) patch.writing_samples = body.writing_samples ?? null;
+  if ("followup_days" in body)
+    patch.followup_days =
+      typeof body.followup_days === "number" ? body.followup_days : null;
+  if (incomingContext !== undefined) patch.context_prompt = incomingContext;
+  if (context_structured !== undefined) patch.context_structured = context_structured;
+  if ("resume_text" in body) patch.resume_text = body.resume_text ?? null;
+  if ("resume_filename" in body) patch.resume_filename = body.resume_filename ?? null;
+  if (body.onboarded) patch.onboarded_at = new Date().toISOString();
+
+  await upsertProfile(patch);
   return Response.json({ ok: true });
   });
 }
