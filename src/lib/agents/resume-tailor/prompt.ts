@@ -1,4 +1,5 @@
 import type { ResumeTailorInput } from "./types";
+import { antiAiWritingGuide } from "@/lib/writing/anti-ai";
 
 const BUDGETS = {
   1: {
@@ -30,11 +31,12 @@ PROCEDURE
 HARD RULES
 - Never invent companies, titles, dates, schools, or numeric metrics. If a fact is not in the source resume, do not include it. You may rephrase and reorder; you may not fabricate.
 - Never drop a job/degree to hide a gap. You may compress its bullets.
-- Do NOT include forbidden filler: "results-driven", "passionate", "team player", "synergy", "leverage", "delve", "go-getter".
-- Plain words. No em-dashes as connectors. No three-item rhythm overuse.
 - Mirror keywords from the JD only when they are honestly supported by the source resume.
 - Honor the user's highlights — push the things they want emphasized into the summary and early bullets.
 - If the user provided regeneration notes, follow them while keeping all other rules.
+
+${antiAiWritingGuide("fragments")}
+This applies to every bullet, the summary, and the headline.
 
 BUDGET (page_count is enforced as a soft cap; respect it strictly)
 1 page: summary ${BUDGETS[1].summary}; experience ${BUDGETS[1].experience}; education ${BUDGETS[1].education}; projects ${BUDGETS[1].projects}; skills ${BUDGETS[1].skills}; total ${BUDGETS[1].overall_words}.
