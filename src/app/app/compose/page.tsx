@@ -781,6 +781,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
   const [picking, setPicking] = useState(false);
   const [expanded, setExpanded] = useState(false);   // full-size resume modal
   const [showNotes, setShowNotes] = useState(false);  // regenerate-with-notes panel
+  const [showChanges, setShowChanges] = useState(false); // "what changed" panel
   const [notes, setNotes] = useState('');
   const [downloading, setDownloading] = useState(null); // 'pdf' | 'docx' | null
   const [dlError, setDlError] = useState(null);
@@ -806,6 +807,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
   const atsScore = parsed?.ats_score;
   const atsScoreBefore = parsed?.ats_score_before;
   const resume = parsed?.resume;
+  const changes = Array.isArray(resume?.changes) ? resume.changes : [];
 
   // Real outreach draft + best-available email via the shared builder.
   const { to: emailTo, subject: emailSubject, body: emailBody } =
@@ -927,6 +929,24 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
           <div style={{
             marginTop: 8, fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.stamp,
           }}>{dlError}</div>
+        )}
+
+        {/* what changed — your resume vs the tailored version, with the why */}
+        {changes.length > 0 && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1.5px dashed ${p.ink}24` }}>
+            <button onClick={() => setShowChanges((s) => !s)} style={{
+              background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
+              color: p.inkSoft, fontFamily: PAPER_FONTS.mono, fontSize: 11,
+              letterSpacing: '.06em', textTransform: 'uppercase',
+            }}>
+              {showChanges ? '× hide changes' : `✦ what changed (${changes.length})`}
+            </button>
+            {showChanges && (
+              <div style={{ marginTop: 10 }}>
+                <ChangeList p={p} changes={changes} compact/>
+              </div>
+            )}
+          </div>
         )}
 
         {/* regenerate with notes — reruns ONLY the resume agent */}
@@ -1173,6 +1193,61 @@ function ResumeSection({ p, title }) {
   );
 }
 
+// The tailoring changelog: a per-edit "your version → tailored version, and why"
+// list, so the user can see exactly what the Resume agent changed against their
+// own resume. `compact` shrinks it to fit inside the narrow result card.
+function ChangeList({ p, changes, compact = false }) {
+  const meta = (kind) => {
+    switch (kind) {
+      case 'added':      return { label: 'added',      color: p.leaf };
+      case 'reordered':  return { label: 'moved up',   color: p.tea };
+      case 'emphasized': return { label: 'emphasized', color: p.marigoldDeep };
+      case 'dropped':    return { label: 'trimmed',    color: p.inkMute };
+      default:           return { label: 'rewrote',    color: p.marigoldDeep };
+    }
+  };
+  return (
+    <div style={{ display: 'grid', gap: compact ? 11 : 14 }}>
+      {changes.map((c, i) => {
+        const m = meta(c.kind);
+        return (
+          <div key={i} style={{ display: 'grid', gap: 3 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{
+                padding: '1px 6px', background: m.color + '24', color: m.color,
+                fontFamily: PAPER_FONTS.mono, fontSize: 9, letterSpacing: '.06em', textTransform: 'uppercase',
+              }}>{m.label}</span>
+              {c.section && (
+                <span style={{
+                  fontFamily: PAPER_FONTS.mono, fontSize: compact ? 9.5 : 10.5,
+                  color: p.inkMute, letterSpacing: '.04em',
+                }}>{c.section}</span>
+              )}
+            </div>
+            {c.before && (
+              <div style={{
+                fontFamily: PAPER_FONTS.sans, fontSize: compact ? 11 : 12.5, lineHeight: 1.45,
+                color: p.inkMute, textDecoration: 'line-through', textDecorationColor: p.stamp + '99',
+              }}>{c.before}</div>
+            )}
+            {c.after && (
+              <div style={{
+                fontFamily: PAPER_FONTS.sans, fontSize: compact ? 11.5 : 13, lineHeight: 1.45, color: p.ink,
+              }}>{c.after}</div>
+            )}
+            {c.reason && (
+              <div style={{
+                fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
+                fontSize: compact ? 11 : 12.5, lineHeight: 1.4, color: p.inkSoft,
+              }}>— {c.reason}</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ResumeModal({ p, resume, jobRole, jobCompany, atsScore, atsScoreBefore, onClose }) {
   const h = resume.header || {};
   return (
@@ -1218,6 +1293,19 @@ function ResumeModal({ p, resume, jobRole, jobCompany, atsScore, atsScoreBefore,
           </div>
         )}
         <div style={{ height: 1.5, background: p.ink + '30', margin: '16px 0' }}/>
+
+        {Array.isArray(resume.changes) && resume.changes.length > 0 && (
+          <div style={{
+            marginBottom: 20, padding: '16px 18px',
+            background: p.card, border: `1.5px solid ${p.ink}24`,
+          }}>
+            <div style={{
+              fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.14em',
+              textTransform: 'uppercase', color: p.stamp, marginBottom: 12,
+            }}>What Jugaadu changed for this role</div>
+            <ChangeList p={p} changes={resume.changes}/>
+          </div>
+        )}
 
         {resume.summary && (
           <p style={{ margin: 0, fontFamily: PAPER_FONTS.sans, fontSize: 14, lineHeight: 1.55 }}>{resume.summary}</p>
