@@ -22,6 +22,8 @@ export interface FindEmailResult {
     | "apollo_no_match"
     | "apollo_inaccessible"   // free plan blocks people endpoints
     | "apollo_error"
+    | "public_web"            // address the person published themselves (GitHub/site/blog)
+    | "public_web_unverified" // found on the open web but not on a source they control
     | "user_provided"          // user supplied the email up front, no lookup performed
     | "skipped";
   domain: string | null;       // company domain — used to power guesses
