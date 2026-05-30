@@ -281,6 +281,145 @@ export async function identify(input: IdentifyInput): Promise<IdentifyResult> {
   };
 }
 
+// ---------- PUBLIC-WEB EMAIL ----------
+// Find an email the person has PUBLISHED themselves on the open web — their own
+// GitHub profile, personal site, blog "contact/about", paper author line, or a
+// conference bio. This closes the gap Hunter can't: Hunter is domain-scoped
+// (name@company.com) and structurally never returns a personal address on a
+// different domain (e.g. a Gmail on someone's GitHub). Runs in PARALLEL with the
+// Hunter lookup; the reach-out agent prefers a self-published hit over a guess.
+
+export interface PublicEmailInput {
+  name: string;
+  company?: string | null;
+  links?: Record<string, string> | null; // github / website / x / linkedin hints
+}
+
+export interface PublicEmailResult {
+  email: string | null;
+  source_url: string | null;   // where the address was found
+  self_published: boolean;     // on a page the person controls or authored
+  confidence: number;          // 0..1
+  raw: string;
+}
+
+const PUBLIC_EMAIL_SYSTEM = `You locate ONE email address that a specific person has PUBLICLY PUBLISHED about themselves. This is for legitimate cold outreach — only ever return an address the person has chosen to make public.
+
+Where to look, in priority order:
+1. The person's own GitHub profile / profile README (and a publicly shown commit author email).
+2. Their personal website or blog — the "Contact", "About", or footer.
+3. Academic papers (author correspondence line) and conference / talk speaker bios.
+4. Their own "contact info" on a profile they control.
+
+Disambiguation is mandatory: confirm it is the SAME person using the name plus the company, role, and handles in the hints. NEVER return an address belonging to a different person who shares the name.
+
+Rules:
+- self_published = true ONLY when the address appears on a source the person controls or authored (their site, their GitHub, their paper/bio). If it only shows up on a third-party scraper or contact-aggregator (RocketReach, ContactOut, Apollo, SignalHire, etc.), set self_published = false and lower the confidence.
+- NEVER fabricate and NEVER pattern-guess (do not invent firstname.lastname@company.com). If you cannot find a real published address, return email = null.
+- Some people obfuscate ("name AT gmail DOT com" or "name [at] domain"). De-obfuscate into a normal address only when the intent is unambiguous.
+- confidence: 0.9+ when it's clearly on their own GitHub/site; 0.5–0.7 when plausible but indirect; below 0.5 when weak.
+
+Use the web_search tool. Output strict JSON only, no prose:
+{ "email": string | null, "source_url": string | null, "self_published": boolean, "confidence": number }`;
+
+export async function findPublicEmail(
+  input: PublicEmailInput
+): Promise<PublicEmailResult> {
+  const blank: PublicEmailResult = {
+    email: null,
+    source_url: null,
+    self_published: false,
+    confidence: 0,
+    raw: "",
+  };
+  if (!input.name?.trim()) return blank;
+
+  const started = Date.now();
+  const links = input.links ?? {};
+  const userPrompt = [
+    `Name: ${input.name}`,
+    input.company && `Company: ${input.company}`,
+    links.github && `GitHub: ${links.github}`,
+    links.website && `Website: ${links.website}`,
+    links.x && `X: ${links.x}`,
+    links.linkedin && `LinkedIn: ${links.linkedin}`,
+    `Suggested searches: "${input.name}" email · "${input.name}" contact · ${input.name} github · site:github.com ${input.name}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 600,
+      system: PUBLIC_EMAIL_SYSTEM,
+      tools: [
+        {
+          type: "web_search_20250305",
+          name: "web_search",
+          max_uses: 5,
+        } as unknown as Anthropic.Messages.Tool,
+      ],
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") text += block.text;
+    }
+  } catch (e) {
+    // Never throw: this runs alongside the Hunter lookup and must not take the
+    // whole email step down. A failure just means "no public email found".
+    outcome = "error";
+    err = String(e);
+  } finally {
+    await logAgentRun({
+      agent_type: "reach_out:public_email",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { name: input.name, company: input.company ?? null },
+    });
+  }
+
+  if (outcome === "error") return blank;
+
+  let parsed: Partial<PublicEmailResult> = {};
+  try {
+    parsed = JSON.parse(extractJson(text)) as Partial<PublicEmailResult>;
+  } catch {
+    parsed = {};
+  }
+
+  const email =
+    typeof parsed.email === "string" && parsed.email.includes("@")
+      ? parsed.email.trim()
+      : null;
+  if (!email) return { ...blank, raw: text };
+
+  const confidence =
+    typeof parsed.confidence === "number"
+      ? Math.max(0, Math.min(1, parsed.confidence))
+      : 0.5;
+  return {
+    email,
+    source_url:
+      typeof parsed.source_url === "string" ? parsed.source_url : null,
+    self_published: parsed.self_published === true,
+    confidence,
+    raw: text,
+  };
+}
+
 // ---------- PARSE JOB META ----------
 // A deliberately tiny, fast call: read a job posting and return only the
 // role / company / team. This exists so the sourcing agent ("Person Khoji")

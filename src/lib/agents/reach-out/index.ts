@@ -1,5 +1,16 @@
-import { research, draft, type Channel } from "@/lib/claude";
-import { inferDomain, buildGuesses } from "@/lib/apollo";
+import {
+  research,
+  draft,
+  findPublicEmail,
+  type Channel,
+  type PublicEmailResult,
+} from "@/lib/claude";
+import {
+  inferDomain,
+  buildGuesses,
+  type FindEmailResult,
+  type EmailGuess,
+} from "@/lib/apollo";
 import { findEmailHunter as findEmail } from "@/lib/hunter";
 import { supabaseAdmin } from "@/lib/supabase";
 import { currentUserId } from "@/lib/user-context";
@@ -98,21 +109,36 @@ export async function* runReachOutStream(
       yield { type: "step", id: "email_lookup", status: "skipped", data: enrichmentForUi };
     } else {
       yield { type: "step", id: "email_lookup", status: "start" };
-      enrichment = await findEmail({
-        name: ctx.name ?? input.text,
-        company: ctx.company ?? undefined,
-        linkedin_url: ctx.links?.linkedin,
-      });
+      const lookupName = ctx.name ?? input.text;
+      // Two lookups in parallel. Hunter is a corporate-domain finder
+      // (name@company-domain) and can never return a personal address on
+      // another domain; the public-web pass catches an email the person
+      // published themselves (GitHub, personal site, blog, paper/bio). We then
+      // prefer a self-published hit over a domain guess.
+      const [hunter, pub] = await Promise.all([
+        findEmail({
+          name: lookupName,
+          company: ctx.company ?? undefined,
+          linkedin_url: ctx.links?.linkedin,
+        }),
+        findPublicEmail({
+          name: lookupName,
+          company: ctx.company,
+          links: ctx.links,
+        }),
+      ]);
+
+      enrichment = mergeEmailSources(hunter, pub, ctx.company, ctx.links);
 
       // Always guarantee guesses + domain so the UI has a fallback even when
-      // Apollo can't be called (free plan) or returns no domain data.
+      // neither provider returns usable data.
       const finalDomain =
         enrichment.domain ?? inferDomain({ company: ctx.company, links: ctx.links });
       const finalGuesses =
         enrichment.guesses && enrichment.guesses.length
           ? enrichment.guesses
           : finalDomain
-            ? buildGuesses(ctx.name ?? input.text, finalDomain)
+            ? buildGuesses(lookupName, finalDomain)
             : [];
       enrichmentForUi = { ...enrichment, domain: finalDomain, guesses: finalGuesses };
       yield { type: "step", id: "email_lookup", status: "done", data: enrichmentForUi };
@@ -252,4 +278,76 @@ export async function* runReachOutStream(
   } catch (e) {
     yield { type: "error", message: String(e) };
   }
+}
+
+// Combine the corporate-domain (Hunter) and public-web lookups into the single
+// FindEmailResult shape the UI already understands. Ranking, best first:
+//   1. an address the person self-published (most reliable way to reach them),
+//   2. a real mailbox Hunter stands behind,
+//   3. a public address seen on a third-party source (better than a blind guess),
+//   4. nothing — fall through to Hunter's domain + pattern guesses.
+// The address that doesn't win is kept as a secondary, clickable candidate.
+function mergeEmailSources(
+  hunter: FindEmailResult,
+  pub: PublicEmailResult,
+  company: string | null,
+  links: Record<string, string> | null,
+): FindEmailResult {
+  const domain = hunter.domain ?? inferDomain({ company, links });
+  const publicRaw = { source_url: pub.source_url, raw: pub.raw };
+
+  // 1) Self-published wins outright — even a personal Gmail beats a corporate guess.
+  if (pub.email && pub.self_published) {
+    const extras: EmailGuess[] = [];
+    if (hunter.email) extras.push({ email: hunter.email, pattern: hunter.source });
+    return {
+      email: pub.email,
+      confidence: Math.max(pub.confidence, 0.9),
+      source: "public_web",
+      domain,
+      guesses: dedupeGuesses([...extras, ...(hunter.guesses ?? [])], pub.email),
+      message: pub.source_url ? `published at ${pub.source_url}` : "self-published address",
+      raw: { hunter: hunter.raw ?? null, public: publicRaw },
+    };
+  }
+
+  // 2) A real mailbox Hunter could find.
+  if (hunter.email) {
+    const extras: EmailGuess[] = [];
+    if (pub.email) extras.push({ email: pub.email, pattern: "public_web" });
+    return {
+      ...hunter,
+      domain,
+      guesses: dedupeGuesses([...extras, ...(hunter.guesses ?? [])], hunter.email),
+      raw: { hunter: hunter.raw ?? null, public: pub.email ? publicRaw : null },
+    };
+  }
+
+  // 3) A public address from a source the person doesn't control — flag it.
+  if (pub.email) {
+    return {
+      email: pub.email,
+      confidence: Math.min(pub.confidence, 0.7),
+      source: "public_web_unverified",
+      domain,
+      guesses: dedupeGuesses(hunter.guesses ?? [], pub.email),
+      message: pub.source_url ? `seen at ${pub.source_url}` : null,
+      raw: { hunter: hunter.raw ?? null, public: publicRaw },
+    };
+  }
+
+  // 4) Nothing found — keep Hunter's no-match payload (domain + guesses).
+  return { ...hunter, domain };
+}
+
+function dedupeGuesses(guesses: EmailGuess[], primary: string): EmailGuess[] {
+  const seen = new Set<string>([primary.toLowerCase()]);
+  const out: EmailGuess[] = [];
+  for (const g of guesses) {
+    const key = g.email?.toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(g);
+  }
+  return out.slice(0, 6);
 }
