@@ -1,3 +1,20 @@
+// One honest entry in the tailoring changelog: a single edit the agent made to
+// fit the resume to this job, so the user can see what changed and why.
+export type ResumeChangeKind =
+  | "rewrote" // same fact, new wording
+  | "added" // surfaced something already true but buried in the source resume
+  | "reordered" // moved earlier for relevance
+  | "emphasized" // pulled a JD keyword/skill forward
+  | "dropped"; // trimmed for space or focus
+
+export type ResumeChange = {
+  section: string; // where on the resume, e.g. "Summary", "Experience · Goldman Sachs"
+  kind: ResumeChangeKind;
+  before?: string; // original phrasing (omitted for "added")
+  after?: string; // new phrasing (omitted for "dropped")
+  reason: string; // one short clause tying the edit to the JD
+};
+
 export type TailoredResume = {
   header: {
     full_name: string;
@@ -27,6 +44,9 @@ export type TailoredResume = {
   skills?: { group: string; items: string[] }[];
   projects?: { name: string; link?: string; bullets: string[] }[];
   extras?: { heading: string; items: string[] }[];
+  // The most significant edits the agent made to tailor this resume to the JD,
+  // most impactful first. Omitted when the JD/brief wasn't seen.
+  changes?: ResumeChange[];
   meta: {
     target_role?: string;
     target_company?: string;

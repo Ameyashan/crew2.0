@@ -5,6 +5,8 @@ import { getProfile } from "@/lib/profile";
 import { lintAntiAi, describeViolations, antiAiWritingGuide } from "@/lib/writing/anti-ai";
 import { SYSTEM_PROMPT, buildUserPrompt } from "./prompt";
 import type {
+  ResumeChange,
+  ResumeChangeKind,
   ResumeTailorInput,
   ResumeTailorStepEvent,
   TailoredResume,
@@ -215,6 +217,7 @@ function parseTailored(text: string, input: ResumeTailorInput): TailoredResume {
   const skills = Array.isArray(raw.skills) ? raw.skills : undefined;
   const projects = Array.isArray(raw.projects) ? raw.projects : undefined;
   const extras = Array.isArray(raw.extras) ? raw.extras : undefined;
+  const changes = sanitizeChanges(raw.changes);
 
   return {
     header: {
@@ -255,6 +258,7 @@ function parseTailored(text: string, input: ResumeTailorInput): TailoredResume {
       heading: x.heading ?? "",
       items: Array.isArray(x.items) ? x.items.filter(Boolean) : [],
     })),
+    changes,
     meta: {
       target_role: raw.meta?.target_role ?? undefined,
       target_company: raw.meta?.target_company ?? undefined,
@@ -277,6 +281,41 @@ function parseTailored(text: string, input: ResumeTailorInput): TailoredResume {
           : undefined,
     },
   };
+}
+
+const CHANGE_KINDS: ResumeChangeKind[] = [
+  "rewrote",
+  "added",
+  "reordered",
+  "emphasized",
+  "dropped",
+];
+
+// Coerce the model's freeform "changes" into a clean, bounded changelog. Drops
+// malformed entries, clamps the kind to a known value, trims strings, and caps
+// the list so the UI never has to defend against junk. Returns undefined when
+// there's nothing usable (e.g. the JD wasn't seen).
+function sanitizeChanges(raw: unknown): ResumeChange[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: ResumeChange[] = [];
+  for (const c of raw) {
+    if (!c || typeof c !== "object") continue;
+    const r = c as Record<string, unknown>;
+    const section = typeof r.section === "string" ? r.section.trim() : "";
+    const before =
+      typeof r.before === "string" && r.before.trim() ? r.before.trim() : undefined;
+    const after =
+      typeof r.after === "string" && r.after.trim() ? r.after.trim() : undefined;
+    const reason = typeof r.reason === "string" ? r.reason.trim() : "";
+    // An entry with no concrete content tells the user nothing — skip it.
+    if (!section && !before && !after) continue;
+    const kind = CHANGE_KINDS.includes(r.kind as ResumeChangeKind)
+      ? (r.kind as ResumeChangeKind)
+      : "rewrote";
+    out.push({ section, kind, before, after, reason });
+    if (out.length >= 12) break;
+  }
+  return out.length ? out : undefined;
 }
 
 // Lint every piece of generated copy on the resume (bullets, summary, headline)

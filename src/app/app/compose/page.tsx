@@ -13,6 +13,7 @@ import {
   Marginalia,
 } from "@/components/paper/primitives";
 import { openGmailCompose } from "@/lib/gmail";
+import { ChangeList } from "@/components/resume/ChangeList";
 import {
   useRuns,
   startRun,
@@ -781,6 +782,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
   const [picking, setPicking] = useState(false);
   const [expanded, setExpanded] = useState(false);   // full-size resume modal
   const [showNotes, setShowNotes] = useState(false);  // regenerate-with-notes panel
+  const [showChanges, setShowChanges] = useState(false); // "what changed" panel
   const [notes, setNotes] = useState('');
   const [downloading, setDownloading] = useState(null); // 'pdf' | 'docx' | null
   const [dlError, setDlError] = useState(null);
@@ -806,6 +808,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
   const atsScore = parsed?.ats_score;
   const atsScoreBefore = parsed?.ats_score_before;
   const resume = parsed?.resume;
+  const changes = Array.isArray(resume?.changes) ? resume.changes : [];
 
   // Real outreach draft + best-available email via the shared builder.
   const { to: emailTo, subject: emailSubject, body: emailBody } =
@@ -927,6 +930,24 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
           <div style={{
             marginTop: 8, fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.stamp,
           }}>{dlError}</div>
+        )}
+
+        {/* what changed — your resume vs the tailored version, with the why */}
+        {changes.length > 0 && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1.5px dashed ${p.ink}24` }}>
+            <button onClick={() => setShowChanges((s) => !s)} style={{
+              background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
+              color: p.inkSoft, fontFamily: PAPER_FONTS.mono, fontSize: 11,
+              letterSpacing: '.06em', textTransform: 'uppercase',
+            }}>
+              {showChanges ? '× hide changes' : `✦ what changed (${changes.length})`}
+            </button>
+            {showChanges && (
+              <div style={{ marginTop: 10 }}>
+                <ChangeList p={p} changes={changes} compact/>
+              </div>
+            )}
+          </div>
         )}
 
         {/* regenerate with notes — reruns ONLY the resume agent */}
@@ -1218,6 +1239,19 @@ function ResumeModal({ p, resume, jobRole, jobCompany, atsScore, atsScoreBefore,
           </div>
         )}
         <div style={{ height: 1.5, background: p.ink + '30', margin: '16px 0' }}/>
+
+        {Array.isArray(resume.changes) && resume.changes.length > 0 && (
+          <div style={{
+            marginBottom: 20, padding: '16px 18px',
+            background: p.card, border: `1.5px solid ${p.ink}24`,
+          }}>
+            <div style={{
+              fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.14em',
+              textTransform: 'uppercase', color: p.stamp, marginBottom: 12,
+            }}>What Jugaadu changed for this role</div>
+            <ChangeList p={p} changes={resume.changes}/>
+          </div>
+        )}
 
         {resume.summary && (
           <p style={{ margin: 0, fontFamily: PAPER_FONTS.sans, fontSize: 14, lineHeight: 1.55 }}>{resume.summary}</p>
