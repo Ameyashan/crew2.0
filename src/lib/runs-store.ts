@@ -25,6 +25,10 @@ export type Run = {
   // Resume "regenerate with notes" state (job runs only).
   regenerating?: boolean;
   regenError?: string | null;
+  // "Another angle" draft-rewrite state. Holds the UI channel currently being
+  // rewritten ('email' | 'linkedin' | 'x'), or null when idle.
+  redrafting?: string | null;
+  redraftError?: string | null;
 };
 
 /* ─────────────────────── module store ─────────────────────── */
@@ -315,6 +319,71 @@ export async function regenerateResume(id: string, notes: string) {
   } catch (e) {
     patch(id, () => ({ regenerating: false, regenError: String(e?.message || e) }));
   }
+}
+
+// "Another angle" — rewrite the draft for one channel with a preset directive
+// ("make it shorter", "more founder-like", a fresh angle, …). Hits the
+// lightweight /api/compose/redraft endpoint (no research / email re-lookup) and
+// swaps the rewritten subject+body into the run's drafts in place, so the email
+// card re-renders with the new copy. `current` carries what's on screen now —
+// which may be a fallback when no real draft exists yet, so there's always
+// something to rewrite.
+export async function regenerateDraft(
+  id: string,
+  channel: string, // UI channel: 'email' | 'linkedin' | 'x'
+  directive: string,
+  current: { subject?: string | null; body?: string | null; recipientName?: string | null },
+) {
+  const run = runs.find((r) => r.id === id);
+  if (!run) return;
+  const body = (current?.body || "").trim();
+  if (!body || run.redrafting) return;
+  // The draft pipeline speaks 'x_dm'; the UI tabs say 'x'.
+  const apiChannel = channel === "x" ? "x_dm" : channel;
+
+  patch(id, () => ({ redrafting: channel, redraftError: null }));
+  try {
+    const res = await fetch("/api/compose/redraft", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        channel: apiChannel,
+        subject: current?.subject ?? null,
+        body,
+        directive,
+        recipient_name: current?.recipientName ?? null,
+      }),
+    });
+    if (!res.ok) throw new Error(`redraft failed: ${res.status}`);
+    const data = await res.json();
+    if (data?.error) throw new Error(data.error);
+    patch(id, (r) => ({
+      drafts: upsertDraft(r.drafts, channel, {
+        subject: data.subject ?? current?.subject ?? null,
+        body: data.body,
+      }),
+      redrafting: null,
+      redraftError: null,
+    }));
+  } catch (e) {
+    if (e?.message === "redrafting") return;
+    patch(id, () => ({ redrafting: null, redraftError: String(e?.message || e) }));
+  }
+}
+
+// Replace (or insert) the draft for one channel, keeping reference identity for
+// siblings. Keyed by the UI channel so the package cards — which read
+// drafts.find(d => d.channel === 'email' | 'linkedin' | 'x') — pick up the swap.
+function upsertDraft(
+  drafts: unknown[] | null,
+  channel: string,
+  next: { subject: string | null; body: string },
+): unknown[] {
+  const arr = Array.isArray(drafts) ? [...drafts] : [];
+  const i = arr.findIndex((d) => (d as { channel?: string })?.channel === channel);
+  if (i >= 0) arr[i] = { ...(arr[i] as object), ...next, channel };
+  else arr.push({ channel, ...next });
+  return arr;
 }
 
 /* ─────────────────────── streaming ─────────────────────── */

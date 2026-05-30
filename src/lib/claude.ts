@@ -624,6 +624,7 @@ export interface DraftInput {
   sender_context?: string;                            // about the user — name, resume excerpt
   sender_writing_samples?: string;                    // pasted samples from onboarding
   sender_full_name?: string;                          // for sign-off
+  sender_linkedin?: string;                           // appended under the name in email signatures
   // Job-application flow: the role/company this outreach is actually about.
   // Anchors the subject + body on this so a stray Intent can't redirect the
   // email to a different company.
@@ -642,7 +643,22 @@ const LENGTH_BUDGETS: Record<Channel, string> = {
   linkedin: "60–100 words. No subject. One short greeting line maximum.",
 };
 
-function draftSystem(channel: Channel, signOffName?: string) {
+// Shared closer rule so a one-off draft, a humanize rewrite, and an "Another
+// angle" redraft all sign off the same way. For email we append the sender's
+// LinkedIn on its own line under the name — a LinkedIn/X DM shouldn't carry a
+// LinkedIn URL, so we skip it there.
+function signOffInstruction(channel: Channel, signOffName?: string, signOffLinkedin?: string) {
+  const base = signOffName
+    ? `Default sign-off: "${signOffName.split(/\s+/)[0]}" on a new line.`
+    : "If no samples, sign off with first name only on a new line.";
+  const link =
+    channel === "email" && signOffLinkedin
+      ? ` Then add the sender's LinkedIn on its own line directly under the name, exactly as: ${signOffLinkedin} — nothing after it.`
+      : "";
+  return `Closers: match the user's voice samples. ${base}${link} Do not use "Best,", "Regards,", or "Cheers,".`;
+}
+
+function draftSystem(channel: Channel, signOffName?: string, signOffLinkedin?: string) {
   const subjectRules =
     channel === "email"
       ? `
@@ -666,7 +682,7 @@ Outreach specifics:
 - If the research has no specific facts, tie the user's own background or intent to the recipient's company/role rather than fabricating a reference. Honest > fluffy.
 - One concrete ask. A single question, not several.
 - No adjectives that flatter the recipient.
-- Closers: match the user's voice samples. ${signOffName ? `Default sign-off: "${signOffName.split(/\s+/)[0]}" on a new line.` : "If no samples, sign off with first name only on a new line."} Do not use "Best,", "Regards,", or "Cheers,".
+- ${signOffInstruction(channel, signOffName, signOffLinkedin)}
 - Do NOT respond with meta-commentary like "I need more context" — write the best message you can with what you have.
 ${subjectRules}
 
@@ -832,7 +848,7 @@ export async function draft(input: DraftInput): Promise<DraftResult> {
     const resp = await client().messages.create({
       model: MODEL,
       max_tokens: 600,
-      system: draftSystem(input.channel, input.sender_full_name),
+      system: draftSystem(input.channel, input.sender_full_name, input.sender_linkedin),
       messages: [{ role: "user", content: userPrompt }],
     });
     inTokens = resp.usage.input_tokens;
@@ -889,6 +905,136 @@ export async function draft(input: DraftInput): Promise<DraftResult> {
       }
     } catch (e) {
       console.error("[draft] humanize rewrite failed", e);
+    }
+  }
+
+  return { subject, body, model: MODEL };
+}
+
+// ---------- REDRAFT ("Another angle") ----------
+// Rewrites a draft the user already has in front of them, applying ONE preset
+// directive ("make it shorter", "more founder-like", a fresh angle, …). Unlike
+// draft() this never touches research or email lookup — it's a fast, in-place
+// rewrite that keeps the facts and the sender's voice. Same anti-AI scrub as a
+// fresh draft so a rewrite can't reintroduce tells.
+export interface RedraftInput {
+  channel: Channel;
+  subject: string | null;
+  body: string;
+  directive: string; // the preset instruction, e.g. "aim for 60–80 words"
+  recipient_name?: string | null;
+  sender_full_name?: string;
+  sender_linkedin?: string;
+}
+
+function redraftSystem(
+  channel: Channel,
+  directive: string,
+  signOffName?: string,
+  signOffLinkedin?: string
+) {
+  const subjectRules =
+    channel === "email"
+      ? `\n- Subject: 3–6 words, specific and concrete. No clickbait, no emoji, never begin with "Re:" or "Fwd:". You may keep the existing subject if it still fits.`
+      : "";
+  return `You revise an outreach ${channel} the sender already drafted, applying ONE specific change while keeping it unmistakably in their voice.
+
+The change to apply: ${directive}
+
+Rules:
+- Apply the change above. Keep every concrete fact, name, and the single ask — do not invent new claims or references.
+- Stay within the channel's natural length: ${LENGTH_BUDGETS[channel]}
+
+${antiAiWritingGuide("prose")}
+
+- ${signOffInstruction(channel, signOffName, signOffLinkedin)}${subjectRules}
+
+Output strict JSON only:
+${channel === "email" ? '{ "subject": string, "body": string }' : '{ "body": string }'}`;
+}
+
+export async function redraft(input: RedraftInput): Promise<DraftResult> {
+  const started = Date.now();
+
+  const userBlocks: string[] = [];
+  if (input.recipient_name) userBlocks.push(`# Recipient\n${input.recipient_name}`);
+  userBlocks.push(
+    `# Current ${input.channel}\n${
+      input.channel === "email" && input.subject ? `Subject: ${input.subject}\n\n` : ""
+    }${input.body}`
+  );
+  const userPrompt = userBlocks.join("\n\n");
+
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 600,
+      system: redraftSystem(
+        input.channel,
+        input.directive,
+        input.sender_full_name,
+        input.sender_linkedin
+      ),
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") text += block.text;
+    }
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: `reach_out:redraft:${input.channel}`,
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { directive: input.directive },
+    });
+  }
+
+  let parsed: { subject?: string; body?: string } = {};
+  try {
+    parsed = JSON.parse(extractJson(text));
+  } catch {
+    parsed = { body: text.trim() };
+  }
+  let subject = input.channel === "email" ? parsed.subject ?? input.subject : null;
+  let body = (parsed.body ?? "").trim();
+  // A rewrite that came back empty is worse than the original — keep what we had.
+  if (!body) return { subject, body: input.body, model: MODEL };
+
+  // Same post-generation anti-AI scrub as draft(): a rewrite must never ship a
+  // tell the linter would have caught on a fresh draft.
+  const violations = lintAntiAi([subject, body].filter(Boolean).join("\n"));
+  if (violations.length) {
+    try {
+      const fixed = await humanizeDraft({
+        channel: input.channel,
+        subject,
+        body,
+        violations,
+        signOffName: input.sender_full_name,
+      });
+      const after = lintAntiAi([fixed.subject, fixed.body].filter(Boolean).join("\n")).length;
+      if (after < violations.length) {
+        subject = fixed.subject;
+        body = fixed.body;
+      }
+    } catch (e) {
+      console.error("[redraft] humanize rewrite failed", e);
     }
   }
 

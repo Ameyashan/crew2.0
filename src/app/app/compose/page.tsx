@@ -22,6 +22,7 @@ import {
   retryRun,
   pickCandidate,
   regenerateResume,
+  regenerateDraft,
   jobHost,
 } from "@/lib/runs-store";
 
@@ -605,6 +606,72 @@ function buildEmailDraft({ kind, parsed, drafts, enrichment }) {
       };
 }
 
+// "Another angle" presets. Each is a one-line directive the redraft endpoint
+// applies to the draft that's currently on screen — facts and ask preserved,
+// just a different cut.
+const ANGLE_PRESETS = [
+  { id: 'angle',   label: '↻ Another angle',   directive: 'Rewrite with a completely different opening hook and angle. Keep the same facts and the single ask, but find a fresh way in — do not reuse the first sentence.' },
+  { id: 'shorter', label: '✂ Make it shorter', directive: 'Cut it down hard — aim for 60–80 words. Keep only the single strongest specific reference and the ask. Strip throat-clearing and filler.' },
+  { id: 'founder', label: '⚡ More founder-like', directive: 'Rewrite in a direct, high-conviction founder voice: short sentences, plain words, a clear point of view, no hedging and no corporate softeners.' },
+  { id: 'warmer',  label: '☺ Warmer',          directive: 'Make it warmer and more personable while staying concise — a touch more human, still not gushing or over-familiar.' },
+  { id: 'formal',  label: '◷ More formal',     directive: 'Make the tone a notch more formal and polished, without becoming stiff or corporate.' },
+];
+
+// The "Another angle" control: an outline button that opens a small menu of
+// rewrite presets. Selecting one calls regenerateDraft, which swaps the new copy
+// into the run's drafts so the card re-renders. Reads its busy/error state from
+// the live run so a rewrite kicked off here shows progress anywhere it's mounted.
+function AnotherAngle({ p, runId, channel, subject, body, recipientName, style }) {
+  const [open, setOpen] = useState(false);
+  const runs = useRuns();
+  const run = runs.find((r) => r.id === runId);
+  const busy = run?.redrafting === channel;
+  const err = run?.redraftError;
+  const disabled = busy || !body;
+
+  return (
+    <div style={{ position: 'relative', ...style }}>
+      <InkButton p={p} kind="outline" size="sm" style={{ width: '100%' }}
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}>
+        {busy ? 'Rewriting…' : '↻ Another angle ▾'}
+      </InkButton>
+      {open && !busy && (
+        <>
+          {/* click-away catcher */}
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 19 }}/>
+          <div style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 20,
+            background: p.paper, border: `1.5px solid ${p.ink}`,
+            boxShadow: `3px 3px 0 ${p.ink}1a`,
+          }}>
+            {ANGLE_PRESETS.map((preset, i) => (
+              <button key={preset.id} onClick={() => {
+                setOpen(false);
+                regenerateDraft(runId, channel, preset.directive, { subject, body, recipientName });
+              }} style={{
+                display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer',
+                padding: '8px 12px', background: 'transparent', color: p.ink,
+                border: 'none', borderTop: i ? `1px solid ${p.ink}1a` : 'none',
+                fontFamily: PAPER_FONTS.sans, fontSize: 12.5,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = p.ink + '0d'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {err && (
+        <div style={{
+          marginTop: 6, fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.stamp,
+        }}>{err}</div>
+      )}
+    </div>
+  );
+}
+
 function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, run, onReset, go }) {
   const headerEmail = buildEmailDraft({ kind, parsed, drafts, enrichment });
   return (
@@ -638,14 +705,14 @@ function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, run, o
       </PaperCard>
 
       {kind === 'person'
-        ? <PersonPackage p={p} parsed={parsed} drafts={drafts} enrichment={enrichment} go={go}/>
+        ? <PersonPackage p={p} parsed={parsed} drafts={drafts} enrichment={enrichment} run={run} go={go}/>
         : <JobPackage    p={p} parsed={parsed} drafts={drafts} enrichment={enrichment} person={person} run={run} go={go}/>
       }
     </div>
   );
 }
 
-function PersonPackage({ p, parsed, drafts, enrichment, go }) {
+function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
   const [channel, setChannel] = useState('email'); // email | linkedin | x
   const chosen = parsed.chosen;
 
@@ -733,7 +800,8 @@ function PersonPackage({ p, parsed, drafts, enrichment, go }) {
               openGmailCompose({ to: m.to, subject: m.subject, body: m.body });
             }}>Open in Gmail →</InkButton>
           )}
-          <InkButton p={p} kind="outline" size="sm">↻ Another angle</InkButton>
+          <AnotherAngle p={p} runId={run?.id} channel={channel} style={{ flex: 1 }}
+            subject={m.subject} body={m.body} recipientName={chosen.name}/>
           <InkButton p={p} kind="outline" size="sm">✎ Edit</InkButton>
         </div>
       </PaperCard>
@@ -1034,7 +1102,8 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
           <InkButton p={p} color={p.stamp} size="sm" style={{ flex: 1 }} disabled={!emailBody} onClick={() => {
             openGmailCompose({ to: emailTo, subject: emailSubject, body: emailBody });
           }}>Open in Gmail →</InkButton>
-          <InkButton p={p} kind="outline" size="sm" style={{ flex: 1 }}>↻ Another angle</InkButton>
+          <AnotherAngle p={p} runId={run?.id} channel="email" style={{ flex: 1 }}
+            subject={emailSubject} body={emailBody} recipientName={personName}/>
         </div>
       </PaperCard>
 
