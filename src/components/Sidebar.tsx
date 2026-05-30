@@ -57,7 +57,7 @@ export function Sidebar() {
     <>
       {/* Mobile top bar */}
       <div className="md:hidden sticky top-0 z-30 flex items-center justify-between border-b border-[color:var(--color-line)]/60 bg-[color:var(--color-cream)] px-4 py-3">
-        <Link href="/compose" className="flex items-center gap-2">
+        <Link href="/" className="flex items-center gap-2">
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[color:var(--color-clay)] text-white text-sm font-medium">
             J
           </span>
@@ -121,7 +121,7 @@ function SidebarBody({
   return (
     <>
       <div className="px-5 py-5 flex items-start justify-between">
-        <Link href="/compose" onClick={onNav} className="flex items-center gap-3">
+        <Link href="/" onClick={onNav} className="flex items-center gap-3">
           <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-[color:var(--color-clay)] text-white text-lg font-medium">
             J
           </span>

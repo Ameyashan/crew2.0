@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { PAPER_FONTS } from "./fonts";
 import type { Palette } from "./palette";
@@ -89,7 +90,10 @@ export function SidebarV3({ p }: { p: Palette }) {
     >
       {/* Masthead-y logo */}
       <div style={{ padding: "2px 8px 16px", borderBottom: `1px solid ${p.ink}40`, marginBottom: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <Link
+          href="/"
+          style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "inherit" }}
+        >
           <div
             style={{
               position: "relative",
@@ -142,7 +146,7 @@ export function SidebarV3({ p }: { p: Palette }) {
               Jugaadu<span style={{ color: p.stamp }}>.</span>
             </div>
           </div>
-        </div>
+        </Link>
         <div
           style={{
             marginTop: 8,
