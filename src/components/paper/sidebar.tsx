@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { PAPER_FONTS } from "./fonts";
 import type { Palette } from "./palette";
