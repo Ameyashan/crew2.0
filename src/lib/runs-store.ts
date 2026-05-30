@@ -72,7 +72,7 @@ export function useRuns(): Run[] {
 
 export function startRun(
   input: string,
-  opts?: { intent?: string; providedEmail?: boolean },
+  opts?: { intent?: string; providedEmail?: boolean; kind?: "person" | "job" },
 ): string | null {
   const text = (input || "").trim();
   if (!text) return null;
@@ -87,7 +87,7 @@ export function startRun(
     input: text,
     intent: opts?.intent || undefined,
     providedEmail: opts?.providedEmail || false,
-    kind: detectKind(text),
+    kind: opts?.kind || detectKind(text),
     stage: "parsing",
     parsed: null,
     progress: {},

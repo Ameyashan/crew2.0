@@ -49,6 +49,29 @@ async function downloadResumeBlob(resume, fmt) {
   URL.revokeObjectURL(url);
 }
 
+// Three-way read of the paste box → drives the "Looks like…" banner and the
+// high-level flow we preview before the user hits Go. Job postings and profile
+// links resolve to a concrete target; everything else is treated as a fuzzy
+// "describe a person" search.
+function classifyKind(s) {
+  const lo = (s || '').toLowerCase().trim();
+  if (!lo) return 'person';
+  if (/\b(jobs?|careers?|hiring|posting|positions?)\b/.test(lo)) return 'job';
+  if (/(greenhouse|lever|ashbyhq|workable|wellfound|builtin|workday)\.(io|com)/.test(lo)) return 'job';
+  if (lo.includes('/jobs/') || lo.includes('/careers/') || lo.includes('careers.')) return 'job';
+  if (/(linkedin\.com\/in\/|x\.com\/|twitter\.com\/|github\.com\/)/.test(lo)) return 'person';
+  if (/^https?:\/\//.test(lo) || lo.includes('.com/') || lo.includes('.io/')) return 'person';
+  return 'fuzzy';
+}
+
+// Label + the high-level flow each kind kicks off, surfaced in the banner so
+// people know what happens before they commit.
+const KIND_META = {
+  job:    { label: 'a job posting',     flow: 'Tailor résumé → find hiring manager → draft cold email → prep outreach' },
+  person: { label: 'a specific person', flow: 'Verify email → draft cold email → write X & LinkedIn DMs' },
+  fuzzy:  { label: 'a fuzzy search',    flow: 'Find matching people → you pick → draft personalized outreach' },
+};
+
 function ComposeV3({ p, go }) {
   // Paste-entry state only. Each submitted link becomes an independent run in
   // the module store (src/lib/runs-store.ts), so many can stream at once and
@@ -57,13 +80,17 @@ function ComposeV3({ p, go }) {
   const [intent, setIntent] = useState('');
   const [haveEmail, setHaveEmail] = useState(false);
   const [screenshot, setScreenshot] = useState(null);
+  // null → trust auto-detection; otherwise the kind the user forced via the
+  // "NOT RIGHT?" toggle. 'fuzzy' folds into the person flow in the store.
+  const [kindOverride, setKindOverride] = useState(null);
   const runs = useRuns();
 
   function onGo() {
     if (!input.trim()) return;
-    startRun(input, { intent, providedEmail: haveEmail });
+    const kind = kindOverride || classifyKind(input);
+    startRun(input, { intent, providedEmail: haveEmail, kind: kind === 'job' ? 'job' : 'person' });
     // clear so the next link can be pasted immediately
-    setInput(''); setIntent(''); setHaveEmail(false); setScreenshot(null);
+    setInput(''); setIntent(''); setHaveEmail(false); setScreenshot(null); setKindOverride(null);
   }
 
   return (
@@ -85,6 +112,7 @@ function ComposeV3({ p, go }) {
         intent={intent} setIntent={setIntent}
         haveEmail={haveEmail} setHaveEmail={setHaveEmail}
         screenshot={screenshot} setScreenshot={setScreenshot}
+        kindOverride={kindOverride} setKindOverride={setKindOverride}
         onGo={onGo}
       />
 
@@ -193,14 +221,24 @@ function RunCard({ p, run, go }) {
 
 /* ─────────────────────── paste field (idle state) ─────────────────────── */
 
-function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHaveEmail, screenshot, setScreenshot, onGo }) {
+function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHaveEmail, screenshot, setScreenshot, kindOverride, setKindOverride, onGo }) {
   const fileRef = useRef(null);
+  const [showContext, setShowContext] = useState(false);
+  // The three things you can hand us. Clicking a pill drops in a representative
+  // example so the banner below can show the flow it kicks off.
   const samples = [
-    { label: 'x post',     text: 'x.com/anika_designs/status/1782991028' },
-    { label: 'linkedin',   text: 'linkedin.com/in/anika-mehta' },
-    { label: 'free-text',  text: 'the woman who runs ops at Ramp' },
-    { label: 'job link ↗', text: 'https://stripe.com/jobs/listing/product-designer-payments' },
+    { kind: 'job',    label: 'job link',     text: 'https://job-boards.greenhouse.io/thinkingmachines/jobs/5014120008' },
+    { kind: 'person', label: 'person',       text: 'linkedin.com/in/maya-ramaswamy' },
+    { kind: 'fuzzy',  label: 'fuzzy search', text: 'Product managers at Perplexity' },
   ];
+  const hasInput = input.trim().length > 0;
+  const detected = kindOverride || classifyKind(input);
+  const meta = KIND_META[detected];
+
+  // setting text from the box or a pill clears any manual override so the
+  // banner re-reads the fresh input.
+  function setText(v) { setInput(v); setKindOverride(null); }
+
   function pickFile(e) {
     const f = e.target.files?.[0];
     if (f) setScreenshot({ name: f.name, size: `${Math.round(f.size / 1024)} KB` });
@@ -209,27 +247,74 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
     <>
       <PaperCard p={p} color={p.marigold} hardShadow style={{ padding: '22px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <Eyebrow p={p} hindi="लिंक · नाम · खयाल" en="Paste a link, name, or free-text"/>
+          <Eyebrow p={p} hindi="लिंक · नाम · खयाल" en="Paste a link, name, or describe a person"/>
           <span style={{
             fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.06em', color: p.inkMute,
           }}>linkedin · x · greenhouse · lever · pdf · anything</span>
         </div>
         <textarea
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') onGo(); }}
           placeholder='x.com/maya  ·  linkedin.com/in/…  ·  "the woman who runs ops at Ramp"'
           rows={2}
           style={{
             width: '100%', resize: 'vertical', minHeight: 80,
             padding: '14px 16px', background: p.paper,
-            border: `1.5px solid ${input.trim() ? p.stamp : p.ink + '30'}`,
+            border: `1.5px solid ${hasInput ? p.stamp : p.ink + '30'}`,
             fontFamily: PAPER_FONTS.mono, fontSize: 15, lineHeight: 1.5, color: p.ink,
             outline: 'none', transition: 'border-color .2s',
           }}
         />
+
+        {/* ─── "Looks like…" banner: what we detected + the flow it kicks off ─── */}
+        {hasInput && (
+          <div style={{
+            marginTop: 14, paddingTop: 14,
+            borderTop: `1.5px dashed ${p.ink}24`,
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+            gap: 16, flexWrap: 'wrap',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, minWidth: 0 }}>
+              <span style={{
+                width: 14, height: 14, marginTop: 5, flexShrink: 0, borderRadius: '50%',
+                border: `2px solid ${p.stamp}`,
+                boxShadow: `inset 0 0 0 3px ${p.stamp}`, background: p.paper,
+              }}/>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: PAPER_FONTS.serif, fontSize: 18, color: p.ink, lineHeight: 1.3 }}>
+                  Looks like <strong style={{ color: p.stamp }}>{meta.label}</strong>
+                </div>
+                <div style={{
+                  fontFamily: PAPER_FONTS.mono, fontSize: 12.5, color: p.inkMute,
+                  marginTop: 4, lineHeight: 1.5,
+                }}>{meta.flow}</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <span style={{
+                fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.16em',
+                color: p.inkMute, textTransform: 'uppercase',
+              }}>Not right?</span>
+              {(['job', 'person', 'fuzzy']).map(k => {
+                const on = detected === k;
+                return (
+                  <button key={k} onClick={() => setKindOverride(k)} style={{
+                    padding: '5px 14px', borderRadius: 999, cursor: 'pointer',
+                    background: on ? p.ink : 'transparent',
+                    color: on ? p.paper : p.ink,
+                    border: `1.5px solid ${on ? p.ink : p.ink + '30'}`,
+                    fontFamily: PAPER_FONTS.mono, fontSize: 11.5, letterSpacing: '.02em',
+                  }}>{k}</button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div style={{
-          marginTop: 10, display: 'flex', alignItems: 'center',
+          marginTop: 14, paddingTop: 14, borderTop: `1.5px solid ${p.ink}18`,
+          display: 'flex', alignItems: 'center',
           justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -238,14 +323,14 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
               color: p.inkMute, textTransform: 'uppercase',
             }}>Try:</span>
             {samples.map(s => (
-              <button key={s.label} onClick={() => setInput(s.text)} style={{
+              <button key={s.label} onClick={() => setText(s.text)} style={{
                 padding: '5px 11px', background: 'transparent', border: `1.5px solid ${p.ink}30`,
                 fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.ink,
                 letterSpacing: '.02em', cursor: 'pointer',
               }}>{s.label}</button>
             ))}
           </div>
-          <InkButton p={p} color={p.stamp} onClick={onGo} disabled={!input.trim()}>
+          <InkButton p={p} color={p.stamp} onClick={onGo} disabled={!hasInput}>
             <span>Go</span>
             <kbd style={{
               padding: '1px 6px', fontFamily: PAPER_FONTS.mono, fontSize: 10,
@@ -255,60 +340,77 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
         </div>
       </PaperCard>
 
-      {/* intent */}
-      <div style={{
-        marginTop: 12, padding: '14px 18px', background: p.card,
-        border: `1.5px solid ${p.ink}30`,
-      }}>
-        <input
-          value={intent}
-          onChange={(e) => setIntent(e.target.value)}
-          placeholder="What do you want to convey? (optional, e.g. 'PM at Wayfair, exploring AI roles')"
-          style={{
-            width: '100%', background: 'transparent', border: 'none', outline: 'none',
-            fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
-            fontSize: 16, color: p.ink, padding: '4px 0',
-          }}
-        />
-      </div>
-
-      {/* email skip */}
-      <div style={{
-        marginTop: 10, padding: '14px 18px', background: p.card,
-        border: `1.5px solid ${p.ink}30`,
-        display: 'flex', alignItems: 'center', gap: 12,
-      }}>
-        <button onClick={() => setHaveEmail(!haveEmail)} style={{
-          width: 22, height: 22, background: haveEmail ? p.ink : 'transparent',
-          color: p.paper, border: `1.5px solid ${p.ink}`,
-          display: 'grid', placeItems: 'center', cursor: 'pointer', fontSize: 12,
-        }}>{haveEmail ? '✓' : ''}</button>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: PAPER_FONTS.sans, fontSize: 14.5, color: p.ink }}>
-            I already have their email
-          </div>
-          <div style={{
-            fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute,
-            letterSpacing: '.04em', marginTop: 2,
-          }}>skip the email lookup</div>
-        </div>
-      </div>
-
-      {/* attach screenshot */}
-      <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile}/>
-        <button onClick={() => fileRef.current?.click()} style={{
-          padding: '8px 14px', background: 'transparent',
-          border: `1.5px dashed ${p.ink}40`, color: p.ink,
-          fontFamily: PAPER_FONTS.mono, fontSize: 12,
-          letterSpacing: '.02em', cursor: 'pointer',
+      {/* ─── Add context — optional (collapsed by default) ─── */}
+      <div style={{ marginTop: 12 }}>
+        <button onClick={() => setShowContext(!showContext)} style={{
+          background: 'transparent', border: 'none', cursor: 'pointer',
+          fontFamily: PAPER_FONTS.mono, fontSize: 13, color: p.inkMute,
+          letterSpacing: '.04em', padding: '4px 0',
           display: 'inline-flex', alignItems: 'center', gap: 8,
-        }}>{screenshot ? '✓ attached' : '+ attach screenshot'}</button>
-        <span style={{
-          fontFamily: PAPER_FONTS.mono, fontSize: 10.5,
-          letterSpacing: '.08em', color: p.inkMute, textTransform: 'uppercase',
-        }}>{screenshot ? `${screenshot.name} · ${screenshot.size}` : 'PNG, JPG, WEBP, GIF · max 5MB · optional'}</span>
+        }}>
+          <span style={{ display: 'inline-block', transform: showContext ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>›</span>
+          Add context <span style={{ color: p.ink + '66' }}>— optional</span>
+        </button>
       </div>
+
+      {showContext && (
+        <>
+          {/* what do you want to convey */}
+          <div style={{
+            marginTop: 10, padding: '14px 18px', background: p.card,
+            border: `1.5px solid ${p.ink}30`,
+          }}>
+            <input
+              value={intent}
+              onChange={(e) => setIntent(e.target.value)}
+              placeholder="What do you want to convey? (optional, e.g. 'PM at Wayfair, exploring AI roles')"
+              style={{
+                width: '100%', background: 'transparent', border: 'none', outline: 'none',
+                fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
+                fontSize: 16, color: p.ink, padding: '4px 0',
+              }}
+            />
+          </div>
+
+          {/* I already have their email */}
+          <div style={{
+            marginTop: 10, padding: '14px 18px', background: p.card,
+            border: `1.5px solid ${p.ink}30`,
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            <button onClick={() => setHaveEmail(!haveEmail)} style={{
+              width: 22, height: 22, background: haveEmail ? p.ink : 'transparent',
+              color: p.paper, border: `1.5px solid ${p.ink}`,
+              display: 'grid', placeItems: 'center', cursor: 'pointer', fontSize: 12,
+            }}>{haveEmail ? '✓' : ''}</button>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: PAPER_FONTS.sans, fontSize: 14.5, color: p.ink }}>
+                I already have their email
+              </div>
+              <div style={{
+                fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute,
+                letterSpacing: '.04em', marginTop: 2,
+              }}>skip the email lookup</div>
+            </div>
+          </div>
+
+          {/* attach screenshot */}
+          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile}/>
+            <button onClick={() => fileRef.current?.click()} style={{
+              padding: '8px 14px', background: 'transparent',
+              border: `1.5px dashed ${p.ink}40`, color: p.ink,
+              fontFamily: PAPER_FONTS.mono, fontSize: 12,
+              letterSpacing: '.02em', cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+            }}>{screenshot ? '✓ attached' : '+ attach screenshot'}</button>
+            <span style={{
+              fontFamily: PAPER_FONTS.mono, fontSize: 10.5,
+              letterSpacing: '.08em', color: p.inkMute, textTransform: 'uppercase',
+            }}>{screenshot ? `${screenshot.name} · ${screenshot.size}` : 'PNG, JPG, WEBP, GIF · max 5MB · optional'}</span>
+          </div>
+        </>
+      )}
 
       <div style={{ marginTop: 22 }}>
         <Marginalia p={p} rotate={-1}>paste anything — Jugaadu sorts out what to do ↗</Marginalia>
