@@ -221,6 +221,7 @@ export async function* runReachOutStream(
         sender_context: senderCtx || undefined,
         sender_writing_samples: profile?.writing_samples ?? undefined,
         sender_full_name: profile?.full_name ?? undefined,
+        sender_linkedin: profile?.linkedin_url ?? undefined,
       }).then((r) => ({ channel: c, result: r }))
     );
 
