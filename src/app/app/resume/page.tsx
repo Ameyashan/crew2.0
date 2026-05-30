@@ -13,6 +13,7 @@ import {
   Stamp,
   Marginalia,
 } from "@/components/paper/primitives";
+import { ChangeList } from "@/components/resume/ChangeList";
 
 function ResumeV3({ p, go }) {
   const [jobUrl, setJobUrl]   = useState('');
@@ -379,6 +380,26 @@ function Spinner({ p }) {
 
 
 function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
+  // Pull the full generation (resume blob + changelog) the first time the row is
+  // opened — the history list endpoint only returns metadata. setState lives in
+  // the async callbacks, never synchronously in the effect body.
+  const [gen, setGen] = useState(null);
+  const [loadErr, setLoadErr] = useState(null);
+
+  useEffect(() => {
+    if (!isOpen || gen) return;
+    let alive = true;
+    fetch(`/api/resume/history/${row.id}`)
+      .then((r) => { if (!r.ok) throw new Error(`load failed: ${r.status}`); return r.json(); })
+      .then((j) => { if (alive) setGen(j?.generation ?? null); })
+      .catch((e) => { if (alive) setLoadErr(String(e?.message || e)); });
+    return () => { alive = false; };
+  }, [isOpen, gen, row.id]);
+
+  const resume = gen?.resume || null;
+  const realChanges = Array.isArray(resume?.changes) ? resume.changes : [];
+  const loading = isOpen && !gen && !loadErr;
+
   return (
     <div style={{
       background: p.card, border: `1.5px solid ${isOpen ? p.ink : p.ink + '30'}`,
@@ -412,13 +433,29 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
         }}>
           <div>
             <Eyebrow p={p} en="What Jugaadu changed" color={p.stamp}/>
-            <ul style={{
-              margin: '10px 0 0', paddingLeft: 18,
-              fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
-              fontSize: 15, lineHeight: 1.55, color: p.inkSoft,
-            }}>
-              {row.changes.map((c, i) => <li key={i} style={{ marginBottom: 4 }}>{c}</li>)}
-            </ul>
+            {realChanges.length > 0 ? (
+              // The real per-edit changelog: your line → the tailored line, and why.
+              <div style={{ marginTop: 10 }}>
+                <ChangeList p={p} changes={realChanges}/>
+              </div>
+            ) : (
+              // Older generations (or a load error) have no stored changelog — fall
+              // back to the brief that produced this version.
+              <>
+                <ul style={{
+                  margin: '10px 0 0', paddingLeft: 18,
+                  fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
+                  fontSize: 15, lineHeight: 1.55, color: p.inkSoft,
+                }}>
+                  {row.changes.map((c, i) => <li key={i} style={{ marginBottom: 4 }}>{c}</li>)}
+                </ul>
+                {loading && (
+                  <div style={{ marginTop: 8, fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute }}>
+                    reading the diff…
+                  </div>
+                )}
+              </>
+            )}
             <div style={{ marginTop: 14, fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.04em' }}>
               from: {row.jobUrl}
             </div>
@@ -448,18 +485,43 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
               aspectRatio: '8.5/11', padding: '16px 14px', position: 'relative',
               fontFamily: PAPER_FONTS.serif, color: p.ink, fontSize: 8.5, lineHeight: 1.4, overflow: 'hidden',
             }}>
-              <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 14 }}>Ameya Shanbhag</div>
-              <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 7, color: p.inkMute, marginTop: 2 }}>
-                ameya@jugaadu.app · NYC · ameya.work
-              </div>
-              <div style={{ height: 1, background: p.ink + '24', margin: '6px 0' }}/>
-              <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 10 }}>{row.co}-flavored experience</div>
-              {row.changes.slice(0,3).map((c, i) => (
-                <div key={i} style={{ marginTop: 2 }}>· <span style={{ background: i === 0 ? p.marigold + '88' : 'transparent', padding: '0 1px' }}>{c.replace(/^[A-Z][a-z]+ /,'')}</span></div>
-              ))}
-              <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 10, marginTop: 6 }}>Tooling</div>
-              <div>· React + TS, Figma, OKLCH systems</div>
-              <div>· Wrote the design tokens spec used by 4 teams</div>
+              {resume ? (
+                <>
+                  <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 14 }}>
+                    {resume.header?.full_name || 'Your name'}
+                  </div>
+                  {(resume.header?.email || resume.header?.location || resume.header?.links?.website) && (
+                    <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 7, color: p.inkMute, marginTop: 2 }}>
+                      {[resume.header?.email, resume.header?.location, resume.header?.links?.website]
+                        .filter(Boolean).join(' · ')}
+                    </div>
+                  )}
+                  <div style={{ height: 1, background: p.ink + '24', margin: '6px 0' }}/>
+                  {resume.summary && <div style={{ marginBottom: 4 }}>{resume.summary}</div>}
+                  {(resume.experience || []).slice(0, 2).map((exp, i) => (
+                    <div key={i} style={{ marginTop: i ? 6 : 0 }}>
+                      <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 10 }}>
+                        {[exp.role, exp.company].filter(Boolean).join(' · ')}
+                      </div>
+                      {(exp.bullets || []).slice(0, 3).map((b, j) => (
+                        <div key={j}>· {b}</div>
+                      ))}
+                    </div>
+                  ))}
+                  {(resume.skills || []).length > 0 && (
+                    <>
+                      <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 10, marginTop: 6 }}>Skills</div>
+                      {resume.skills.slice(0, 2).map((s, i) => (
+                        <div key={i}>· {s.group ? `${s.group}: ` : ''}{(s.items || []).join(', ')}</div>
+                      ))}
+                    </>
+                  )}
+                </>
+              ) : (
+                <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', color: p.inkMute }}>
+                  {loadErr ? `Couldn't load this version (${loadErr}).` : 'Loading the tailored resume…'}
+                </div>
+              )}
               <div style={{
                 position: 'absolute', left: 0, right: 0, bottom: 0, height: 60,
                 background: `linear-gradient(to bottom, transparent, ${p.paper})`,
