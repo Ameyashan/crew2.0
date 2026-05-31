@@ -91,7 +91,7 @@ export function SidebarV3({ p }: { p: Palette }) {
       {/* Masthead-y logo */}
       <div style={{ padding: "2px 8px 16px", borderBottom: `1px solid ${p.ink}40`, marginBottom: 14 }}>
         <Link
-          href="/"
+          href="/home"
           style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "inherit" }}
         >
           <div
