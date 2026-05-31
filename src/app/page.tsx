@@ -45,71 +45,71 @@ async function startGoogleSignIn() {
 
 // eslint-disable @typescript-eslint/no-explicit-any
 
-/* Eight agents in the crew. 4 default in foreground. */
+/* Eight agents in the crew. The 4 live agents run today; the rest are joining. */
 const AGENTS_V3 = [
   {
-    id: 'apply', glyph: '↗',
-    name: 'Apply',       desi: 'अप्लाई कारवाँ',
-    role: 'a job, applied',  color: 'stamp',
+    id: 'resume', glyph: '§',
+    name: 'Resume',       desi: 'रेज़्यूमे',
+    role: 'a resume, tailored',  color: 'marigold',
     status: 'live',
-    teaser: 'One link in. Resume tailored, hiring manager found, email verified, message drafted. Pitch-ready in ~47s.',
-    output: { kind: 'doc', title: 'sam-stripe-application.zip', meta: 'pdf · email · candidate · 47s' },
+    teaser: 'Pulls your CV, matches it to the JD, rewrites the bullets that matter, and clears ATS. PDF + Word, ready to send.',
+    output: { kind: 'doc', title: 'sam-resume-stripe.pdf', meta: 'tailored to JD · ATS clear · pdf + word' },
+  },
+  {
+    id: 'person', glyph: '◆',
+    name: 'Person Khoji', desi: 'खोजी',
+    role: 'a person, found', color: 'leaf',
+    status: 'live',
+    teaser: 'Scrapes the team, ranks by fit, cross-checks LinkedIn, and locks in the one human who actually decides.',
+    output: { kind: 'match', title: 'Anika Mehta · Hiring Manager', meta: 'staff PD · 2-hop · ranked #1 of 6' },
+  },
+  {
+    id: 'outreach', glyph: '↗',
+    name: 'Outreach Bhai', desi: 'आउटरीच भाई',
+    role: 'an outreach, drafted', color: 'tea',
+    status: 'live',
+    teaser: 'Reads their threads, finds a real hook, matches your voice, and drafts across email, LinkedIn, and a followup.',
+    output: { kind: 'draft', title: '3 channels · in your voice', meta: 'email · linkedin · followup queued' },
+  },
+  {
+    id: 'email', glyph: '✉',
+    name: 'Email Wallah', desi: 'ईमेल वाला',
+    role: 'an email, verified', color: 'stamp',
+    status: 'live',
+    teaser: 'Queries Apollo, checks Hunter, verifies MX, and cross-validates until the address is real — not a guess.',
+    output: { kind: 'email', title: 'anika@stripe.com', meta: '96% verified · MX ok · catch-all no' },
   },
   {
     id: 'lekhak', glyph: '✎',
     name: 'Article Publisher', desi: 'लेखक भाई',
-    role: 'an essay, shipped', color: 'marigold',
-    status: 'live',
+    role: 'an essay, shipped', color: 'marigold2',
+    status: 'soon',
     teaser: 'Drafts essays in your voice from the half-baked notes you keep. Cross-posts to Substack, LinkedIn, and X with the right hooks for each.',
     output: { kind: 'post', title: '"Why batch beats real-time"', meta: '1,840 words · 3 platforms · queued for Tue 9am' },
   },
   {
     id: 'patrakar', glyph: '◐',
     name: 'Research Briefer', desi: 'पत्रकार',
-    role: 'a brief, delivered', color: 'leaf',
-    status: 'live',
+    role: 'a brief, delivered', color: 'plum',
+    status: 'soon',
     teaser: 'Daily report on your beats. Primary sources, charts, the bit you would have read if you had the time.',
     output: { kind: 'brief', title: 'Tue brief · AI agents + payments', meta: '4 stories · 7 min read · 12 sources' },
   },
   {
     id: 'guru', glyph: '✦',
     name: 'Upskill Coach', desi: 'गुरु',
-    role: 'a skill, sharpened', color: 'tea',
-    status: 'live',
+    role: 'a skill, sharpened', color: 'leaf2',
+    status: 'soon',
     teaser: 'Watches what you ship, picks what to learn next. Lessons sized for a coffee break. Drills, not lectures.',
     output: { kind: 'lesson', title: 'Distributed systems · week 1', meta: '12 min · 3 drills · due thu' },
   },
   {
-    id: 'khoji', glyph: '◆',
+    id: 'khoji', glyph: '✶',
     name: 'Network Mapper', desi: 'चाचा',
-    role: 'an intro, warmed up', color: 'plum',
+    role: 'an intro, warmed up', color: 'stamp2',
     status: 'soon',
     teaser: 'Maps who you know, who they know, who can intro. Surfaces dormant ties before they go cold.',
     output: { kind: 'graph', title: '3 warm paths to Anthropic', meta: 'via Anika · 2-hop · last DM 9mo' },
-  },
-  {
-    id: 'mausi', glyph: '$',
-    name: 'Salary Negotiator', desi: 'मौसी',
-    role: 'a comp, defended', color: 'leaf2',
-    status: 'soon',
-    teaser: 'When the offer lands she opens a war room. Benchmarks, scripts, the exact line for "your number".',
-    output: { kind: 'memo', title: 'Stripe offer · 18% under band', meta: 'L5 · NYC · 3 counter-paths' },
-  },
-  {
-    id: 'pandit_q', glyph: '◊',
-    name: 'Interview Pandit', desi: 'पंडित जी',
-    role: 'a rep, run', color: 'stamp2',
-    status: 'soon',
-    teaser: 'Mock interviews on the role you applied to. Tells you, gently, when your answer is cope.',
-    output: { kind: 'rep', title: 'Behavioural · 7 rounds', meta: 'last: "biggest failure" · weak · drill again' },
-  },
-  {
-    id: 'opps', glyph: '✶',
-    name: 'Opportunities', desi: 'मौके',
-    role: 'a door, opened', color: 'marigold2',
-    status: 'soon',
-    teaser: 'Surfaces roles, RFPs, grants, podcasts, panels — before they hit the board everyone else watches.',
-    output: { kind: 'feed', title: '5 leads, 1 ghostwrite gig', meta: 'all matched · 2 expire this week' },
   },
 ];
 
@@ -207,7 +207,7 @@ function LandingV3() {
   const variant = t.variant || 'workspace';
   const headlineIdx = Math.min(HEADLINE_PRESETS.length - 1, t.headlineIdx ?? 0);
   const headline = HEADLINE_PRESETS[headlineIdx];
-  const foreground = (t.foreground && t.foreground.length ? t.foreground : ['apply','lekhak','patrakar','guru']);
+  const foreground = (t.foreground && t.foreground.length ? t.foreground : ['resume','person','outreach','email']);
 
   useEffect(() => {
     document.body.style.background = p.paper;
@@ -229,23 +229,10 @@ function TweaksV3() { return null; }
 
 /* ─────────────────────── shared masthead + footer ─────────────────────── */
 
-function Masthead3({ p, mode = 'workspace' }) {
+function Masthead3({ p }) {
   const router = useRouter();
   return (
     <header style={{ padding: '22px 56px 18px', borderBottom: `1px solid ${p.ink}` }}>
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-        fontFamily: PAPER_FONTS.mono, fontSize: 10,
-        letterSpacing: '.08em', textTransform: 'uppercase', color: p.inkMute,
-        whiteSpace: 'nowrap', gap: 20,
-      }}>
-        <span>Vol. II · No. 01 · {mode === 'workspace' ? 'Console Edition' : 'Sunday Edition'}</span>
-        <span>May 17, 2026 · ₹0 · A personal OS for the ambitious</span>
-        <span>"Get a crew. Save time. Grow anyway."</span>
-      </div>
-      <div style={{ height: 10 }}/>
-      <InkRule3 p={p}/>
-      <div style={{ height: 14 }}/>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <JugaaduMark p={p}/>
@@ -393,22 +380,9 @@ function WorkspaceHero({ p, headline, foreground }) {
   return (
     <section style={{ padding: '40px 56px 28px', position: 'relative', overflow: 'hidden' }}>
       <div style={{
-        display: 'inline-flex', alignItems: 'center', gap: 10,
-        background: p.ink, color: p.paper, padding: '6px 14px',
-        fontFamily: PAPER_FONTS.mono, fontSize: 11, letterSpacing: '.18em',
-        textTransform: 'uppercase',
-      }}>
-        <span style={{
-          width: 7, height: 7, borderRadius: 999, background: p.marigold,
-          animation: 'pulseDot 1.2s ease-in-out infinite',
-        }}/>
-        {headline.eyebrow}
-      </div>
-
-      <div style={{
         display: 'grid',
         gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 560px)',
-        gap: 36, marginTop: 22, alignItems: 'start',
+        gap: 36, alignItems: 'start',
       }}>
         <div>
           <h1 style={{
@@ -449,41 +423,11 @@ function WorkspaceHero({ p, headline, foreground }) {
               transform: 'rotate(-1deg)', display: 'inline-block',
             }}>no card · 14-day no-questions exit ↗</span>
           </div>
-
-          <LiveStrip p={p}/>
         </div>
 
         <WorkspaceWindow p={p} foreground={foreground}/>
       </div>
     </section>
-  );
-}
-
-function LiveStrip({ p }) {
-  return (
-    <div style={{
-      marginTop: 36, display: 'flex', gap: 28,
-      fontFamily: PAPER_FONTS.mono, fontSize: 12,
-      letterSpacing: '.06em', textTransform: 'uppercase', color: p.inkMute,
-      flexWrap: 'wrap',
-    }}>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-        <Dot3 color={p.stamp}/>
-        <span><b style={{ color: p.ink }}>2,847</b> applications sent · 7d</span>
-      </span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-        <Dot3 color={p.marigold}/>
-        <span><b style={{ color: p.ink }}>184</b> essays shipped · 7d</span>
-      </span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-        <Dot3 color={p.leaf}/>
-        <span><b style={{ color: p.ink }}>1,402</b> briefs read · 7d</span>
-      </span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-        <Dot3 color={p.tea}/>
-        <span><b style={{ color: p.ink }}>619</b> drills passed · 7d</span>
-      </span>
-    </div>
   );
 }
 
@@ -569,14 +513,14 @@ function AgentPane({ p, agent: a, idx }) {
   const c = color(p, a.color);
   /* Per-agent body — give each pane a distinct, on-brand mini visualization */
   const Body = () => {
-    if (a.id === 'apply')    return <ApplyPane    p={p} c={c}/>;
+    if (a.id === 'resume')   return <ResumePane   p={p} c={c}/>;
+    if (a.id === 'person')   return <PersonPane   p={p} c={c}/>;
+    if (a.id === 'outreach') return <OutreachPane p={p} c={c}/>;
+    if (a.id === 'email')    return <EmailPane    p={p} c={c}/>;
     if (a.id === 'lekhak')   return <LekhakPane   p={p} c={c}/>;
     if (a.id === 'patrakar') return <PatrakarPane p={p} c={c}/>;
     if (a.id === 'guru')     return <GuruPane     p={p} c={c}/>;
     if (a.id === 'khoji')    return <KhojiPane    p={p} c={c}/>;
-    if (a.id === 'mausi')    return <MausiPane    p={p} c={c}/>;
-    if (a.id === 'pandit_q') return <PanditPane   p={p} c={c}/>;
-    if (a.id === 'opps')     return <OppsPane     p={p} c={c}/>;
     return <FallbackPane p={p} c={c} a={a}/>;
   };
   return (
@@ -615,38 +559,161 @@ function AgentPane({ p, agent: a, idx }) {
 
 /* Mini pane bodies — each is distinct, not just a card with text */
 
-function ApplyPane({ p, c }) {
+function ResumePane({ p, c }) {
   return (
     <>
       <div style={{
         fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute,
         letterSpacing: '.06em',
-      }}>JOB ↗ stripe.com/jobs/staff-pd-atlas</div>
+      }}>CV → JD · STAFF PRODUCT DESIGNER · ATLAS</div>
       <div style={{
         marginTop: 2, padding: 10, background: p.paperShade, borderRadius: 6,
         border: `1px solid ${p.rule}`,
       }}>
-        <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 17, color: p.ink, lineHeight: 1.1 }}>
-          Staff Product Designer · Atlas
+        <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 16, color: p.ink, lineHeight: 1.1 }}>
+          sam-resume-stripe.pdf
         </div>
         <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute, marginTop: 4, letterSpacing: '.04em' }}>
-          NYC · $260–340k · posted 1d
+          tailored to JD · 1 page · pdf + word
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 2 }}>
         {[
-          ['résumé', 100],
-          ['person', 100],
-          ['email',  100],
-          ['draft',  78],
+          ['bullets rewritten', '9 of 12'],
+          ['keywords matched', '24 / 26'],
+          ['ATS score', '94%'],
         ].map(([k, v], i) => (
-          <span key={k} style={{
-            fontFamily: PAPER_FONTS.mono, fontSize: 10,
-            padding: '3px 8px', borderRadius: 999,
-            border: `1px solid ${v === 100 ? c : p.rule}`,
-            color: v === 100 ? c : p.inkMute, letterSpacing: '.04em',
-            background: v === 100 ? `${c}14` : 'transparent',
-          }}>{k} · {v}%</span>
+          <div key={i} style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px',
+            border: `1px solid ${p.rule}`, borderRadius: 6,
+          }}>
+            <span style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 12, color: p.ink, flex: 1 }}>{k}</span>
+            <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10, color: c, letterSpacing: '.04em' }}>{v}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{
+        marginTop: 'auto', padding: '8px 10px', background: `${c}1f`,
+        border: `1px solid ${c}4d`, borderRadius: 6,
+        fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.ink,
+      }}>ATS clear · PDF + Word ready ✓</div>
+    </>
+  );
+}
+
+function PersonPane({ p, c }) {
+  const rows = [
+    { n: 'Anika Mehta', r: 'Hiring Manager · Staff PD', pick: true },
+    { n: 'Ravi Shah',   r: 'Design Lead · Atlas',       pick: false },
+    { n: 'Mei Lin',     r: 'Recruiter · Talent',        pick: false },
+  ];
+  return (
+    <>
+      <div style={{
+        fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute,
+        letterSpacing: '.06em',
+      }}>TEAM SCANNED · 6 PROFILES · RANKED BY FIT</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {rows.map((r, i) => (
+          <div key={i} style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px',
+            border: `1px solid ${r.pick ? c : p.rule}`, borderRadius: 6,
+            background: r.pick ? `${c}14` : 'transparent',
+          }}>
+            <span style={{
+              width: 24, height: 24, borderRadius: 999, background: r.pick ? c : p.rule,
+              color: r.pick ? '#fff' : p.inkMute, display: 'grid', placeItems: 'center',
+              fontFamily: PAPER_FONTS.display, fontSize: 11,
+            }}>{r.n[0]}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 13, color: p.ink, lineHeight: 1.1 }}>{r.n}</div>
+              <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 9, color: p.inkMute, letterSpacing: '.04em' }}>{r.r}</div>
+            </div>
+            {r.pick && <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 9, color: c, letterSpacing: '.08em' }}>TARGET</span>}
+          </div>
+        ))}
+      </div>
+      <div style={{
+        marginTop: 'auto', padding: '8px 10px', background: p.card,
+        border: `1px solid ${c}44`, borderRadius: 6,
+        fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.ink,
+      }}>locked · Anika Mehta · 2-hop via Ravi</div>
+    </>
+  );
+}
+
+function OutreachPane({ p, c }) {
+  return (
+    <>
+      <div style={{
+        fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute,
+        letterSpacing: '.06em',
+      }}>HOOK FOUND · DRAFTED IN YOUR VOICE</div>
+      <div style={{
+        marginTop: 2, padding: '10px 12px', background: p.paperShade, borderRadius: 6,
+        border: `1px solid ${p.rule}`,
+      }}>
+        <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 9, color: c, letterSpacing: '.06em' }}>EMAIL · TO ANIKA</div>
+        <p style={{
+          margin: '6px 0 0', fontFamily: PAPER_FONTS.serif, fontSize: 11.5,
+          color: p.inkSoft, lineHeight: 1.35, fontStyle: 'italic',
+        }}>
+          Saw your note on batching in the Atlas redesign — I wrote about the same failure mode last year…
+        </p>
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+        {[
+          ['Email', 'ready'],
+          ['LinkedIn', 'shorter'],
+          ['Followup', 'in 4d'],
+        ].map(([dest, hint]) => (
+          <div key={dest} style={{
+            flex: 1, padding: '6px 8px', border: `1px solid ${p.rule}`, borderRadius: 6,
+            background: p.card,
+          }}>
+            <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 9, color: c, letterSpacing: '.06em' }}>{dest.toUpperCase()}</div>
+            <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 10.5, color: p.inkSoft, lineHeight: 1.2, marginTop: 1 }}>{hint}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{
+        marginTop: 'auto', padding: '8px 10px', background: `${c}1f`,
+        border: `1px solid ${c}4d`, borderRadius: 6,
+        fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.ink,
+      }}>3 channels drafted · followup queued</div>
+    </>
+  );
+}
+
+function EmailPane({ p, c }) {
+  return (
+    <>
+      <div style={{
+        fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute,
+        letterSpacing: '.06em',
+      }}>VERIFYING · APOLLO · HUNTER · MX</div>
+      <div style={{
+        marginTop: 2, padding: 10, background: p.paperShade, borderRadius: 6,
+        border: `1px solid ${p.rule}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 13, color: p.ink }}>anika@stripe.com</span>
+        <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10, color: c, letterSpacing: '.04em' }}>96% ✓</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 2 }}>
+        {[
+          ['Apollo match', 'found'],
+          ['Hunter score', '96%'],
+          ['MX record', 'ok'],
+          ['catch-all', 'no'],
+        ].map(([k, v], i) => (
+          <div key={i} style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px',
+            border: `1px solid ${p.rule}`, borderRadius: 6,
+          }}>
+            <span style={{ width: 7, height: 7, borderRadius: 999, background: c, flexShrink: 0 }}/>
+            <span style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 12, color: p.ink, flex: 1 }}>{k}</span>
+            <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute, letterSpacing: '.04em' }}>{v}</span>
+          </div>
         ))}
       </div>
       <div style={{
@@ -654,8 +721,8 @@ function ApplyPane({ p, c }) {
         borderRadius: 6, fontFamily: PAPER_FONTS.mono, fontSize: 10,
         letterSpacing: '.04em', display: 'flex', justifyContent: 'space-between',
       }}>
-        <span>→ anika@stripe.com · 96% verified</span>
-        <span style={{ color: p.marigold }}>send ↵</span>
+        <span>→ anika@stripe.com · verified</span>
+        <span style={{ color: p.marigold }}>copy ↵</span>
       </div>
     </>
   );
@@ -824,84 +891,6 @@ function KhojiPane({ p, c }) {
   );
 }
 
-function MausiPane({ p, c }) {
-  return (
-    <>
-      <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute, letterSpacing: '.06em' }}>
-        STRIPE OFFER · L5 NYC · 18% UNDER BAND
-      </div>
-      <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', height: 88, padding: '4px 4px 0' }}>
-        {[60, 72, 78, 86, 92, 100].map((h, i) => (
-          <div key={i} style={{ flex: 1, height: `${h}%`, background: i === 3 ? p.stamp : c, opacity: i === 3 ? 1 : .35, borderRadius: '4px 4px 0 0' }}/>
-        ))}
-      </div>
-      <div style={{
-        padding: '8px 10px', background: p.paperShade, borderRadius: 6,
-        fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 12, color: p.inkSoft, lineHeight: 1.35,
-      }}>
-        "I'm excited about the role and the team. The number that gets there for me is <b style={{ color: p.ink, fontStyle: 'normal' }}>$315k base</b>…"
-      </div>
-      <div style={{ marginTop: 'auto', fontFamily: PAPER_FONTS.mono, fontSize: 10, color: c, letterSpacing: '.04em' }}>
-        3 counter-paths drafted ↗
-      </div>
-    </>
-  );
-}
-
-function PanditPane({ p, c }) {
-  return (
-    <>
-      <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute, letterSpacing: '.06em' }}>
-        MOCK · BEHAVIOURAL · ROUND 7
-      </div>
-      <div style={{
-        padding: 10, background: p.paperShade, borderRadius: 6, border: `1px solid ${p.rule}`,
-      }}>
-        <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 14, color: p.ink, lineHeight: 1.1 }}>
-          "Tell me about your biggest failure."
-        </div>
-      </div>
-      <div style={{
-        padding: '8px 10px', background: p.card, border: `1px solid ${c}44`, borderRadius: 6,
-        fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 12, color: p.inkSoft, lineHeight: 1.35,
-      }}>
-        gentle truth — that was a story about being wronged, not about failing. drill again with the Razorpay launch?
-      </div>
-      <div style={{ marginTop: 'auto', display: 'flex', gap: 6 }}>
-        <span style={{ flex: 1, padding: '6px 8px', textAlign: 'center', background: c, color: '#fff', borderRadius: 6, fontFamily: PAPER_FONTS.mono, fontSize: 10 }}>retry ↻</span>
-        <span style={{ flex: 1, padding: '6px 8px', textAlign: 'center', border: `1px solid ${p.rule}`, color: p.inkSoft, borderRadius: 6, fontFamily: PAPER_FONTS.mono, fontSize: 10 }}>skip ↷</span>
-      </div>
-    </>
-  );
-}
-
-function OppsPane({ p, c }) {
-  const rows = [
-    { kind: 'ROLE',   t: 'Founding Designer · Recall.ai',  meta: 'YC W24 · $190k' },
-    { kind: 'PANEL',  t: "Speak at IndiaFOSS '26",          meta: 'pays · 600 ppl' },
-    { kind: 'GHOST',  t: '6-essay ghostwrite for VC fund',  meta: '$2k/essay'      },
-  ];
-  return (
-    <>
-      <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute, letterSpacing: '.06em' }}>
-        FRESH · 3 OF 7 MATCHED THIS MORNING
-      </div>
-      {rows.map((r, i) => (
-        <div key={i} style={{
-          padding: '7px 10px', background: p.paperShade, borderRadius: 6,
-          border: `1px solid ${p.rule}`,
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 9, color: c, letterSpacing: '.08em' }}>{r.kind}</span>
-            <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 9, color: p.inkMute }}>{r.meta}</span>
-          </div>
-          <div style={{ fontFamily: PAPER_FONTS.serif, fontSize: 13, color: p.ink, lineHeight: 1.2, marginTop: 1 }}>{r.t}</div>
-        </div>
-      ))}
-    </>
-  );
-}
-
 function FallbackPane({ p, c, a }) {
   return (
     <>
@@ -1031,7 +1020,7 @@ function WhatShipsToday({ p, foreground }) {
                 marginTop: 14, fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.ink,
                 letterSpacing: '.06em', display: 'flex', justifyContent: 'space-between',
               }}>
-                <span>by {a.desi}</span>
+                <span>by {a.name}</span>
                 <span style={{ color: c }}>open ↗</span>
               </div>
             </div>
@@ -1240,7 +1229,7 @@ function ContentsCard({ p }) {
 function ChapterStack({ p, foreground }) {
   /* Build chapters from the *first four* IDs in this canonical order, if foregrounded.
      Falls back to a fixed sequence so the layout always makes sense. */
-  const canonical = ['apply', 'lekhak', 'patrakar', 'guru'];
+  const canonical = ['resume', 'person', 'outreach', 'email'];
   const ids = canonical.filter((id) => foreground.includes(id)).concat(
     foreground.filter((id) => !canonical.includes(id))
   ).slice(0, 4);
