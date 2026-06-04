@@ -11,11 +11,16 @@ import {
   PageHead,
   PaperEmpty,
 } from "@/components/paper/primitives";
+import { useIsMobile } from "@/lib/use-is-mobile";
 
 function PeopleV3({ p, go, PEOPLE_V3 = [] }) {
+  const isMobile = useIsMobile();
   const [q, setQ] = useState('');
   const [selectedId, setSelected] = useState(null);
   const [filter, setFilter] = useState('all');
+  // On phones the list and detail can't sit side by side, so we swap between
+  // them: tapping a contact opens the detail, and a back button returns.
+  const [mobileView, setMobileView] = useState('list'); // 'list' | 'detail'
   useEffect(() => {
     if (!selectedId && PEOPLE_V3[0]?.id) setSelected(PEOPLE_V3[0].id);
   }, [PEOPLE_V3, selectedId]);
@@ -40,11 +45,12 @@ function PeopleV3({ p, go, PEOPLE_V3 = [] }) {
 
   return (
     <div style={{
-      flex: 1, display: 'grid', gridTemplateColumns: '380px 1fr', overflow: 'hidden',
+      flex: 1, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '380px 1fr', overflow: 'hidden',
       background: p.paper, color: p.ink,
     }}>
       {/* List */}
-      <div className="scroll" style={{ overflow: 'auto', borderRight: `1.5px solid ${p.ink}`, padding: '32px 22px 40px' }}>
+      {(!isMobile || mobileView === 'list') && (
+      <div className="scroll" style={{ overflow: 'auto', borderRight: isMobile ? 'none' : `1.5px solid ${p.ink}`, padding: isMobile ? '24px 16px 40px' : '32px 22px 40px' }}>
         <Eyebrow p={p} hindi="लोग" en={`People · ${PEOPLE_V3.length} contacts`}/>
         <h1 style={{
           margin: '4px 0 18px', fontFamily: PAPER_FONTS.display, fontSize: 36,
@@ -87,7 +93,7 @@ function PeopleV3({ p, go, PEOPLE_V3 = [] }) {
           {filtered.map((per, i) => {
             const active = per.id === person.id;
             return (
-              <button key={per.id} onClick={() => setSelected(per.id)} style={{
+              <button key={per.id} onClick={() => { setSelected(per.id); setMobileView('detail'); }} style={{
                 display: 'grid', gridTemplateColumns: '40px 1fr auto', alignItems: 'center', gap: 12,
                 padding: '10px 12px',
                 background: active ? p.card : 'transparent',
@@ -118,11 +124,22 @@ function PeopleV3({ p, go, PEOPLE_V3 = [] }) {
           })}
         </div>
       </div>
+      )}
 
       {/* Detail */}
-      <div className="scroll" style={{ overflow: 'auto', padding: '40px 56px 80px' }}>
+      {(!isMobile || mobileView === 'detail') && (
+      <div className="scroll" style={{ overflow: 'auto', padding: isMobile ? '20px 16px 64px' : '40px 56px 80px' }}>
+        {isMobile && (
+          <button onClick={() => setMobileView('list')} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 16,
+            background: 'transparent', border: `1.5px solid ${p.ink}`, color: p.ink,
+            padding: '8px 14px', fontFamily: PAPER_FONTS.mono, fontSize: 12,
+            letterSpacing: '.04em', cursor: 'pointer',
+          }}>← All people</button>
+        )}
         <PersonDetailV3 p={p} person={person} go={go}/>
       </div>
+      )}
     </div>
   );
 }

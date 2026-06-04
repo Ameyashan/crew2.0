@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { PAPER_FONTS } from "@/components/paper/fonts";
 import { usePaperTheme } from "@/components/paper/use-paper-theme";
 import { signInWithGoogle } from "@/lib/supabase-browser";
+import { useIsMobile } from "@/lib/use-is-mobile";
 
 /* ─────────────────────── Jugaadu logo ─────────────────────── */
 /* A boxy stamp echoing the newspaper aesthetic — a J anchored by a
@@ -215,7 +216,7 @@ function LandingV3() {
   }, [p.paper, p.ink]);
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column' }}>
       {variant === 'workspace'
         ? <WorkspaceLanding p={p} headline={headline} foreground={foreground} dark={!!t.dark}/>
         : <NewsroomLanding  p={p} headline={headline} foreground={foreground} dark={!!t.dark}/>
@@ -231,9 +232,10 @@ function TweaksV3() { return null; }
 
 function Masthead3({ p }) {
   const router = useRouter();
+  const isMobile = useIsMobile();
   return (
-    <header style={{ padding: '22px 56px 18px', borderBottom: `1px solid ${p.ink}` }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24 }}>
+    <header style={{ padding: isMobile ? '16px 20px 14px' : '22px 56px 18px', borderBottom: `1px solid ${p.ink}` }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: isMobile ? 12 : 24, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <JugaaduMark p={p}/>
           <div>
@@ -264,8 +266,9 @@ function Masthead3({ p }) {
 }
 
 function Footer3({ p }) {
+  const isMobile = useIsMobile();
   return (
-    <footer style={{ padding: '20px 56px 32px' }}>
+    <footer style={{ padding: isMobile ? '18px 20px 28px' : '20px 56px 32px' }}>
       <InkRule3 p={p}/>
       <div style={{
         marginTop: 14, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
@@ -314,33 +317,42 @@ function AmbitionsBanner({ p }) {
 
 function CTABlock({ p }) {
   const router = useRouter();
+  const isMobile = useIsMobile();
   return (
-    <section style={{ padding: '64px 56px 48px', position: 'relative', textAlign: 'center' }}>
+    <section style={{ padding: isMobile ? '44px 20px 36px' : '64px 56px 48px', position: 'relative', textAlign: 'center' }}>
       <div style={{
         fontFamily: PAPER_FONTS.devan, fontWeight: 700,
-        fontSize: 22, color: p.stamp, marginBottom: 10,
+        fontSize: isMobile ? 18 : 22, color: p.stamp, marginBottom: 10,
       }}>जो ambitious है, उसके लिए</div>
       <h2 style={{
         margin: 0, fontFamily: PAPER_FONTS.display,
-        fontSize: 'clamp(56px, 6.4vw, 108px)', lineHeight: .9, letterSpacing: '-.025em',
+        fontSize: isMobile ? 'clamp(40px, 12vw, 64px)' : 'clamp(56px, 6.4vw, 108px)',
+        lineHeight: .9, letterSpacing: '-.025em',
         maxWidth: 1100, marginInline: 'auto', color: p.ink,
       }}>
         Your future is on staff <span style={{ fontStyle: 'italic', color: p.stamp }}>now.</span>
       </h2>
       <p style={{
         marginTop: 18, fontFamily: PAPER_FONTS.serifAlt, fontStyle: 'italic',
-        fontSize: 22, color: p.tea,
+        fontSize: isMobile ? 18 : 22, color: p.tea,
       }}>Free during beta. First 250 keep three agents free forever.</p>
-      <div style={{ marginTop: 28, display: 'inline-flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+      <div style={{
+        marginTop: 28, display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
+        alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'center',
+        width: isMobile ? '100%' : 'auto',
+      }}>
         <input placeholder="you@anywhere.com" style={{
           background: p.card, border: `3px solid ${p.ink}`, padding: '16px 22px',
-          fontFamily: PAPER_FONTS.serifAlt, fontSize: 22, width: 320, outline: 'none',
-          color: p.ink,
+          fontFamily: PAPER_FONTS.serifAlt, fontSize: isMobile ? 18 : 22,
+          width: isMobile ? '100%' : 320, maxWidth: '100%', outline: 'none',
+          color: p.ink, boxSizing: 'border-box',
         }}/>
         <button onClick={() => startGoogleSignIn()} style={{
           background: p.stamp, color: p.paper, padding: '18px 26px',
-          border: `3px solid ${p.ink}`, fontFamily: PAPER_FONTS.display, fontSize: 22,
+          border: `3px solid ${p.ink}`, fontFamily: PAPER_FONTS.display, fontSize: isMobile ? 19 : 22,
           cursor: 'pointer', boxShadow: `6px 6px 0 ${p.ink}`,
+          width: isMobile ? '100%' : 'auto',
         }}>Hire your crew →</button>
       </div>
     </section>
@@ -354,7 +366,7 @@ function CTABlock({ p }) {
 function WorkspaceLanding({ p, headline, foreground, dark }) {
   return (
     <div className="scroll" style={{
-      flex: 1, overflow: 'auto', background: p.paper, color: p.ink,
+      flex: 1, overflowX: 'hidden', overflowY: 'auto', background: p.paper, color: p.ink,
       fontFamily: PAPER_FONTS.sans,
       backgroundImage: dark
         ? `radial-gradient(circle at 14% 18%, rgba(241,231,210,.05) 0, transparent 38%),
@@ -377,18 +389,19 @@ function WorkspaceLanding({ p, headline, foreground, dark }) {
 
 function WorkspaceHero({ p, headline, foreground }) {
   const router = useRouter();
+  const isMobile = useIsMobile();
   return (
-    <section style={{ padding: '40px 56px 28px', position: 'relative', overflow: 'hidden' }}>
+    <section style={{ padding: isMobile ? '24px 20px 20px' : '40px 56px 28px', position: 'relative', overflow: 'hidden' }}>
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 560px)',
-        gap: 36, alignItems: 'start',
+        gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) minmax(0, 560px)',
+        gap: isMobile ? 28 : 36, alignItems: 'start',
       }}>
         <div>
           <h1 style={{
             margin: 0,
             fontFamily: PAPER_FONTS.display,
-            fontSize: 'clamp(56px, 6vw, 104px)',
+            fontSize: isMobile ? 'clamp(40px, 11vw, 68px)' : 'clamp(56px, 6vw, 104px)',
             lineHeight: .92, letterSpacing: '-.025em', color: p.ink,
             textWrap: 'balance',
           }}>
@@ -433,14 +446,18 @@ function WorkspaceHero({ p, headline, foreground }) {
 
 /* The visual centerpiece: a mock OS window with 4 agent panes tiled inside. */
 function WorkspaceWindow({ p, foreground }) {
+  const isMobile = useIsMobile();
   const fg = foreground.map((id) => AGENTS_V3.find((a) => a.id === id)).filter(Boolean);
   while (fg.length < 4) fg.push(AGENTS_V3[fg.length]); // safety
   return (
     <div style={{
       borderRadius: 14, overflow: 'hidden',
       background: p.card, border: `2px solid ${p.ink}`,
-      boxShadow: `10px 10px 0 ${p.ink}, 10px 10px 0 3px ${p.marigold}`,
-      transform: 'rotate(.4deg)',
+      boxShadow: isMobile
+        ? `5px 5px 0 ${p.ink}, 5px 5px 0 2px ${p.marigold}`
+        : `10px 10px 0 ${p.ink}, 10px 10px 0 3px ${p.marigold}`,
+      transform: isMobile ? 'none' : 'rotate(.4deg)',
+      maxWidth: '100%',
     }}>
       {/* title bar */}
       <div style={{
@@ -480,10 +497,12 @@ function WorkspaceWindow({ p, foreground }) {
         ))}
       </div>
 
-      {/* 2x2 agent panes */}
+      {/* 2x2 agent panes (single column on mobile) */}
       <div style={{
-        display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr',
-        background: p.rule, gap: 1, minHeight: 480,
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+        gridTemplateRows: isMobile ? 'auto' : '1fr 1fr',
+        background: p.rule, gap: 1, minHeight: isMobile ? 'auto' : 480,
       }}>
         {fg.slice(0, 4).map((a, i) => (
           <AgentPane key={a.id} p={p} agent={a} idx={i}/>
@@ -909,8 +928,9 @@ function FallbackPane({ p, c, a }) {
 /* ─────────────────────── apps on stage (all 8 agents grid) ─────────────────────── */
 
 function AppsOnStage({ p, foreground }) {
+  const isMobile = useIsMobile();
   return (
-    <section style={{ padding: '32px 56px 24px' }}>
+    <section style={{ padding: isMobile ? '28px 20px 20px' : '32px 56px 24px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
         <div>
           <div style={{
@@ -929,7 +949,7 @@ function AppsOnStage({ p, foreground }) {
 
       <div style={{
         marginTop: 24, display: 'grid', gap: 10,
-        gridTemplateColumns: 'repeat(4, 1fr)',
+        gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
       }}>
         {AGENTS_V3.map((a) => {
           const c = color(p, a.color);
@@ -977,9 +997,10 @@ function AppsOnStage({ p, foreground }) {
 /* ─────────────────────── what ships today (workspace) ─────────────────────── */
 
 function WhatShipsToday({ p, foreground }) {
+  const isMobile = useIsMobile();
   const fg = foreground.map((id) => AGENTS_V3.find((a) => a.id === id)).filter(Boolean);
   return (
-    <section style={{ padding: '32px 56px 24px', background: p.paperDeep, marginTop: 28 }}>
+    <section style={{ padding: isMobile ? '28px 20px 20px' : '32px 56px 24px', background: p.paperDeep, marginTop: 28 }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
         <h2 style={{
           margin: 0, fontFamily: PAPER_FONTS.display,
@@ -994,7 +1015,7 @@ function WhatShipsToday({ p, foreground }) {
         <Stamp3 p={p} c={p.ink} rotate={3}>0 keystrokes from you</Stamp3>
       </div>
 
-      <div style={{ marginTop: 22, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+      <div style={{ marginTop: 22, display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 10 }}>
         {fg.map((a) => {
           const c = color(p, a.color);
           return (
@@ -1034,11 +1055,12 @@ function WhatShipsToday({ p, foreground }) {
 /* ─────────────────────── duality row · leverage + growth ─────────────────────── */
 
 function DualityRow({ p }) {
+  const isMobile = useIsMobile();
   return (
-    <section style={{ padding: '60px 56px 28px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+    <section style={{ padding: isMobile ? '40px 20px 20px' : '60px 56px 28px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
         <div style={{
-          padding: '36px 36px 30px', background: p.ink, color: p.paper,
+          padding: isMobile ? '26px 24px 24px' : '36px 36px 30px', background: p.ink, color: p.paper,
           position: 'relative',
         }}>
           <div style={{
@@ -1060,7 +1082,7 @@ function DualityRow({ p }) {
           }}>आज</div>
         </div>
         <div style={{
-          padding: '36px 36px 30px', background: p.card, color: p.ink,
+          padding: isMobile ? '26px 24px 24px' : '36px 36px 30px', background: p.card, color: p.ink,
           border: `2px solid ${p.ink}`, position: 'relative',
         }}>
           <div style={{
@@ -1093,7 +1115,7 @@ function DualityRow({ p }) {
 function NewsroomLanding({ p, headline, foreground }) {
   return (
     <div className="scroll" style={{
-      flex: 1, overflow: 'auto', background: p.paper, color: p.ink,
+      flex: 1, overflowX: 'hidden', overflowY: 'auto', background: p.paper, color: p.ink,
       fontFamily: PAPER_FONTS.sans,
     }}>
       <Masthead3 p={p} mode="newsroom"/>
@@ -1109,8 +1131,9 @@ function NewsroomLanding({ p, headline, foreground }) {
 
 function NewsroomHero({ p, headline }) {
   const router = useRouter();
+  const isMobile = useIsMobile();
   return (
-    <section style={{ padding: '40px 56px 24px' }}>
+    <section style={{ padding: isMobile ? '24px 20px 20px' : '40px 56px 24px' }}>
       <div style={{
         display: 'inline-flex', alignItems: 'center', gap: 10,
         background: p.ink, color: p.paper, padding: '6px 14px',
@@ -1122,14 +1145,15 @@ function NewsroomHero({ p, headline }) {
       </div>
 
       <div style={{
-        display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)',
-        gap: 48, marginTop: 22, alignItems: 'start',
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.4fr) minmax(0, 1fr)',
+        gap: isMobile ? 28 : 48, marginTop: 22, alignItems: 'start',
       }}>
         <div>
           <h1 style={{
             margin: 0,
             fontFamily: PAPER_FONTS.display,
-            fontSize: 'clamp(64px, 7vw, 132px)',
+            fontSize: isMobile ? 'clamp(44px, 13vw, 76px)' : 'clamp(64px, 7vw, 132px)',
             lineHeight: .9, letterSpacing: '-.03em', color: p.ink,
             textWrap: 'balance',
           }}>
@@ -1227,6 +1251,7 @@ function ContentsCard({ p }) {
 
 /* The big move of the newsroom: each chapter is its own front page */
 function ChapterStack({ p, foreground }) {
+  const isMobile = useIsMobile();
   /* Build chapters from the *first four* IDs in this canonical order, if foregrounded.
      Falls back to a fixed sequence so the layout always makes sense. */
   const canonical = ['resume', 'person', 'outreach', 'email'];
@@ -1240,7 +1265,7 @@ function ChapterStack({ p, foreground }) {
   }));
 
   return (
-    <section style={{ padding: '24px 56px 32px' }}>
+    <section style={{ padding: isMobile ? '20px 20px 28px' : '24px 56px 32px' }}>
       {chapters.map((ch, i) => (
         <ChapterPage key={ch.agent.id} p={p} ch={ch} idx={i}/>
       ))}
@@ -1249,6 +1274,7 @@ function ChapterStack({ p, foreground }) {
 }
 
 function ChapterPage({ p, ch, idx }) {
+  const isMobile = useIsMobile();
   const a = ch.agent;
   const c = color(p, a.color);
   const flip = idx % 2 === 1;
@@ -1268,10 +1294,11 @@ function ChapterPage({ p, ch, idx }) {
       </div>
 
       <div style={{
-        display: 'grid', gridTemplateColumns: flip ? '1fr 1.1fr' : '1.1fr 1fr',
-        gap: 36, alignItems: 'start',
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : (flip ? '1fr 1.1fr' : '1.1fr 1fr'),
+        gap: isMobile ? 24 : 36, alignItems: 'start',
       }}>
-        <div style={{ order: flip ? 2 : 1 }}>
+        <div style={{ order: isMobile ? 1 : (flip ? 2 : 1) }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
             <div style={{
               width: 64, height: 64, borderRadius: 14, background: c, color: '#fff',
@@ -1313,7 +1340,7 @@ function ChapterPage({ p, ch, idx }) {
           </div>
         </div>
 
-        <div style={{ order: flip ? 1 : 2 }}>
+        <div style={{ order: isMobile ? 2 : (flip ? 1 : 2) }}>
           <ChapterSpecimen p={p} c={c} id={a.id}/>
         </div>
       </div>
@@ -1549,13 +1576,14 @@ function SpecimenGuru({ p, c }) {
 /* ─────────────────────── manifesto block (newsroom) ─────────────────────── */
 
 function ManifestoBlock({ p }) {
+  const isMobile = useIsMobile();
   return (
-    <section style={{ padding: '60px 56px 24px', background: p.paperDeep, borderTop: `1px solid ${p.ink}`, borderBottom: `1px solid ${p.ink}` }}>
+    <section style={{ padding: isMobile ? '40px 20px 20px' : '60px 56px 24px', background: p.paperDeep, borderTop: `1px solid ${p.ink}`, borderBottom: `1px solid ${p.ink}` }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
         <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.stamp, letterSpacing: '.22em' }}>⸻ A short manifesto ⸻</div>
         <Stamp3 p={p} c={p.leaf} rotate={-3}>page A1</Stamp3>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr)', gap: 36, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.2fr) minmax(0, 1fr)', gap: isMobile ? 24 : 36, alignItems: 'start' }}>
         <h2 style={{
           margin: 0, fontFamily: PAPER_FONTS.display,
           fontSize: 'clamp(40px, 4.4vw, 64px)', lineHeight: .98, letterSpacing: '-.02em', color: p.ink,

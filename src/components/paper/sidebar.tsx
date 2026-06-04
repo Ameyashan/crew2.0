@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { PAPER_FONTS } from "./fonts";
@@ -33,7 +33,15 @@ const COMING_SOON = [
   { id: "khoji", label: "Network Mapper", glyph: "✶" },
 ];
 
-export function SidebarV3({ p }: { p: Palette }) {
+export function SidebarV3({
+  p,
+  style,
+  onNavigate,
+}: {
+  p: Palette;
+  style?: CSSProperties;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const current = APP_NAV.find((n) => pathname?.startsWith(`/app/${n.id}`))?.id ?? "compose";
@@ -84,14 +92,16 @@ export function SidebarV3({ p }: { p: Palette }) {
         display: "flex",
         flexDirection: "column",
         padding: "22px 18px 18px",
-        overflow: "hidden",
+        overflowY: "auto",
         position: "relative",
+        ...style,
       }}
     >
       {/* Masthead-y logo */}
       <div style={{ padding: "2px 8px 16px", borderBottom: `1px solid ${p.ink}40`, marginBottom: 14 }}>
         <Link
           href="/home"
+          onClick={onNavigate}
           style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "inherit" }}
         >
           <div
@@ -168,7 +178,10 @@ export function SidebarV3({ p }: { p: Palette }) {
           return (
             <button
               key={n.id}
-              onClick={() => router.push(`/app/${n.id}`)}
+              onClick={() => {
+                router.push(`/app/${n.id}`);
+                onNavigate?.();
+              }}
               style={{
                 display: "grid",
                 gridTemplateColumns: "28px 1fr",

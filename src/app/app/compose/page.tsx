@@ -13,6 +13,7 @@ import {
   Marginalia,
 } from "@/components/paper/primitives";
 import { openGmailCompose } from "@/lib/gmail";
+import { useIsMobile } from "@/lib/use-is-mobile";
 import { ChangeList } from "@/components/resume/ChangeList";
 import {
   useRuns,
@@ -84,6 +85,7 @@ function ComposeV3({ p, go }) {
   // "NOT RIGHT?" toggle. 'fuzzy' folds into the person flow in the store.
   const [kindOverride, setKindOverride] = useState(null);
   const runs = useRuns();
+  const isMobile = useIsMobile();
 
   function onGo() {
     if (!input.trim()) return;
@@ -95,7 +97,7 @@ function ComposeV3({ p, go }) {
 
   return (
     <div className="scroll" style={{
-      flex: 1, overflow: 'auto', padding: '40px 56px 80px', background: p.paper, color: p.ink,
+      flex: 1, overflow: 'auto', padding: isMobile ? '24px 16px 64px' : '40px 56px 80px', background: p.paper, color: p.ink,
     }}>
       <PageHead p={p}
         eyebrow="Compose · the crew is ready"
@@ -816,6 +818,7 @@ function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, run, o
 
 function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
   const [channel, setChannel] = useState('email'); // email | linkedin | x
+  const isMobile = useIsMobile();
   const chosen = parsed.chosen;
 
   // Real drafts from /api/compose override the prototype's mocked messages.
@@ -842,7 +845,7 @@ function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
   const m = messages[channel];
 
   return (
-    <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12 }}>
+    <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr', gap: 12 }}>
       {/* draft */}
       <PaperCard p={p} style={{ padding: '20px 22px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -956,6 +959,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
   const [notes, setNotes] = useState('');
   const [downloading, setDownloading] = useState(null); // 'pdf' | 'docx' | null
   const [dlError, setDlError] = useState(null);
+  const isMobile = useIsMobile();
   const regenerating = !!run?.regenerating;
 
   async function handleDownload(fmt) {
@@ -1002,7 +1006,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
   const searched = person?.searched || null;
 
   return (
-    <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr', gap: 12 }}>
+    <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1.2fr 1fr', gap: 12 }}>
       {/* resume */}
       <PaperCard p={p} style={{ padding: '20px 22px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1367,20 +1371,21 @@ function ResumeSection({ p, title }) {
 
 function ResumeModal({ p, resume, jobRole, jobCompany, atsScore, atsScoreBefore, onClose }) {
   const h = resume.header || {};
+  const isMobile = useIsMobile();
   return (
     <div
       onClick={onClose}
       style={{
         position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.55)',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-        padding: '40px 20px', overflow: 'auto',
+        padding: isMobile ? '20px 10px' : '40px 20px', overflow: 'auto',
       }}>
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%', maxWidth: 820, background: p.paper,
           border: `1.5px solid ${p.ink}`, boxShadow: `8px 8px 0 ${p.ink}24`,
-          padding: '32px 44px 40px', position: 'relative', color: p.ink,
+          padding: isMobile ? '24px 18px 28px' : '32px 44px 40px', position: 'relative', color: p.ink,
         }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
           <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.14em', textTransform: 'uppercase', color: p.marigoldDeep }}>

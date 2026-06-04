@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { PAPER_FONTS } from "@/components/paper/fonts";
 import { usePaperTheme } from "@/components/paper/use-paper-theme";
 import { Eyebrow, InkButton, Marginalia } from "@/components/paper/primitives";
+import { useIsMobile } from "@/lib/use-is-mobile";
 
 const GOALS_PROMPT = `I'm using a tool that drafts outreach messages on my behalf. Help me write a self-summary it can use as context. Cover:
 - My current role, background, and what I'm working on
@@ -23,6 +24,7 @@ What I'm looking for: senior product roles at AI-native fintechs (Series B+) or 
 How I communicate: warm but direct. Hate corporate filler ("hope this finds you well", "circling back"). Will use lowercase if it feels right. Prefer ending on a real question, not a CTA.`;
 
 function OnboardingV3({ p, onDone, onBack }) {
+  const isMobile = useIsMobile();
   const [resume, setResume]     = useState(null);
   const [linkedin, setLinkedin] = useState('');
   const [samples, setSamples]   = useState([]);
@@ -73,14 +75,18 @@ function OnboardingV3({ p, onDone, onBack }) {
 
   return (
     <div style={{
-      flex: 1, display: 'grid', gridTemplateColumns: '1fr 1.15fr', background: p.paper, color: p.ink,
-      overflow: 'hidden',
+      flex: 1, background: p.paper, color: p.ink,
+      ...(isMobile
+        ? { display: 'flex', flexDirection: 'column', overflowY: 'auto', overflowX: 'hidden' }
+        : { display: 'grid', gridTemplateColumns: '1fr 1.15fr', overflow: 'hidden' }),
     }}>
       {/* Left — narrative */}
       <aside style={{
-        background: p.paperDeep, padding: '64px 56px 48px',
+        background: p.paperDeep, padding: isMobile ? '28px 20px 28px' : '64px 56px 48px',
         display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-        borderRight: `1.5px solid ${p.ink}`, position: 'relative', overflow: 'hidden',
+        borderRight: isMobile ? 'none' : `1.5px solid ${p.ink}`,
+        borderBottom: isMobile ? `1.5px solid ${p.ink}` : 'none',
+        position: 'relative', overflow: 'hidden', flexShrink: 0,
       }}>
         <div aria-hidden style={{
           position: 'absolute', right: -140, bottom: -200,
@@ -148,7 +154,7 @@ function OnboardingV3({ p, onDone, onBack }) {
 
       {/* Right — cards */}
       <div className="scroll" style={{
-        overflow: 'auto', padding: '60px 56px 80px',
+        overflow: isMobile ? 'visible' : 'auto', padding: isMobile ? '28px 20px 64px' : '60px 56px 80px',
         display: 'flex', flexDirection: 'column', gap: 14,
       }}>
         <OnbCardV3 p={p} num={1} done={!!resume} optional
