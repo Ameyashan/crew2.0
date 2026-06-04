@@ -276,7 +276,7 @@ function Footer3({ p }) {
         textTransform: 'uppercase', color: p.inkMute,
       }}>
         <span>© 2026 Jugaadu · a personal OS for the ambitious</span>
-        <span>Built in public · weekly on x</span>
+        <a href="/changelog" style={{ color: p.stamp, textDecoration: 'none' }}>Built in public · read the changelog ↗</a>
         <span>hello@jugaadu.app</span>
       </div>
     </footer>
