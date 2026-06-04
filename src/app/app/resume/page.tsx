@@ -14,8 +14,10 @@ import {
   Marginalia,
 } from "@/components/paper/primitives";
 import { ChangeList } from "@/components/resume/ChangeList";
+import { useIsMobile } from "@/lib/use-is-mobile";
 
 function ResumeV3({ p, go }) {
+  const isMobile = useIsMobile();
   const [jobUrl, setJobUrl]   = useState('');
   const [emphasis, setEmphasis] = useState('');
   const [length, setLength]   = useState('1');
@@ -97,7 +99,7 @@ function ResumeV3({ p, go }) {
 
   return (
     <div className="scroll" style={{
-      flex: 1, overflow: 'auto', padding: '40px 56px 80px', background: p.paper, color: p.ink,
+      flex: 1, overflow: 'auto', padding: isMobile ? '24px 16px 64px' : '40px 56px 80px', background: p.paper, color: p.ink,
     }}>
       <PageHead p={p}
         eyebrow="Resume · agent"
@@ -189,7 +191,7 @@ function ResumeV3({ p, go }) {
             </span>
           </div>
 
-          <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
             {/* URL */}
             <div>
               <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkSoft, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>
@@ -383,6 +385,7 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
   // Pull the full generation (resume blob + changelog) the first time the row is
   // opened — the history list endpoint only returns metadata. setState lives in
   // the async callbacks, never synchronously in the effect body.
+  const isMobile = useIsMobile();
   const [gen, setGen] = useState(null);
   const [loadErr, setLoadErr] = useState(null);
 
@@ -407,12 +410,14 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
       transition: 'box-shadow .2s, border-color .2s',
     }}>
       <button onClick={onToggle} style={{
-        width: '100%', display: 'grid',
-        gridTemplateColumns: '1fr auto auto auto auto', alignItems: 'center', gap: 18,
+        width: '100%',
+        ...(isMobile
+          ? { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }
+          : { display: 'grid', gridTemplateColumns: '1fr auto auto auto auto', alignItems: 'center', gap: 18 }),
         padding: '14px 20px', background: 'transparent', border: 'none',
         cursor: 'pointer', textAlign: 'left', color: p.ink,
       }}>
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, flex: isMobile ? '1 1 100%' : undefined }}>
           <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.06em' }}>{row.co}</div>
           <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 19, color: p.ink, lineHeight: 1.05 }}>{row.role}</div>
         </div>
@@ -429,7 +434,7 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
         <div style={{
           borderTop: `1.5px dashed ${p.ink}24`,
           padding: '16px 20px 20px', display: 'grid',
-          gridTemplateColumns: '1.4fr 1fr', gap: 22,
+          gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr', gap: 22,
         }}>
           <div>
             <Eyebrow p={p} en="What Jugaadu changed" color={p.stamp}/>

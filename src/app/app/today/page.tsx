@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PAPER_FONTS } from "@/components/paper/fonts";
 import { usePaperTheme } from "@/components/paper/use-paper-theme";
+import { useIsMobile } from "@/lib/use-is-mobile";
 import {
   Eyebrow,
   InkButton,
@@ -14,6 +15,7 @@ import {
 import { openGmailCompose } from "@/lib/gmail";
 
 function TodayV3({ p, go }) {
+  const isMobile = useIsMobile();
   const [cursor, setCursor]   = useState({ list: 'fu', idx: 0 });
   const [acted, setActed]     = useState({}); // id → 'sent' | 'replied' | 'skip' | 'done'
   const [expanded, setExpanded] = useState(null);
@@ -91,14 +93,14 @@ function TodayV3({ p, go }) {
 
   return (
     <div className="scroll" style={{
-      flex: 1, overflow: 'auto', padding: '36px 56px 80px', background: p.paper, color: p.ink,
+      flex: 1, overflow: 'auto', padding: isMobile ? '24px 16px 64px' : '36px 56px 80px', background: p.paper, color: p.ink,
     }}>
       <PageHead p={p}
         eyebrow={`Today · ${new Date(2026, 4, 17).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`}
         title={remaining === 0 ? 'Inbox zero.' : `${remaining} ${remaining === 1 ? 'thing' : 'things'}`}
         italic={remaining === 0 ? 'You\'re done.' : 'need you.'}
         sub={`Last digest 5/17, 8:00 AM — ${FOLLOWUPS.length} followups · ${REPLIES.length} replies to review · ~ ${Math.max(2, Math.round(remaining * 0.6))} min`}
-        right={
+        right={isMobile ? null : (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 14,
             fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.06em',
@@ -107,7 +109,7 @@ function TodayV3({ p, go }) {
             <kbd style={{ padding: '2px 7px', background: p.card, border: `1px solid ${p.ink}30` }}>r/n</kbd>reply
             <kbd style={{ padding: '2px 7px', background: p.card, border: `1px solid ${p.ink}30` }}>↵</kbd>open
           </div>
-        }
+        )}
       />
 
       {/* progress strip */}
@@ -162,7 +164,7 @@ function TodayV3({ p, go }) {
       <Eyebrow p={p} hindi="कल" en="Coming tomorrow · digest at 8am" color={p.tea}/>
       <div style={{
         marginTop: 12, padding: '16px 20px', background: p.card, border: `1.5px solid ${p.ink}30`,
-        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 18,
+        display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: 18,
       }}>
         {[
           { hindi: 'दूसरी', label: '3 followups armed',  sub: 'EC, JG, PI · normal cadence' },

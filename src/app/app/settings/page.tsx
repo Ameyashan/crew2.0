@@ -10,6 +10,7 @@ import {
   PageHead,
   PaperCard,
 } from "@/components/paper/primitives";
+import { useIsMobile } from "@/lib/use-is-mobile";
 
 const FOLLOWUP_OPTIONS = [
   { label: "3d", days: 3 },
@@ -51,6 +52,7 @@ function linkedinHandle(url) {
 }
 
 function SettingsV3({ p, t, setTweak, profile, saveProfile, reloadProfile }) {
+  const isMobile = useIsMobile();
   const [savingFollowup, setSavingFollowup] = useState(false);
   const [editing, setEditing] = useState(null); // resume | linkedin | writing | goals
   const followupLabel = daysToLabel(profile?.followup_days);
@@ -102,7 +104,7 @@ function SettingsV3({ p, t, setTweak, profile, saveProfile, reloadProfile }) {
   ];
 
   return (
-    <div className="scroll" style={{ flex: 1, overflow: "auto", padding: "48px 56px 80px" }}>
+    <div className="scroll" style={{ flex: 1, overflow: "auto", padding: isMobile ? "24px 16px 64px" : "48px 56px 80px" }}>
       <PageHead
         p={p}
         eyebrow="Settings · you"
@@ -110,7 +112,7 @@ function SettingsV3({ p, t, setTweak, profile, saveProfile, reloadProfile }) {
         italic="set up just for you."
         sub="The defaults shape every draft Jugaadu sends. Change anything; it takes effect from your next message."
       />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginTop: 8 }}>
         <PaperCard p={p} color={p.marigold} hardShadow>
           <Eyebrow p={p} hindi="रंग" en="Theme" />
           <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 22, marginTop: 4, marginBottom: 14 }}>

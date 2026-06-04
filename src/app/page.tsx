@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { PAPER_FONTS } from "@/components/paper/fonts";
 import { usePaperTheme } from "@/components/paper/use-paper-theme";
 import { signInWithGoogle } from "@/lib/supabase-browser";
+import { useIsMobile } from "@/lib/use-is-mobile";
 
 /* ─────────────────────── Jugaadu logo ─────────────────────── */
 /* A boxy stamp echoing the newspaper aesthetic — a J anchored by a
@@ -32,21 +33,6 @@ function JugaaduMark({ p, size = 46 }) {
       }}>★</span>
     </div>
   );
-}
-
-/* Responsive helper — true on phone-sized viewports. Starts `false` so the
-   server render and the first client render agree on the desktop layout, then
-   corrects after mount (no hydration mismatch). */
-function useIsMobile(query = "(max-width: 760px)") {
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia(query);
-    const sync = () => setIsMobile(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, [query]);
-  return isMobile;
 }
 
 async function startGoogleSignIn() {
