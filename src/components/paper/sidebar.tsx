@@ -289,6 +289,59 @@ export function SidebarV3({
           ))}
         </div>
       </div>
+
+      {/* Changelog — pinned to the bottom of the rail. */}
+      <Link
+        href="/changelog"
+        onClick={onNavigate}
+        style={{
+          marginTop: "auto",
+          display: "grid",
+          gridTemplateColumns: "28px 1fr auto",
+          alignItems: "center",
+          gap: 10,
+          padding: "9px 10px",
+          textDecoration: "none",
+          color: p.ink,
+          border: `1.5px solid ${p.ink}30`,
+          background: p.card,
+          boxShadow: `3px 3px 0 ${p.marigold}`,
+        }}
+      >
+        <span
+          style={{
+            fontFamily: PAPER_FONTS.mono,
+            fontSize: 14,
+            color: p.stamp,
+            textAlign: "center",
+          }}
+        >
+          ◷
+        </span>
+        <span
+          style={{
+            fontFamily: PAPER_FONTS.display,
+            fontSize: 16,
+            lineHeight: 1.05,
+            color: p.ink,
+          }}
+        >
+          Changelog
+        </span>
+        <span
+          style={{
+            fontFamily: PAPER_FONTS.mono,
+            fontSize: 8.5,
+            letterSpacing: ".14em",
+            padding: "2px 6px",
+            border: `1px solid ${p.stamp}`,
+            color: p.stamp,
+            whiteSpace: "nowrap",
+          }}
+        >
+          NEW
+        </span>
+      </Link>
     </aside>
   );
 }
