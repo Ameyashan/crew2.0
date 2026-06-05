@@ -249,9 +249,14 @@ function Masthead3({ p }) {
           </div>
         </div>
         <nav style={{
-          display: 'flex', alignItems: 'center', gap: 26,
+          display: 'flex', alignItems: 'center', gap: isMobile ? 16 : 26,
           fontFamily: PAPER_FONTS.mono, fontSize: 12, color: p.inkSoft,
         }}>
+          <a href="/changelog" style={{
+            color: p.inkSoft, textDecoration: 'none', letterSpacing: '.08em',
+            textTransform: 'uppercase', fontSize: 12, whiteSpace: 'nowrap',
+            borderBottom: `1.5px solid ${p.marigold}`, paddingBottom: 2,
+          }}>Changelog</a>
           <button onClick={startGoogleSignIn} style={{
             background: p.ink, color: p.paper, padding: '10px 18px',
             border: `2px solid ${p.ink}`, fontFamily: PAPER_FONTS.display,
