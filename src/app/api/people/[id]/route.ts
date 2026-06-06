@@ -25,14 +25,37 @@ export async function GET(
     if (error) return Response.json({ error: error.message }, { status: 500 });
     if (!person) return Response.json({ error: "not found" }, { status: 404 });
 
-    const { data: events } = await sb
-      .from("interactions")
-      .select(
-        "id, agent_type, interaction_type, channel, created_at, draft:drafts(subject, body)",
-      )
-      .eq("person_id", id)
-      .order("created_at", { ascending: false });
+    const [eventsRes, workflowsRes, followupsRes] = await Promise.all([
+      sb
+        .from("interactions")
+        .select(
+          "id, agent_type, interaction_type, channel, created_at, draft:drafts(subject, body)",
+        )
+        .eq("person_id", id)
+        .order("created_at", { ascending: false }),
+      sb
+        .from("compose_runs")
+        .select(
+          "id, kind, input, intent, outcome, error, created_at, completed_at, output",
+        )
+        .eq("user_id", userId)
+        .eq("person_id", id)
+        .order("created_at", { ascending: false }),
+      sb
+        .from("followups")
+        .select("id, due_at, status, draft:drafts(subject)")
+        .eq("user_id", userId)
+        .eq("person_id", id)
+        .eq("status", "pending")
+        .order("due_at", { ascending: true })
+        .limit(1),
+    ]);
 
-    return Response.json({ person, events: events ?? [] });
+    return Response.json({
+      person,
+      events: eventsRes.data ?? [],
+      workflows: workflowsRes.data ?? [],
+      nextFollowup: followupsRes.data?.[0] ?? null,
+    });
   });
 }

@@ -12,6 +12,7 @@ import {
   PaperEmpty,
 } from "@/components/paper/primitives";
 import { useIsMobile } from "@/lib/use-is-mobile";
+import { hydrateRun } from "@/lib/runs-store";
 
 function PeopleV3({ p, go, PEOPLE_V3 = [] }) {
   const isMobile = useIsMobile();
@@ -149,7 +150,9 @@ function warmthColor(p, w) {
 }
 
 function PersonDetailV3({ p, person, go }) {
+  const router = useRouter();
   const [detail, setDetail] = useState(null);
+  const [opening, setOpening] = useState(null);
   useEffect(() => {
     if (!person?.id) return;
     let cancelled = false;
@@ -159,9 +162,32 @@ function PersonDetailV3({ p, person, go }) {
     return () => { cancelled = true; };
   }, [person?.id]);
 
-  const events = (detail?.events || []).map(adaptEvent);
-  if (events.length === 0) {
-    events.push({ when: 'queued', kind: 'queued', text: 'No interactions yet · drafted but not sent' });
+  const workflows = detail?.workflows || [];
+  const nextFollowup = detail?.nextFollowup || null;
+
+  async function openWorkflow(id) {
+    setOpening(id);
+    try {
+      const res = await fetch(`/api/compose/history/${id}`);
+      if (!res.ok) throw new Error(`load failed: ${res.status}`);
+      const json = await res.json();
+      const run = json?.run;
+      if (!run) throw new Error('run not found');
+      hydrateRun({
+        id: run.id,
+        kind: run.kind,
+        input: run.input,
+        intent: run.intent,
+        outcome: run.outcome,
+        error: run.error,
+        created_at: run.created_at,
+        output: run.output,
+        screenshot: run.screenshot,
+      });
+      router.push('/app/compose');
+    } catch {
+      setOpening(null);
+    }
   }
   return (
     <div>
@@ -194,7 +220,6 @@ function PersonDetailV3({ p, person, go }) {
         </div>
         <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
           <InkButton p={p} color={p.stamp} onClick={() => go('compose', { input: person.email })}>Reach out again →</InkButton>
-          <InkButton p={p} kind="outline" size="sm">⋯</InkButton>
         </div>
       </div>
 
@@ -209,95 +234,101 @@ function PersonDetailV3({ p, person, go }) {
         ))}
       </div>
 
-      {/* timeline */}
-      <Eyebrow p={p} hindi="समय रेखा" en="Timeline" color={p.stamp}/>
-      <div style={{ position: 'relative', paddingLeft: 26, marginTop: 14 }}>
-        <div style={{ position: 'absolute', top: 8, bottom: 8, left: 7, width: 2, background: p.ink + '20' }}/>
-        {events.map((e, i) => (
-          <div key={i} style={{
-            position: 'relative', marginBottom: 22,
-            animation: `fadeUp .35s ease both`, animationDelay: `${i * 50}ms`,
+      {/* next followup indicator */}
+      {nextFollowup && (() => {
+        const due = new Date(nextFollowup.due_at);
+        const diff = due.getTime() - Date.now();
+        const days = Math.round(diff / 86400000);
+        const overdue = diff < 0;
+        const when = overdue
+          ? `overdue · ${Math.abs(days)}d`
+          : days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`;
+        const color = overdue ? p.stamp : days <= 2 ? p.marigoldDeep : p.leaf;
+        const dateLabel = due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28,
+            padding: '12px 16px', background: p.card,
+            border: `1.5px solid ${color}`, boxShadow: `3px 3px 0 ${color}`,
           }}>
-            <div style={{
-              position: 'absolute', left: -25, top: 4, width: 16, height: 16, background: p.paper,
-              border: `2px solid ${kindColor(p, e.kind)}`,
-            }}/>
-            <div style={{ display: 'flex', gap: 14, alignItems: 'baseline', flexWrap: 'wrap' }}>
+            <span style={{
+              fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.14em',
+              textTransform: 'uppercase', color,
+            }}>● Next followup</span>
+            <span style={{
+              fontFamily: PAPER_FONTS.display, fontSize: 18, color: p.ink, lineHeight: 1,
+            }}>{when}</span>
+            <span style={{
+              fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.04em',
+            }}>{dateLabel}{nextFollowup.draft?.subject ? ` · ${nextFollowup.draft.subject}` : ''}</span>
+          </div>
+        );
+      })()}
+
+      {/* workflows */}
+      <Eyebrow p={p} hindi="कार्य" en={`Workflows · ${workflows.length}`} color={p.stamp}/>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
+        {workflows.length === 0 && (
+          <div style={{
+            padding: '14px 18px', background: p.card, border: `1.5px dashed ${p.ink}30`,
+            fontFamily: PAPER_FONTS.mono, fontSize: 12, color: p.inkMute, letterSpacing: '.04em',
+          }}>No workflows yet for this person.</div>
+        )}
+        {workflows.map((w) => {
+          const chip = workflowOutcome(p, w.outcome);
+          const title = workflowTitle(w);
+          return (
+            <div key={w.id} style={{
+              background: p.card, border: `1.5px solid ${p.ink}30`,
+              padding: '14px 18px', display: 'grid',
+              gridTemplateColumns: '1fr auto auto auto', alignItems: 'center', gap: 14,
+            }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{
+                  fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.14em',
+                  textTransform: 'uppercase', color: p.inkMute,
+                }}>compose · {w.kind}</div>
+                <div style={{
+                  fontFamily: PAPER_FONTS.display, fontSize: 17, color: p.ink, lineHeight: 1.15,
+                  marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>{title}</div>
+              </div>
+              <span style={{
+                padding: '3px 10px', background: chip.color + '14', color: chip.color,
+                fontFamily: PAPER_FONTS.mono, fontSize: 11, letterSpacing: '.04em', whiteSpace: 'nowrap',
+              }}>{chip.label}</span>
               <span style={{
                 fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute,
-                letterSpacing: '.04em', minWidth: 130, textTransform: 'uppercase',
-              }}>{e.when}</span>
-              <span style={{
-                padding: '2px 9px', fontFamily: PAPER_FONTS.mono, fontSize: 10,
-                letterSpacing: '.08em', color: kindColor(p, e.kind),
-                border: `1px solid ${kindColor(p, e.kind)}40`, textTransform: 'uppercase',
-              }}>{e.kind}</span>
+                letterSpacing: '.04em', whiteSpace: 'nowrap',
+              }}>{relTime(new Date(w.created_at))}</span>
+              <InkButton p={p} kind="outline" size="sm"
+                onClick={() => openWorkflow(w.id)} disabled={opening === w.id}>
+                {opening === w.id ? 'opening…' : 'Open →'}
+              </InkButton>
             </div>
-            <div style={{
-              marginTop: 6, fontSize: 15.5, lineHeight: 1.5,
-              color: p.ink,
-              fontFamily: e.kind === 'reply' ? PAPER_FONTS.serif : PAPER_FONTS.sans,
-              fontStyle: e.kind === 'reply' ? 'italic' : 'normal',
-            }}>{e.text}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function kindColor(p, kind) {
-  return ({
-    reply: p.leaf, sent: p.stamp, compose: p.stamp,
-    research: p.inkSoft, awaiting: p.stamp, queued: p.inkMute,
-  }[kind]) || p.inkSoft;
+function workflowOutcome(p, outcome) {
+  if (outcome === 'complete') return { label: 'ready', color: p.leaf };
+  if (outcome === 'in_flight') return { label: 'in progress…', color: p.stamp };
+  if (outcome === 'needs_disambiguation') return { label: 'needs pick', color: p.marigoldDeep };
+  return { label: 'error', color: p.stamp };
 }
 
-function adaptEvent(ix) {
-  const when = ix.created_at ? relTime(new Date(ix.created_at)) : '—';
-  const kind = mapKind(ix.interaction_type);
-  let text;
-  switch (ix.interaction_type) {
-    case 'drafted':
-      text = `Drafted ${ix.channel || ''} · ${quote(ix.draft?.subject) || quote(ix.draft?.body, 80) || 'draft saved'}`;
-      break;
-    case 'sent':
-      text = `Sent ${ix.channel || ''} · ${quote(ix.draft?.subject) || quote(ix.draft?.body, 80) || 'message sent'}`;
-      break;
-    case 'replied':
-      text = `Reply received${ix.draft?.body ? ` — ${quote(ix.draft.body, 140)}` : ''}`;
-      break;
-    case 'no_reply':
-      text = 'No reply on this thread yet · followup armed';
-      break;
-    case 'followed_up':
-      text = 'Followup sent';
-      break;
-    case 'clicked':
-      text = 'Recipient opened the email';
-      break;
-    default:
-      text = ix.interaction_type;
+function workflowTitle(w) {
+  const out = w.output || {};
+  if (w.kind === 'job') {
+    const parsed = out.parsed || {};
+    const role = parsed.target_role || parsed.role || 'Job application';
+    return w.intent ? `${role} · ${w.intent}` : role;
   }
-  return { when, kind, text };
-}
-
-function mapKind(type) {
-  switch (type) {
-    case 'drafted': return 'compose';
-    case 'sent': return 'sent';
-    case 'replied': return 'reply';
-    case 'no_reply': return 'awaiting';
-    case 'followed_up': return 'sent';
-    case 'clicked': return 'research';
-    default: return 'research';
-  }
-}
-
-function quote(s, max = 64) {
-  if (!s) return null;
-  const t = String(s).replace(/\s+/g, ' ').trim();
-  return `"${t.length > max ? t.slice(0, max) + '…' : t}"`;
+  const summary = out.person?.name || out.summary || w.intent || w.input;
+  return summary || 'Compose run';
 }
 
 function relTime(d) {
