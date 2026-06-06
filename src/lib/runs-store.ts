@@ -578,6 +578,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
     };
     const collectedDrafts: unknown[] = [];
     let collectedEnrichment: unknown = null;
+    let collectedPerson: unknown = null;
     let completed = false;
 
     // When the run started from a screenshot, forward the raw image so the
@@ -634,6 +635,10 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
             else if (evt.status === "done" || evt.status === "skipped")
               patch(id, (r) => ({ progress: { ...r.progress, [key]: 100 } }));
           }
+          // The research step carries the REAL researched person (name, role,
+          // company, links, context_lines) — surface it so the package card
+          // shows the actual human, not the prototype stub.
+          if (evt.id === "research" && evt.status === "done" && evt.data) collectedPerson = evt.data;
           if (evt.id === "email_lookup" && evt.data) collectedEnrichment = evt.data;
           if (evt.id === "draft" && evt.status === "done" && evt.data) {
             collectedDrafts.push(evt.data);
@@ -650,6 +655,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           patch(id, (r) => ({
             enrichment: collectedEnrichment || r.enrichment,
             drafts: collectedDrafts.length ? collectedDrafts : r.drafts,
+            person: collectedPerson || r.person,
             progress: { person: 100, email: 100, outreach: 100 },
             stage: "done",
           }));
@@ -663,6 +669,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
       patch(id, (r) => ({
         enrichment: collectedEnrichment || r.enrichment,
         drafts: collectedDrafts,
+        person: collectedPerson || r.person,
         progress: { person: 100, email: 100, outreach: 100 },
         stage: "done",
       }));
