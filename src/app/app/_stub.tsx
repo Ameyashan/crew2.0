@@ -12,7 +12,6 @@ export function RouteStub({
   italic,
   sub,
   legacyHref,
-  hindi,
   legacyLabel = "Open the legacy screen",
   children,
 }: {
@@ -21,7 +20,6 @@ export function RouteStub({
   italic?: string;
   sub: string;
   legacyHref: string;
-  hindi: string;
   legacyLabel?: string;
   children?: ReactNode;
 }) {
@@ -31,7 +29,7 @@ export function RouteStub({
       <PageHead p={p} eyebrow={eyebrow} title={title} italic={italic} sub={sub} />
 
       <PaperCard p={p} color={p.marigold} hardShadow style={{ marginTop: 8 }}>
-        <Eyebrow p={p} hindi={hindi} en="Stub · PR 1 shell" />
+        <Eyebrow p={p} en="Stub · PR 1 shell" />
         <div
           style={{
             fontFamily: PAPER_FONTS.display,

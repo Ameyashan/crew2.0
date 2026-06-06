@@ -52,7 +52,7 @@ function PeopleV3({ p, go, PEOPLE_V3 = [] }) {
       {/* List */}
       {(!isMobile || mobileView === 'list') && (
       <div className="scroll" style={{ overflow: 'auto', borderRight: isMobile ? 'none' : `1.5px solid ${p.ink}`, padding: isMobile ? '24px 16px 40px' : '32px 22px 40px' }}>
-        <Eyebrow p={p} hindi="लोग" en={`People · ${PEOPLE_V3.length} contacts`}/>
+        <Eyebrow p={p} en={`People · ${PEOPLE_V3.length} contacts`}/>
         <h1 style={{
           margin: '4px 0 18px', fontFamily: PAPER_FONTS.display, fontSize: 36,
           fontWeight: 400, lineHeight: 1, color: p.ink, letterSpacing: '-.02em',
@@ -201,7 +201,7 @@ function PersonDetailV3({ p, person, go }) {
           fontFamily: PAPER_FONTS.display, fontSize: 30, flexShrink: 0,
         }}>{person.initials}</div>
         <div style={{ flex: 1, minWidth: 240 }}>
-          <Eyebrow p={p} hindi="वो" en={`Last touch · ${person.last}`} color={warmthColor(p, person.warmth)}/>
+          <Eyebrow p={p} en={`Last touch · ${person.last}`} color={warmthColor(p, person.warmth)}/>
           <h1 style={{
             margin: '4px 0 6px', fontFamily: PAPER_FONTS.display,
             fontSize: 42, lineHeight: 1, color: p.ink, fontWeight: 400, letterSpacing: '-.02em',
@@ -266,7 +266,7 @@ function PersonDetailV3({ p, person, go }) {
       })()}
 
       {/* workflows */}
-      <Eyebrow p={p} hindi="कार्य" en={`Workflows · ${workflows.length}`} color={p.stamp}/>
+      <Eyebrow p={p} en={`Workflows · ${workflows.length}`} color={p.stamp}/>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
         {workflows.length === 0 && (
           <div style={{

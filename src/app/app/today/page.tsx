@@ -130,7 +130,7 @@ function TodayV3({ p, go }) {
       </div>
 
       {/* Followups */}
-      <Eyebrow p={p} hindi="दूसरी आवाज़" en={`Followups due · ${FOLLOWUPS.filter(x => !acted[x.id]).length}`} color={p.stamp}/>
+      <Eyebrow p={p} en={`Followups due · ${FOLLOWUPS.filter(x => !acted[x.id]).length}`} color={p.stamp}/>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, marginBottom: 32 }}>
         {FOLLOWUPS.map((fu, i) => (
           <FollowupRow
@@ -146,7 +146,7 @@ function TodayV3({ p, go }) {
       </div>
 
       {/* Replies needing review */}
-      <Eyebrow p={p} hindi="जवाब" en={`Conversations needing review · ${REPLIES.filter(x => !acted[x.id]).length}`} color={p.leaf}/>
+      <Eyebrow p={p} en={`Conversations needing review · ${REPLIES.filter(x => !acted[x.id]).length}`} color={p.leaf}/>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, marginBottom: 32 }}>
         {REPLIES.length === 0 && (
           <p style={{ margin: 0, fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 16, color: p.inkSoft }}>
@@ -166,7 +166,7 @@ function TodayV3({ p, go }) {
       </div>
 
       {/* Tomorrow */}
-      <Eyebrow p={p} hindi="कल" en="Coming tomorrow · digest at 8am" color={p.tea}/>
+      <Eyebrow p={p} en="Coming tomorrow · digest at 8am" color={p.tea}/>
       <div style={{
         marginTop: 12, padding: '16px 20px', background: p.card, border: `1.5px solid ${p.ink}30`,
         display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: 18,

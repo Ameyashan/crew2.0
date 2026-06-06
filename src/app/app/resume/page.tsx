@@ -120,7 +120,7 @@ function ResumeV3({ p, go }) {
       <PaperCard p={p} color={p.marigold} hardShadow style={{ padding: '20px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <Eyebrow p={p} hindi="आपकी फ़ाइल" en="Your resume on file"/>
+            <Eyebrow p={p} en="Your resume on file"/>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 14, marginTop: 10,
             }}>
@@ -185,7 +185,7 @@ function ResumeV3({ p, go }) {
       <div style={{ marginTop: 14 }}>
         <PaperCard p={p} color={p.stamp} hardShadow style={{ padding: '22px 24px' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-            <Eyebrow p={p} hindi="ब्रीफ़" en="The brief — what should change"/>
+            <Eyebrow p={p} en="The brief — what should change"/>
             <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute, letterSpacing: '.14em', textTransform: 'uppercase' }}>
               one is enough · both is best
             </span>
@@ -276,7 +276,7 @@ function ResumeV3({ p, go }) {
       {/* History */}
       <div style={{ marginTop: 28 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
-          <Eyebrow p={p} hindi="इतिहास" en={`Tailored history · ${history.length} version${history.length === 1 ? '' : 's'}`}/>
+          <Eyebrow p={p} en={`Tailored history · ${history.length} version${history.length === 1 ? '' : 's'}`}/>
           <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.06em' }}>
             click a row to expand
           </span>

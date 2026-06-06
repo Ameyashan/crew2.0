@@ -289,7 +289,7 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
     <>
       <PaperCard p={p} color={p.marigold} hardShadow style={{ padding: '22px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <Eyebrow p={p} hindi="लिंक · नाम · खयाल" en="Paste a link, name, or describe a person"/>
+          <Eyebrow p={p} en="Paste a link, name, or describe a person"/>
           <span style={{
             fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.06em', color: p.inkMute,
           }}>linkedin · x · greenhouse · lever · pdf · anything</span>
@@ -541,7 +541,7 @@ function ParsedCard({ p, stage, kind, parsed, onConfirm, onChoose, hideConfirm }
             fontFamily: PAPER_FONTS.display, fontSize: 32, border: `1.5px solid ${p.ink}`,
           }}>{chosen.initials}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <Eyebrow p={p} hindi="मिल गया" en={`Best match · ${chosen.confidence}% confidence`} color={p.leaf}/>
+            <Eyebrow p={p} en={`Best match · ${chosen.confidence}% confidence`} color={p.leaf}/>
             <div style={{
               fontFamily: PAPER_FONTS.display, fontSize: 34, lineHeight: 1.05, marginTop: 4, color: p.ink,
             }}>{chosen.name}</div>
@@ -611,7 +611,7 @@ function ParsedCard({ p, stage, kind, parsed, onConfirm, onChoose, hideConfirm }
             fontFamily: PAPER_FONTS.display, fontSize: 28,
           }}>↗</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <Eyebrow p={p} hindi="नौकरी का लिंक" en="Job link · not parsed yet" color={p.marigoldDeep}/>
+            <Eyebrow p={p} en="Job link · not parsed yet" color={p.marigoldDeep}/>
             <div style={{
               fontFamily: PAPER_FONTS.display, fontSize: 28, lineHeight: 1.05, marginTop: 4, color: p.ink,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -642,7 +642,7 @@ function ParsedCard({ p, stage, kind, parsed, onConfirm, onChoose, hideConfirm }
           fontFamily: PAPER_FONTS.display, fontSize: 28,
         }}>{parsed.logo}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Eyebrow p={p} hindi="मिली नौकरी" en={`Job parsed · ${parsed.posted}`} color={p.marigoldDeep}/>
+          <Eyebrow p={p} en={`Job parsed · ${parsed.posted}`} color={p.marigoldDeep}/>
           <div style={{
             fontFamily: PAPER_FONTS.display, fontSize: 28, lineHeight: 1.05, marginTop: 4, color: p.ink,
           }}>{parsed.role}</div>
@@ -898,7 +898,7 @@ function SteerDraft({ p, runId, drafts, recipientName }) {
   return (
     <div style={{ marginTop: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <Eyebrow p={p} hindi="हुक्म" en="Steer all three →" color={p.marigold || p.stamp}/>
+        <Eyebrow p={p} en="Steer all three →" color={p.marigold || p.stamp}/>
         {busy && (
           <span style={{
             fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.stamp, letterSpacing: '.08em',
@@ -985,7 +985,7 @@ function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, run, o
           gap: 18, flexWrap: 'wrap',
         }}>
           <div style={{ minWidth: 0 }}>
-            <Eyebrow p={p} hindi="हो गया" en={`Package ready · ${kind === 'job' ? '47s' : '32s'}`} color={p.stamp}/>
+            <Eyebrow p={p} en={`Package ready · ${kind === 'job' ? '47s' : '32s'}`} color={p.stamp}/>
             <div style={{
               fontFamily: PAPER_FONTS.display, fontSize: isMobile ? 23 : 30, lineHeight: 1.05, marginTop: 6, color: p.ink,
             }}>
@@ -1075,7 +1075,7 @@ function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
       {/* draft */}
       <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <Eyebrow p={p} hindi="संदेश" en="The draft · choose channel" color={p.stamp}/>
+          <Eyebrow p={p} en="The draft · choose channel" color={p.stamp}/>
           <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.leaf, letterSpacing: '.06em' }}>VOICE 96%</span>
         </div>
         <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
@@ -1142,7 +1142,7 @@ function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
 
       {/* person */}
       <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
-        <Eyebrow p={p} hindi="वो" en={matchLabel ? `The person · ${matchLabel}` : 'The person'} color={p.leaf}/>
+        <Eyebrow p={p} en={matchLabel ? `The person · ${matchLabel}` : 'The person'} color={p.leaf}/>
         {personName ? (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
@@ -1272,7 +1272,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
       {/* resume */}
       <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Eyebrow p={p} hindi="रेज़्यूमे" en="Tailored resume" color={p.marigold}/>
+          <Eyebrow p={p} en="Tailored resume" color={p.marigold}/>
           <AtsBadge p={p} before={atsScoreBefore} after={atsScore}/>
         </div>
         {(jobRole || jobCompany) && (
@@ -1436,7 +1436,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
       {/* email draft */}
       <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <Eyebrow p={p} hindi="संदेश" en="Cold email · drafted" color={p.tea}/>
+          <Eyebrow p={p} en="Cold email · drafted" color={p.tea}/>
           <span style={{
             fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.leaf, letterSpacing: '.06em',
           }}>VOICE 96%</span>
@@ -1477,7 +1477,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
 
       {/* person */}
       <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
-        <Eyebrow p={p} hindi="वो" en={matchLabel ? `Hiring manager · ${matchLabel}` : 'Hiring manager'} color={p.leaf}/>
+        <Eyebrow p={p} en={matchLabel ? `Hiring manager · ${matchLabel}` : 'Hiring manager'} color={p.leaf}/>
         {personName ? (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>

@@ -167,7 +167,7 @@ export function Eyebrow({
   p,
   en,
   color,
-}: PProp & { hindi?: ReactNode; en: ReactNode; color?: string }) {
+}: PProp & { en: ReactNode; color?: string }) {
   return (
     <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
       <span

@@ -114,7 +114,7 @@ function SettingsV3({ p, t, setTweak, profile, saveProfile, reloadProfile }) {
       />
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginTop: 8 }}>
         <PaperCard p={p} color={p.marigold} hardShadow>
-          <Eyebrow p={p} hindi="रंग" en="Theme" />
+          <Eyebrow p={p} en="Theme" />
           <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 22, marginTop: 4, marginBottom: 14 }}>
             Paper or ink mode
           </div>
@@ -157,7 +157,7 @@ function SettingsV3({ p, t, setTweak, profile, saveProfile, reloadProfile }) {
         </PaperCard>
 
         <PaperCard p={p} color={p.leaf} hardShadow>
-          <Eyebrow p={p} hindi="नज़र" en="Followups" />
+          <Eyebrow p={p} en="Followups" />
           <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 22, marginTop: 4, marginBottom: 10 }}>
             Nudge cadence{" "}
             {savingFollowup && (
@@ -189,7 +189,7 @@ function SettingsV3({ p, t, setTweak, profile, saveProfile, reloadProfile }) {
         </PaperCard>
 
         <PaperCard p={p} color={p.tea} hardShadow style={{ gridColumn: "1 / -1" }}>
-          <Eyebrow p={p} hindi="चाबी" en="Connected" />
+          <Eyebrow p={p} en="Connected" />
           <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 22, marginTop: 4, marginBottom: 4 }}>
             What Jugaadu reads
           </div>
