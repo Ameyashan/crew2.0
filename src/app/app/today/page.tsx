@@ -10,7 +10,6 @@ import {
   Eyebrow,
   InkButton,
   PageHead,
-  Marginalia,
 } from "@/components/paper/primitives";
 import { openGmailCompose } from "@/lib/gmail";
 
@@ -22,6 +21,7 @@ function TodayV3({ p, go }) {
   const [followups, setFollowups] = useState([]);
   const [replies, setReplies] = useState([]);
   const [lastDigest, setLastDigest] = useState(null);
+  const [tomorrow, setTomorrow] = useState({ armed: [], replyExpected: [] });
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -29,6 +29,10 @@ function TodayV3({ p, go }) {
       setFollowups(adaptFollowups(j?.due || []));
       setReplies(adaptReplies(j?.replies || []));
       setLastDigest(j?.last_digest || null);
+      setTomorrow({
+        armed: j?.tomorrow?.armed || [],
+        replyExpected: j?.tomorrow?.reply_expected || [],
+      });
       setLoaded(true);
     }).catch(() => setLoaded(true));
   }, []);
@@ -96,10 +100,10 @@ function TodayV3({ p, go }) {
       flex: 1, overflow: 'auto', padding: isMobile ? '24px 16px 64px' : '36px 56px 80px', background: p.paper, color: p.ink,
     }}>
       <PageHead p={p}
-        eyebrow={`Today · ${new Date(2026, 4, 17).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`}
+        eyebrow={`Today · ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`}
         title={remaining === 0 ? 'Inbox zero.' : `${remaining} ${remaining === 1 ? 'thing' : 'things'}`}
         italic={remaining === 0 ? 'You\'re done.' : 'need you.'}
-        sub={`Last digest 5/17, 8:00 AM — ${FOLLOWUPS.length} followups · ${REPLIES.length} replies to review · ~ ${Math.max(2, Math.round(remaining * 0.6))} min`}
+        sub={`${lastDigest?.generated_at ? `Last digest ${new Date(lastDigest.generated_at).toLocaleString('en-US', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })} — ` : ''}${FOLLOWUPS.length} followups · ${REPLIES.length} replies to review · ~ ${Math.max(2, Math.round(remaining * 0.6))} min`}
         right={isMobile ? null : (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 14,
@@ -121,11 +125,10 @@ function TodayV3({ p, go }) {
         <div style={{ flex: 1, height: 4, background: p.ink + '14' }}>
           <div style={{ height: '100%', width: `${((total - remaining) / total) * 100}%`, background: p.stamp, transition: 'width .4s' }}/>
         </div>
-        <Marginalia p={p} rotate={-1} style={{ fontSize: 16 }}>{remaining === 0 ? 'Inbox zero. nice ✓' : ''}</Marginalia>
       </div>
 
       {/* Followups */}
-      <Eyebrow p={p} hindi="दूसरी आवाज़" en={`Followups due · ${FOLLOWUPS.filter(x => !acted[x.id]).length}`} color={p.stamp}/>
+      <Eyebrow p={p} en={`Followups due · ${FOLLOWUPS.filter(x => !acted[x.id]).length}`} color={p.stamp}/>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, marginBottom: 32 }}>
         {FOLLOWUPS.map((fu, i) => (
           <FollowupRow
@@ -141,13 +144,8 @@ function TodayV3({ p, go }) {
       </div>
 
       {/* Replies needing review */}
-      <Eyebrow p={p} hindi="जवाब" en={`Conversations needing review · ${REPLIES.filter(x => !acted[x.id]).length}`} color={p.leaf}/>
+      <Eyebrow p={p} en={`Conversations needing review · ${REPLIES.filter(x => !acted[x.id]).length}`} color={p.leaf}/>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, marginBottom: 32 }}>
-        {REPLIES.length === 0 && (
-          <p style={{ margin: 0, fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 16, color: p.inkSoft }}>
-            Inbox zero. Nice.
-          </p>
-        )}
         {REPLIES.map((r, i) => (
           <ReplyRow
             key={r.id} p={p} r={r}
@@ -161,21 +159,28 @@ function TodayV3({ p, go }) {
       </div>
 
       {/* Tomorrow */}
-      <Eyebrow p={p} hindi="कल" en="Coming tomorrow · digest at 8am" color={p.tea}/>
+      <Eyebrow p={p} en="Coming tomorrow · digest at 8am" color={p.tea}/>
       <div style={{
         marginTop: 12, padding: '16px 20px', background: p.card, border: `1.5px solid ${p.ink}30`,
-        display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: 18,
+        display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: 18,
       }}>
-        {[
-          { hindi: 'दूसरी', label: '3 followups armed',  sub: 'EC, JG, PI · normal cadence' },
-          { hindi: 'खबर',   label: '1 reply expected',   sub: 'Vishnu intro · ETA this week' },
-          { hindi: 'मौके',  label: '2 fresh signals',    sub: 'X · Devon Park, Sophia Singh' },
-        ].map((t, i) => (
-          <div key={i}>
-            <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 19, marginTop: 2 }}>{t.label}</div>
-            <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute, marginTop: 4, letterSpacing: '.04em' }}>{t.sub}</div>
-          </div>
-        ))}
+        {(() => {
+          const tiles = buildTomorrowTiles(tomorrow);
+          if (tiles.length === 0) {
+            return (
+              <div style={{
+                gridColumn: '1 / -1',
+                fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 15, color: p.inkSoft,
+              }}>Nothing queued for tomorrow yet.</div>
+            );
+          }
+          return tiles.map((t, i) => (
+            <div key={i}>
+              <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 19, marginTop: 2 }}>{t.label}</div>
+              <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute, marginTop: 4, letterSpacing: '.04em' }}>{t.sub}</div>
+            </div>
+          ));
+        })()}
       </div>
     </div>
   );
@@ -397,6 +402,32 @@ function adaptReplies(rows) {
       suggested: r.suggested_reply || 'Jugaadu will summarise this shortly. In the meantime, open Compose to draft a reply manually.',
     };
   });
+}
+
+function initialsOf(name) {
+  return (name || '').split(/[\s.@_-]+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '·';
+}
+
+function buildTomorrowTiles({ armed, replyExpected }) {
+  const tiles = [];
+  if (armed?.length) {
+    const initials = armed.slice(0, 3).map((a) => initialsOf(a.person?.name)).join(', ');
+    const more = armed.length > 3 ? ` +${armed.length - 3}` : '';
+    tiles.push({
+      label: `${armed.length} followup${armed.length === 1 ? '' : 's'} armed`,
+      sub: `${initials}${more} · fires before 8am`,
+    });
+  }
+  if (replyExpected?.length) {
+    const oldest = replyExpected.reduce((a, b) => (a.sent_at < b.sent_at ? a : b));
+    const days = Math.max(1, Math.round((Date.now() - new Date(oldest.sent_at).getTime()) / 86400000));
+    const headline = oldest.person?.name || oldest.subject || 'open thread';
+    tiles.push({
+      label: `${replyExpected.length} repl${replyExpected.length === 1 ? 'y' : 'ies'} expected`,
+      sub: `${headline} · waiting ${days}d`,
+    });
+  }
+  return tiles;
 }
 
 function formatShortDate(iso) {

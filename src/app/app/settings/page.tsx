@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { PAPER_FONTS } from "@/components/paper/fonts";
 import { usePaperTheme } from "@/components/paper/use-paper-theme";
 import {
-  Eyebrow,
   InkButton,
   PageHead,
   PaperCard,
@@ -114,8 +113,7 @@ function SettingsV3({ p, t, setTweak, profile, saveProfile, reloadProfile }) {
       />
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginTop: 8 }}>
         <PaperCard p={p} color={p.marigold} hardShadow>
-          <Eyebrow p={p} hindi="रंग" en="Theme" />
-          <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 22, marginTop: 4, marginBottom: 14 }}>
+          <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 22, marginBottom: 14 }}>
             Paper or ink mode
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -157,8 +155,7 @@ function SettingsV3({ p, t, setTweak, profile, saveProfile, reloadProfile }) {
         </PaperCard>
 
         <PaperCard p={p} color={p.leaf} hardShadow>
-          <Eyebrow p={p} hindi="नज़र" en="Followups" />
-          <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 22, marginTop: 4, marginBottom: 10 }}>
+          <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 22, marginBottom: 10 }}>
             Nudge cadence{" "}
             {savingFollowup && (
               <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute }}>· saving</span>
@@ -189,8 +186,7 @@ function SettingsV3({ p, t, setTweak, profile, saveProfile, reloadProfile }) {
         </PaperCard>
 
         <PaperCard p={p} color={p.tea} hardShadow style={{ gridColumn: "1 / -1" }}>
-          <Eyebrow p={p} hindi="चाबी" en="Connected" />
-          <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 22, marginTop: 4, marginBottom: 4 }}>
+          <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 22, marginBottom: 4 }}>
             What Jugaadu reads
           </div>
           <p style={{ margin: "0 0 12px", fontFamily: PAPER_FONTS.serif, fontStyle: "italic", fontSize: 14, color: p.inkSoft }}>

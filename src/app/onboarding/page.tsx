@@ -102,7 +102,7 @@ function OnboardingV3({ p, onDone, onBack }) {
               textTransform: 'uppercase', cursor: 'pointer', padding: 0,
             }}>← landing</button>
           </div>
-          <Eyebrow p={p} hindi="शुरुआत" en="Jugaadu · let's get you set up"/>
+          <Eyebrow p={p} en="Jugaadu · let's get you set up"/>
           <h1 style={{
             margin: '8px 0 0', fontFamily: PAPER_FONTS.display, fontWeight: 400,
             fontSize: 'clamp(40px, 4.4vw, 60px)', lineHeight: .95, letterSpacing: '-.025em',
