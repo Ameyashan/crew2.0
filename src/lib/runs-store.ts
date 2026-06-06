@@ -29,6 +29,13 @@ export type Run = {
   // rewritten ('email' | 'linkedin' | 'x'), or null when idle.
   redrafting?: string | null;
   redraftError?: string | null;
+  // "Steer the draft" — free-form directive applied to all three channels at
+  // once. `steering` is true while the parallel redraft is in flight.
+  // `steerHistory` is a session-scoped list of recent directives (newest first,
+  // capped at 3) surfaced as click-to-rerun chips.
+  steering?: boolean;
+  steerError?: string | null;
+  steerHistory?: string[];
   // Screenshot-driven runs. `imageFile` is the raw File (client-only; forwarded
   // to the person pipeline as research context). `screenshot` is the display
   // meta shown in the card header.
@@ -456,6 +463,78 @@ export async function regenerateDraft(
   } catch (e) {
     if (e?.message === "redrafting") return;
     patch(id, () => ({ redrafting: null, redraftError: String(e?.message || e) }));
+  }
+}
+
+// "Steer the draft" — apply ONE free-form directive across email + LinkedIn +
+// X in parallel, so all three channels end up consistent with the new angle.
+// Hits /api/compose/steer (parallel redraft fan-out) and patches each returned
+// channel into the run's drafts. The directive is pushed to a small in-memory
+// history (dedup + cap 3) so the UI can offer click-to-rerun chips.
+export async function steerAllChannels(
+  id: string,
+  directive: string,
+  current: { drafts: unknown[] | null; recipientName?: string | null },
+) {
+  const run = runs.find((r) => r.id === id);
+  if (!run || run.steering) return;
+  const trimmed = (directive || "").trim();
+  if (!trimmed) return;
+
+  // Build the request payload from what's on screen right now. The server
+  // normalizes 'x' ↔ 'x_dm'; we send whatever channel keys the run has.
+  const drafts = Array.isArray(current?.drafts) ? current.drafts : [];
+  const payloadDrafts = drafts
+    .map((d) => {
+      const ch = (d as { channel?: string })?.channel;
+      if (!ch) return null;
+      return {
+        channel: ch,
+        subject: (d as { subject?: string | null })?.subject ?? null,
+        body: (d as { body?: string })?.body ?? "",
+      };
+    })
+    .filter(Boolean);
+  if (!payloadDrafts.some((d) => (d as { body: string }).body.trim())) return;
+
+  patch(id, () => ({ steering: true, steerError: null }));
+  try {
+    const res = await fetch("/api/compose/steer", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        directive: trimmed,
+        recipient_name: current?.recipientName ?? null,
+        drafts: payloadDrafts,
+      }),
+    });
+    if (!res.ok) throw new Error(`steer failed: ${res.status}`);
+    const data = await res.json();
+    if (data?.error) throw new Error(data.error);
+
+    patch(id, (r) => {
+      let next = r.drafts;
+      // Map server API channels back to the UI channels the package cards read.
+      const mapping: Record<string, string> = { email: "email", linkedin: "linkedin", x_dm: "x" };
+      for (const [apiCh, uiCh] of Object.entries(mapping)) {
+        const part = data?.[apiCh];
+        if (!part || !part.body) continue;
+        next = upsertDraft(next, uiCh, {
+          subject: part.subject ?? null,
+          body: part.body,
+        });
+      }
+      const prevHistory = Array.isArray(r.steerHistory) ? r.steerHistory : [];
+      const nextHistory = [trimmed, ...prevHistory.filter((s) => s !== trimmed)].slice(0, 3);
+      return {
+        drafts: next,
+        steering: false,
+        steerError: null,
+        steerHistory: nextHistory,
+      };
+    });
+  } catch (e) {
+    patch(id, () => ({ steering: false, steerError: String(e?.message || e) }));
   }
 }
 
