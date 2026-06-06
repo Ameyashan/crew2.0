@@ -29,6 +29,11 @@ export type Run = {
   // rewritten ('email' | 'linkedin' | 'x'), or null when idle.
   redrafting?: string | null;
   redraftError?: string | null;
+  // Screenshot-driven runs. `imageFile` is the raw File (client-only; forwarded
+  // to the person pipeline as research context). `screenshot` is the display
+  // meta shown in the card header.
+  imageFile?: File | null;
+  screenshot?: { name: string; size: string } | null;
 };
 
 /* ─────────────────────── module store ─────────────────────── */
@@ -114,6 +119,89 @@ export function startRun(
     }));
     launch(id);
   }, 900);
+
+  return id;
+}
+
+// Screenshot-first run. The user attached an image (with or without text), so
+// there's nothing to classify from a URL/name yet. We open a run in "parsing",
+// POST the image to /api/identify-image (which stores it in Supabase and runs a
+// vision pass), then resolve it into the right kind + query and hand off to the
+// normal streaming pipeline. A job posting with a legible public URL takes the
+// full job flow; everything else (a person, or a job whose URL we can't read)
+// runs the person flow with the screenshot forwarded as research context.
+export function startImageRun(
+  file: File,
+  opts?: { text?: string; intent?: string; providedEmail?: boolean },
+): string | null {
+  if (!file) return null;
+
+  const id =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `run_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  const typed = (opts?.text || "").trim();
+  const run: Run = {
+    id,
+    input: typed || file.name || "screenshot",
+    intent: opts?.intent?.trim() || undefined,
+    providedEmail: opts?.providedEmail || false,
+    kind: "person",
+    stage: "parsing",
+    parsed: null,
+    progress: {},
+    drafts: null,
+    enrichment: null,
+    person: null,
+    candidates: null,
+    error: null,
+    createdAt: Date.now(),
+    imageFile: file,
+    screenshot: { name: file.name || "screenshot", size: `${Math.round(file.size / 1024)} KB` },
+  };
+
+  runs = [run, ...runs];
+  emit();
+
+  void (async () => {
+    try {
+      const form = new FormData();
+      form.append("image", file);
+      if (typed) form.append("text", typed);
+      if (opts?.intent?.trim()) form.append("intent", opts.intent.trim());
+
+      const res = await fetch("/api/identify-image", { method: "POST", body: form });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.error) {
+        throw new Error(data?.error || `identify-image failed: ${res.status}`);
+      }
+      if (!runs.some((r) => r.id === id)) return; // dismissed while classifying
+
+      // A job posting only takes the (resume-tailoring) job flow when we have a
+      // real http(s) URL to fetch. Otherwise route through the person flow and
+      // search for whoever is posting / the right contact.
+      const hasJobUrl =
+        typeof data.job_url === "string" && /^https?:\/\//i.test(data.job_url);
+      const kind: "person" | "job" = data.kind === "job" && hasJobUrl ? "job" : "person";
+      const resolvedInput = kind === "job" ? data.job_url : (data.query || typed || run.input);
+      const mergedIntent = run.intent || (data.intent ? String(data.intent) : undefined);
+      const parsed = kind === "job" ? inferJobV3(resolvedInput) : inferPersonV3(resolvedInput);
+
+      patch(id, () => ({
+        kind,
+        input: resolvedInput,
+        intent: mergedIntent,
+        parsed,
+        candidates: kind === "person" ? parsed.candidates : null,
+        stage: "working",
+      }));
+      launch(id);
+    } catch (e) {
+      if (!runs.some((r) => r.id === id)) return;
+      patch(id, () => ({ stage: "error", error: String(e?.message || e) }));
+    }
+  })();
 
   return id;
 }
@@ -492,16 +580,34 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
     let collectedEnrichment: unknown = null;
     let completed = false;
 
-    const res = await fetch("/api/compose", {
-      method: "POST",
-      headers: { "content-type": "application/json", accept: "text/event-stream" },
-      body: JSON.stringify({
-        text: run.input,
-        intent: run.intent || undefined,
-        picked: picked || undefined,
-      }),
-      signal,
-    });
+    // When the run started from a screenshot, forward the raw image so the
+    // research agent can read role/company/handles straight off it (multipart).
+    // Otherwise the plain JSON body is enough.
+    let res: Response;
+    if (run.imageFile) {
+      const form = new FormData();
+      form.append("text", run.input);
+      if (run.intent) form.append("intent", run.intent);
+      if (picked) form.append("picked", JSON.stringify(picked));
+      form.append("intent_image", run.imageFile);
+      res = await fetch("/api/compose", {
+        method: "POST",
+        headers: { accept: "text/event-stream" },
+        body: form,
+        signal,
+      });
+    } else {
+      res = await fetch("/api/compose", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "text/event-stream" },
+        body: JSON.stringify({
+          text: run.input,
+          intent: run.intent || undefined,
+          picked: picked || undefined,
+        }),
+        signal,
+      });
+    }
     if (!res.ok || !res.body) throw new Error(`compose failed: ${res.status}`);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();

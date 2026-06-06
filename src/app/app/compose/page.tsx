@@ -18,6 +18,7 @@ import { ChangeList } from "@/components/resume/ChangeList";
 import {
   useRuns,
   startRun,
+  startImageRun,
   dismissRun,
   clearAllRuns,
   retryRun,
@@ -88,9 +89,19 @@ function ComposeV3({ p, go }) {
   const isMobile = useIsMobile();
 
   function onGo() {
-    if (!input.trim()) return;
-    const kind = kindOverride || classifyKind(input);
-    startRun(input, { intent, providedEmail: haveEmail, kind: kind === 'job' ? 'job' : 'person' });
+    const hasText = input.trim().length > 0;
+    const file = screenshot?.file;
+    // Either a typed link/name/description OR an attached screenshot is enough.
+    if (!hasText && !file) return;
+
+    if (file) {
+      // Screenshot-first: the vision pass decides job vs person and extracts a
+      // query. Any typed text/intent rides along as a hint.
+      startImageRun(file, { text: input, intent, providedEmail: haveEmail });
+    } else {
+      const kind = kindOverride || classifyKind(input);
+      startRun(input, { intent, providedEmail: haveEmail, kind: kind === 'job' ? 'job' : 'person' });
+    }
     // clear so the next link can be pasted immediately
     setInput(''); setIntent(''); setHaveEmail(false); setScreenshot(null); setKindOverride(null);
   }
@@ -155,6 +166,13 @@ function RunCard({ p, run, go }) {
             fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 460,
           }}>{run.input}</span>
+          {run.screenshot && (
+            <span style={{
+              fontFamily: PAPER_FONTS.mono, fontSize: 10, letterSpacing: '.04em',
+              color: p.leaf, border: `1px solid ${p.leaf}66`, padding: '1px 6px',
+              whiteSpace: 'nowrap',
+            }}>📎 {run.screenshot.name}</span>
+          )}
         </div>
         <button onClick={() => dismissRun(run.id)} title="dismiss" style={{
           background: 'transparent', border: 'none', color: p.inkMute,
@@ -226,6 +244,7 @@ function RunCard({ p, run, go }) {
 function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHaveEmail, screenshot, setScreenshot, kindOverride, setKindOverride, onGo }) {
   const fileRef = useRef(null);
   const [showContext, setShowContext] = useState(false);
+  const [attachError, setAttachError] = useState(null);
   // The three things you can hand us. Clicking a pill drops in a representative
   // example so the banner below can show the flow it kicks off.
   const samples = [
@@ -234,8 +253,15 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
     { kind: 'fuzzy',  label: 'fuzzy search', text: 'Product managers at Perplexity' },
   ];
   const hasInput = input.trim().length > 0;
+  const hasScreenshot = !!screenshot;
+  // Go is live when there's either typed input OR an attached screenshot the
+  // vision pass can read.
+  const canGo = hasInput || hasScreenshot;
   const detected = kindOverride || classifyKind(input);
   const meta = KIND_META[detected];
+
+  const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
   // setting text from the box or a pill clears any manual override so the
   // banner re-reads the fresh input.
@@ -243,7 +269,20 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
 
   function pickFile(e) {
     const f = e.target.files?.[0];
-    if (f) setScreenshot({ name: f.name, size: `${Math.round(f.size / 1024)} KB` });
+    // Reset so re-picking the same file still fires onChange.
+    e.target.value = '';
+    if (!f) return;
+    if (!ALLOWED_IMAGE_TYPES.includes(f.type)) {
+      setAttachError('Use a PNG, JPG, WEBP, or GIF.');
+      return;
+    }
+    if (f.size > MAX_IMAGE_BYTES) {
+      setAttachError('Image must be under 5MB.');
+      return;
+    }
+    setAttachError(null);
+    // Keep the real File so onGo can hand it to the vision pass + Supabase.
+    setScreenshot({ name: f.name, size: `${Math.round(f.size / 1024)} KB`, file: f });
   }
   return (
     <>
@@ -268,6 +307,53 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
             outline: 'none', transition: 'border-color .2s',
           }}
         />
+
+        {/* ─── screenshot-only hint: no text typed, just an image ─── */}
+        {!hasInput && hasScreenshot && (
+          <div style={{
+            marginTop: 14, paddingTop: 14,
+            borderTop: `1.5px dashed ${p.ink}24`,
+            display: 'flex', alignItems: 'flex-start', gap: 12,
+          }}>
+            <span style={{
+              width: 14, height: 14, marginTop: 5, flexShrink: 0, borderRadius: '50%',
+              border: `2px solid ${p.stamp}`,
+              boxShadow: `inset 0 0 0 3px ${p.stamp}`, background: p.paper,
+            }}/>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: PAPER_FONTS.serif, fontSize: 18, color: p.ink, lineHeight: 1.3 }}>
+                Looks like <strong style={{ color: p.stamp }}>a screenshot</strong>
+              </div>
+              <div style={{
+                fontFamily: PAPER_FONTS.mono, fontSize: 12.5, color: p.inkMute,
+                marginTop: 4, lineHeight: 1.5,
+              }}>Jugaadu reads it on Go → detects a job posting or a person → runs the right crew</div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── attached-screenshot chip (always visible once attached) ─── */}
+        {hasScreenshot && (
+          <div style={{
+            marginTop: 12, display: 'flex', alignItems: 'center', gap: 10,
+            padding: '8px 12px', background: p.paper,
+            border: `1.5px solid ${p.ink}24`, flexWrap: 'wrap',
+          }}>
+            <span style={{
+              fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.08em',
+              color: p.leaf, textTransform: 'uppercase',
+            }}>✓ attached</span>
+            <span style={{
+              fontFamily: PAPER_FONTS.mono, fontSize: 12, color: p.ink,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 320,
+            }}>{screenshot.name}</span>
+            <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute }}>· {screenshot.size}</span>
+            <button onClick={() => { setScreenshot(null); setAttachError(null); }} title="remove" style={{
+              marginLeft: 'auto', background: 'transparent', border: 'none', cursor: 'pointer',
+              fontFamily: PAPER_FONTS.mono, fontSize: 15, lineHeight: 1, color: p.inkMute,
+            }}>×</button>
+          </div>
+        )}
 
         {/* ─── "Looks like…" banner: what we detected + the flow it kicks off ─── */}
         {hasInput && (
@@ -332,7 +418,7 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
               }}>{s.label}</button>
             ))}
           </div>
-          <InkButton p={p} color={p.stamp} onClick={onGo} disabled={!hasInput}>
+          <InkButton p={p} color={p.stamp} onClick={onGo} disabled={!canGo}>
             <span>Go</span>
             <kbd style={{
               padding: '1px 6px', fontFamily: PAPER_FONTS.mono, fontSize: 10,
@@ -411,6 +497,11 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
               letterSpacing: '.08em', color: p.inkMute, textTransform: 'uppercase',
             }}>{screenshot ? `${screenshot.name} · ${screenshot.size}` : 'PNG, JPG, WEBP, GIF · max 5MB · optional'}</span>
           </div>
+          {attachError && (
+            <div style={{
+              marginTop: 6, fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.stamp,
+            }}>{attachError}</div>
+          )}
         </>
       )}
 
