@@ -10,7 +10,6 @@ import {
   InkButton,
   PageHead,
   PaperCard,
-  Marginalia,
 } from "@/components/paper/primitives";
 import { openGmailCompose } from "@/lib/gmail";
 import { useIsMobile } from "@/lib/use-is-mobile";
@@ -112,7 +111,6 @@ function ComposeV3({ p, go }) {
       flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? '24px 16px 64px' : '40px 56px 80px', background: p.paper, color: p.ink,
     }}>
       <PageHead p={p}
-        eyebrow="Compose · the crew is ready"
         title="Who are you reaching out to?"
         italic="Fire off as many as you like."
         right={runs.length > 0 && (
@@ -162,7 +160,7 @@ function RunCard({ p, run, go }) {
           <span style={{
             fontFamily: PAPER_FONTS.mono, fontSize: 10, letterSpacing: '.16em',
             textTransform: 'uppercase', color: p.stamp,
-          }}>{run.kind} · {stageLabel}</span>
+          }}>{stageLabel}</span>
           <span style={{
             fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 460,
@@ -288,8 +286,7 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
   return (
     <>
       <PaperCard p={p} color={p.marigold} hardShadow style={{ padding: '22px 24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <Eyebrow p={p} en="Paste a link, name, or describe a person"/>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 10 }}>
           <span style={{
             fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.06em', color: p.inkMute,
           }}>linkedin · x · greenhouse · lever · pdf · anything</span>
@@ -506,9 +503,6 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
         </>
       )}
 
-      <div style={{ marginTop: 22 }}>
-        <Marginalia p={p} rotate={-1}>paste anything — Jugaadu sorts out what to do ↗</Marginalia>
-      </div>
     </>
   );
 }
@@ -897,14 +891,13 @@ function SteerDraft({ p, runId, drafts, recipientName }) {
 
   return (
     <div style={{ marginTop: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <Eyebrow p={p} en="Steer all three →" color={p.marigold || p.stamp}/>
-        {busy && (
+      {busy && (
+        <div style={{ marginBottom: 6 }}>
           <span style={{
             fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.stamp, letterSpacing: '.08em',
           }}>REWRITING ALL THREE…</span>
-        )}
-      </div>
+        </div>
+      )}
       <div style={{
         display: 'flex', alignItems: 'stretch', gap: 0,
         border: `1.5px solid ${p.ink}`, background: p.paper,
@@ -985,9 +978,8 @@ function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, run, o
           gap: 18, flexWrap: 'wrap',
         }}>
           <div style={{ minWidth: 0 }}>
-            <Eyebrow p={p} en={`Package ready · ${kind === 'job' ? '47s' : '32s'}`} color={p.stamp}/>
             <div style={{
-              fontFamily: PAPER_FONTS.display, fontSize: isMobile ? 23 : 30, lineHeight: 1.05, marginTop: 6, color: p.ink,
+              fontFamily: PAPER_FONTS.display, fontSize: isMobile ? 23 : 30, lineHeight: 1.05, color: p.ink,
             }}>
               Everything you need to send,
               <span style={{ fontStyle: 'italic', color: p.stamp }}> in your voice.</span>
@@ -1074,8 +1066,7 @@ function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
     <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr', gap: 12 }}>
       {/* draft */}
       <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <Eyebrow p={p} en="The draft · choose channel" color={p.stamp}/>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 12 }}>
           <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.leaf, letterSpacing: '.06em' }}>VOICE 96%</span>
         </div>
         <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
