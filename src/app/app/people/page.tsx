@@ -194,7 +194,6 @@ function PersonDetailV3({ p, person, go }) {
         </div>
         <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
           <InkButton p={p} color={p.stamp} onClick={() => go('compose', { input: person.email })}>Reach out again →</InkButton>
-          <InkButton p={p} kind="outline" size="sm">⋯</InkButton>
         </div>
       </div>
 
