@@ -1073,7 +1073,7 @@ function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
   return (
     <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr', gap: 12 }}>
       {/* draft */}
-      <PaperCard p={p} style={{ padding: '20px 22px' }}>
+      <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <Eyebrow p={p} hindi="संदेश" en="The draft · choose channel" color={p.stamp}/>
           <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.leaf, letterSpacing: '.06em' }}>VOICE 96%</span>
@@ -1087,15 +1087,17 @@ function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
             const on = channel === c.id;
             return (
               <button key={c.id} onClick={() => setChannel(c.id)} style={{
-                flex: 1, padding: '10px 12px', background: on ? p.ink : 'transparent',
+                flex: 1, minWidth: 0, overflow: 'hidden', padding: '10px 12px',
+                background: on ? p.ink : 'transparent',
                 color: on ? p.paper : p.ink, border: `1.5px solid ${p.ink}`,
                 fontFamily: PAPER_FONTS.display, fontSize: 16, textAlign: 'left',
                 cursor: 'pointer',
               }}>
-                <div>{c.label}</div>
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.label}</div>
                 <div style={{
                   fontFamily: PAPER_FONTS.mono, fontSize: 9.5, letterSpacing: '.1em',
                   opacity: .7, marginTop: 2, textTransform: 'uppercase',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>{c.desc}</div>
               </button>
             );
@@ -1105,7 +1107,7 @@ function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
           background: p.paper, border: `1.5px solid ${p.ink}30`,
           padding: '14px 16px', fontFamily: PAPER_FONTS.sans, fontSize: 14, lineHeight: 1.55,
         }}>
-          <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute, marginBottom: 6 }}>
+          <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute, marginBottom: 6, overflowWrap: 'anywhere' }}>
             <span style={{ color: p.inkMute }}>To &nbsp;</span>
             <span style={{ color: m.to ? p.ink : p.inkMute }}>
               {m.to || (channel === 'email' ? '(no public email found — add it in Gmail)' : '(profile link not found)')}
@@ -1139,7 +1141,7 @@ function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
       </PaperCard>
 
       {/* person */}
-      <PaperCard p={p} style={{ padding: '20px 22px' }}>
+      <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
         <Eyebrow p={p} hindi="वो" en={matchLabel ? `The person · ${matchLabel}` : 'The person'} color={p.leaf}/>
         {personName ? (
           <>
@@ -1268,7 +1270,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
   return (
     <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1.2fr 1fr', gap: 12 }}>
       {/* resume */}
-      <PaperCard p={p} style={{ padding: '20px 22px' }}>
+      <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Eyebrow p={p} hindi="रेज़्यूमे" en="Tailored resume" color={p.marigold}/>
           <AtsBadge p={p} before={atsScoreBefore} after={atsScore}/>
@@ -1432,7 +1434,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
       )}
 
       {/* email draft */}
-      <PaperCard p={p} style={{ padding: '20px 22px' }}>
+      <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <Eyebrow p={p} hindi="संदेश" en="Cold email · drafted" color={p.tea}/>
           <span style={{
@@ -1443,7 +1445,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
           background: p.paper, border: `1.5px solid ${p.ink}30`,
           padding: '12px 14px', fontFamily: PAPER_FONTS.sans, fontSize: 13, lineHeight: 1.55,
         }}>
-          <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute }}>
+          <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, overflowWrap: 'anywhere' }}>
             <span>To &nbsp;</span>
             <span style={{ color: emailTo ? p.ink : p.inkMute }}>
               {emailTo || '(no public email found — add it in Gmail)'}
@@ -1474,7 +1476,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
       </PaperCard>
 
       {/* person */}
-      <PaperCard p={p} style={{ padding: '20px 22px' }}>
+      <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
         <Eyebrow p={p} hindi="वो" en={matchLabel ? `Hiring manager · ${matchLabel}` : 'Hiring manager'} color={p.leaf}/>
         {personName ? (
           <>
