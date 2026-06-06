@@ -1,7 +1,7 @@
 // @ts-nocheck — verbatim port of Crew prototype v3 compose
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PAPER_FONTS } from "@/components/paper/fonts";
 import { usePaperTheme } from "@/components/paper/use-paper-theme";
@@ -25,6 +25,7 @@ import {
   pickCandidate,
   regenerateResume,
   regenerateDraft,
+  steerAllChannels,
   jobHost,
 } from "@/lib/runs-store";
 
@@ -854,6 +855,124 @@ function AnotherAngle({ p, runId, channel, subject, body, recipientName, style }
   );
 }
 
+// Rotating placeholder hints for the "Steer the draft" input. Cycle slowly so
+// they read as suggestions, not noise; pause cycling whenever the input is
+// focused or non-empty.
+const STEER_HINTS = [
+  "focus on their pottery side project",
+  "mention we both went to Cornell",
+  "lean on the fundraising angle",
+  "emphasize their recent NYC move",
+];
+
+// "Steer the draft" — a free-form text strip that fans one directive across all
+// three channels via steerAllChannels. Sits between the draft body and the
+// action row inside PersonPackage. Reads busy/error/history from the live run
+// so a steer kicked off from one tab is visible from any tab.
+function SteerDraft({ p, runId, drafts, recipientName }) {
+  const [value, setValue] = useState("");
+  const [focused, setFocused] = useState(false);
+  const [hintIdx, setHintIdx] = useState(0);
+  const runs = useRuns();
+  const run = runs.find((r) => r.id === runId);
+  const busy = !!run?.steering;
+  const err = run?.steerError;
+  const history = Array.isArray(run?.steerHistory) ? run.steerHistory : [];
+  const hasAnyDraft = Array.isArray(drafts) && drafts.some((d) => (d?.body || "").trim());
+  const disabled = busy || !hasAnyDraft;
+
+  useEffect(() => {
+    if (focused || value) return;
+    const t = setInterval(() => setHintIdx((i) => (i + 1) % STEER_HINTS.length), 4000);
+    return () => clearInterval(t);
+  }, [focused, value]);
+
+  function submit(directive) {
+    const text = (directive || "").trim();
+    if (!text || disabled) return;
+    setValue("");
+    steerAllChannels(runId, text, { drafts, recipientName });
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <Eyebrow p={p} hindi="हुक्म" en="Steer all three →" color={p.marigold || p.stamp}/>
+        {busy && (
+          <span style={{
+            fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.stamp, letterSpacing: '.08em',
+          }}>REWRITING ALL THREE…</span>
+        )}
+      </div>
+      <div style={{
+        display: 'flex', alignItems: 'stretch', gap: 0,
+        border: `1.5px solid ${p.ink}`, background: p.paper,
+        opacity: disabled && !busy ? 0.55 : 1,
+      }}>
+        <textarea
+          rows={1}
+          value={value}
+          disabled={disabled}
+          placeholder={hasAnyDraft ? STEER_HINTS[hintIdx] : 'waiting for the draft…'}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              submit(value);
+            }
+          }}
+          style={{
+            flex: 1, resize: 'none', border: 'none', outline: 'none', background: 'transparent',
+            color: p.ink, padding: '10px 12px',
+            fontFamily: PAPER_FONTS.sans, fontSize: 13.5, lineHeight: 1.4,
+          }}
+        />
+        <button
+          onClick={() => submit(value)}
+          disabled={disabled || !value.trim()}
+          aria-label="Steer all three drafts"
+          style={{
+            padding: '0 14px', border: 'none', borderLeft: `1.5px solid ${p.ink}`,
+            background: value.trim() && !disabled ? p.ink : 'transparent',
+            color: value.trim() && !disabled ? p.paper : p.ink,
+            cursor: value.trim() && !disabled ? 'pointer' : 'default',
+            fontFamily: PAPER_FONTS.mono, fontSize: 12, letterSpacing: '.08em',
+          }}>
+          {busy ? '…' : 'SEND ↵'}
+        </button>
+      </div>
+      {history.length > 0 && (
+        <div style={{
+          marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+        }}>
+          <span style={{
+            fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute, letterSpacing: '.08em',
+          }}>RECENT</span>
+          {history.map((h) => (
+            <button key={h} onClick={() => submit(h)} disabled={disabled} style={{
+              padding: '4px 8px', background: 'transparent', color: p.ink,
+              border: `1px solid ${p.ink}40`, cursor: disabled ? 'default' : 'pointer',
+              fontFamily: PAPER_FONTS.sans, fontSize: 11.5, maxWidth: 220,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = p.ink + '0d'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
+              {h}
+            </button>
+          ))}
+        </div>
+      )}
+      {err && (
+        <div style={{
+          marginTop: 6, fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.stamp,
+        }}>{err}</div>
+      )}
+    </div>
+  );
+}
+
 function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, run, onReset, go }) {
   const headerEmail = buildEmailDraft({ drafts, enrichment });
   return (
@@ -999,6 +1118,7 @@ function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
             {m.body || 'The draft for this channel will appear here once the Outreach agent finishes.'}
           </p>
         </div>
+        <SteerDraft p={p} runId={run?.id} drafts={drafts} recipientName={personName}/>
         <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {channel === 'email' && (
             <InkButton p={p} color={p.stamp} size="sm" disabled={!m.body} onClick={() => {
