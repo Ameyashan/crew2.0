@@ -108,7 +108,7 @@ function ComposeV3({ p, go }) {
 
   return (
     <div className="scroll" style={{
-      flex: 1, overflow: 'auto', padding: isMobile ? '24px 16px 64px' : '40px 56px 80px', background: p.paper, color: p.ink,
+      flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? '24px 16px 64px' : '40px 56px 80px', background: p.paper, color: p.ink,
     }}>
       <PageHead p={p}
         eyebrow="Compose · the crew is ready"
@@ -701,11 +701,12 @@ function colorOf(p, name) {
 }
 
 function AgentRowV3({ p, kind, stage, progress }) {
+  const isMobile = useIsMobile();
   const agents = AGENTS_DATA[kind] || AGENTS_DATA.person;
   return (
     <div style={{
       marginTop: 14, display: 'grid',
-      gridTemplateColumns: `repeat(${agents.length}, 1fr)`, gap: 12,
+      gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : `repeat(${agents.length}, 1fr)`, gap: 12,
     }}>
       {agents.map(a => {
         const pct = progress[a.k] || (stage === 'done' ? 100 : 0);
@@ -718,7 +719,7 @@ function AgentRowV3({ p, kind, stage, progress }) {
             background: p.card, color: p.ink,
             border: `1.5px solid ${done ? p.ink : p.ink + '40'}`,
             boxShadow: done ? `4px 4px 0 ${ac}` : 'none',
-            padding: '16px 16px 14px', position: 'relative',
+            padding: '16px 16px 14px', position: 'relative', minWidth: 0,
             minHeight: 168, display: 'flex', flexDirection: 'column', gap: 8,
             transition: 'box-shadow .25s, border-color .25s',
           }}>
@@ -856,6 +857,7 @@ function AnotherAngle({ p, runId, channel, subject, body, recipientName, style }
 
 function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, run, onReset, go }) {
   const headerEmail = buildEmailDraft({ drafts, enrichment });
+  const isMobile = useIsMobile();
   return (
     <div style={{ marginTop: 18 }}>
       <PaperCard p={p} hardShadow color={p.stamp} style={{ padding: '20px 24px' }}>
@@ -863,18 +865,24 @@ function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, run, o
           display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
           gap: 18, flexWrap: 'wrap',
         }}>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <Eyebrow p={p} hindi="हो गया" en={`Package ready · ${kind === 'job' ? '47s' : '32s'}`} color={p.stamp}/>
             <div style={{
-              fontFamily: PAPER_FONTS.display, fontSize: 30, lineHeight: 1.05, marginTop: 6, color: p.ink,
+              fontFamily: PAPER_FONTS.display, fontSize: isMobile ? 23 : 30, lineHeight: 1.05, marginTop: 6, color: p.ink,
             }}>
               Everything you need to send,
               <span style={{ fontStyle: 'italic', color: p.stamp }}> in your voice.</span>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <InkButton p={p} kind="outline" onClick={onReset}>↺ Another</InkButton>
-            <InkButton p={p} color={p.stamp} onClick={() => headerEmail.body && openGmailCompose(headerEmail)}>
+          <div style={{
+            display: 'flex', gap: 10,
+            flexDirection: isMobile ? 'column' : 'row',
+            width: isMobile ? '100%' : 'auto',
+          }}>
+            <InkButton p={p} kind="outline" onClick={onReset}
+              style={isMobile ? { width: '100%', justifyContent: 'center' } : undefined}>↺ Another</InkButton>
+            <InkButton p={p} color={p.stamp} onClick={() => headerEmail.body && openGmailCompose(headerEmail)}
+              style={isMobile ? { width: '100%', justifyContent: 'center' } : undefined}>
               <span style={{
                 width: 18, height: 18, background: p.paper, color: p.stamp,
                 display: 'grid', placeItems: 'center', fontFamily: PAPER_FONTS.mono,
