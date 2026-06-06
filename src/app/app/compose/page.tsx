@@ -85,6 +85,11 @@ function ComposeV3({ p, go }) {
   // null → trust auto-detection; otherwise the kind the user forced via the
   // "NOT RIGHT?" toggle. 'fuzzy' folds into the person flow in the store.
   const [kindOverride, setKindOverride] = useState(null);
+  // Which agents the user opted into for the next Go. Defaults rebuild whenever
+  // the detected kind or haveEmail change (see PasteFieldV3). The checklist is
+  // the single source of truth; haveEmail is a convenience shortcut that
+  // mirrors into this set.
+  const [selectedAgents, setSelectedAgents] = useState(() => defaultSelectionFor('person', false));
   const runs = useRuns();
   const isMobile = useIsMobile();
 
@@ -94,16 +99,30 @@ function ComposeV3({ p, go }) {
     // Either a typed link/name/description OR an attached screenshot is enough.
     if (!hasText && !file) return;
 
+    // Freeze the user's selection onto this run so navigating away or starting
+    // another run can't mutate the in-flight one's filter.
+    const selectedArr = Array.from(selectedAgents);
+
     if (file) {
       // Screenshot-first: the vision pass decides job vs person and extracts a
-      // query. Any typed text/intent rides along as a hint.
-      startImageRun(file, { text: input, intent, providedEmail: haveEmail });
+      // query. Any typed text/intent rides along as a hint. We don't pass a
+      // selection for screenshot-only runs — the kind isn't known yet, so the
+      // checklist was the placeholder and the run uses all agents for the
+      // resolved kind.
+      const opts = { text: input, intent, providedEmail: haveEmail };
+      if (input.trim().length > 0) opts.selectedAgents = selectedArr;
+      startImageRun(file, opts);
     } else {
       const kind = kindOverride || classifyKind(input);
-      startRun(input, { intent, providedEmail: haveEmail, kind: kind === 'job' ? 'job' : 'person' });
+      startRun(input, {
+        intent, providedEmail: haveEmail,
+        kind: kind === 'job' ? 'job' : 'person',
+        selectedAgents: selectedArr,
+      });
     }
     // clear so the next link can be pasted immediately
     setInput(''); setIntent(''); setHaveEmail(false); setScreenshot(null); setKindOverride(null);
+    setSelectedAgents(defaultSelectionFor('person', false));
   }
 
   return (
@@ -125,6 +144,7 @@ function ComposeV3({ p, go }) {
         haveEmail={haveEmail} setHaveEmail={setHaveEmail}
         screenshot={screenshot} setScreenshot={setScreenshot}
         kindOverride={kindOverride} setKindOverride={setKindOverride}
+        selectedAgents={selectedAgents} setSelectedAgents={setSelectedAgents}
         onGo={onGo}
       />
 
@@ -141,9 +161,17 @@ function ComposeV3({ p, go }) {
 /* ─────────────────────── one run, all its lifecycle stages ─────────────────────── */
 
 function RunCard({ p, run, go }) {
+  const numberWord = ['zero', 'one', 'two', 'three', 'four', 'five'];
+  const all = AGENTS_DATA[run.kind] || AGENTS_DATA.person;
+  const activeCount = Array.isArray(run.selectedAgents) && run.selectedAgents.length > 0
+    ? all.filter((a) => run.selectedAgents.includes(a.k)).length
+    : all.length;
+  const agentsLabel = activeCount === 1
+    ? 'one agent on it'
+    : `${numberWord[activeCount] || activeCount} agents on it`;
   const stageLabel = {
     parsing: 'reading…',
-    working: run.kind === 'job' ? 'four agents on it' : 'three agents on it',
+    working: agentsLabel,
     done:    'package ready',
     error:   'needs attention',
   }[run.stage];
@@ -186,7 +214,7 @@ function RunCard({ p, run, go }) {
 
       {/* working / done → the agent row */}
       {(run.stage === 'working' || run.stage === 'done') && (
-        <AgentRowV3 p={p} kind={run.kind} stage={run.stage} progress={run.progress}/>
+        <AgentRowV3 p={p} kind={run.kind} stage={run.stage} progress={run.progress} selectedAgents={run.selectedAgents}/>
       )}
 
       {/* done → the finished package */}
@@ -240,10 +268,12 @@ function RunCard({ p, run, go }) {
 
 /* ─────────────────────── paste field (idle state) ─────────────────────── */
 
-function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHaveEmail, screenshot, setScreenshot, kindOverride, setKindOverride, onGo }) {
+function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHaveEmail, screenshot, setScreenshot, kindOverride, setKindOverride, selectedAgents, setSelectedAgents, onGo }) {
   const fileRef = useRef(null);
   const [showContext, setShowContext] = useState(false);
   const [attachError, setAttachError] = useState(null);
+  // Transient "→ Person Khoji turned on, needed for Email" note. Fades after ~2s.
+  const [autoEnabledNote, setAutoEnabledNote] = useState(null);
   // The three things you can hand us. Clicking a pill drops in a representative
   // example so the banner below can show the flow it kicks off.
   const samples = [
@@ -283,6 +313,75 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
     // Keep the real File so onGo can hand it to the vision pass + Supabase.
     setScreenshot({ name: f.name, size: `${Math.round(f.size / 1024)} KB`, file: f });
   }
+
+  // Reset the agent selection to the kind's defaults whenever the detected kind
+  // changes (text-flips-classification OR user clicks a "Not right?" pill). The
+  // 'fuzzy' kind shares the person flow so it shares the person checklist.
+  const checklistKind = detected === 'job' ? 'job' : 'person';
+  useEffect(() => {
+    setSelectedAgents(defaultSelectionFor(checklistKind, haveEmail));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- haveEmail is mirrored separately below
+  }, [checklistKind, setSelectedAgents]);
+
+  // Mirror the haveEmail shortcut into the checklist without nuking other
+  // selections. When haveEmail flips ON, strip email; when it flips OFF, don't
+  // forcibly re-add it (user may have intentionally deselected email).
+  useEffect(() => {
+    if (!haveEmail) return;
+    setSelectedAgents((prev) => {
+      if (!prev.has('email')) return prev;
+      const next = new Set(prev);
+      next.delete('email');
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setSelectedAgents is stable
+  }, [haveEmail]);
+
+  // Fade out the auto-enabled hint after ~2s.
+  useEffect(() => {
+    if (!autoEnabledNote) return;
+    const t = setTimeout(() => setAutoEnabledNote(null), 2000);
+    return () => clearTimeout(t);
+  }, [autoEnabledNote]);
+
+  function isSelected(k) { return selectedAgents.has(k); }
+
+  // Person Khoji is the irreducible core of the person flow — research is what
+  // identifies who to reach, so email/outreach (and the run itself) are
+  // meaningless without it. Lock it on there; in the job flow it's a free toggle
+  // (drop it to "just tailor my résumé").
+  function isLocked(k) { return k === 'person' && checklistKind === 'person'; }
+
+  function toggleAgent(k) {
+    if (isLocked(k)) return;
+    const next = new Set(selectedAgents);
+    if (next.has(k)) {
+      next.delete(k);
+      // Email turning off via the checklist clears the "I already have their email"
+      // shortcut too — checklist is the source of truth.
+      if (k === 'email' && haveEmail) setHaveEmail(false);
+    } else {
+      next.add(k);
+      // Auto-enable Khoji when ticking on an agent that needs it.
+      if (PERSON_DEPENDENT.has(k) && !next.has('person')) {
+        next.add('person');
+        const label = k === 'email' ? 'Email Wallah' : 'Outreach Bhai';
+        setAutoEnabledNote(`Person Khoji turned on — ${label} needs a target.`);
+      }
+      // Ticking Email back on while haveEmail was true means they want the lookup.
+      if (k === 'email' && haveEmail) setHaveEmail(false);
+    }
+    setSelectedAgents(next);
+  }
+
+  function agentDisabled(k) {
+    // Email/Outreach can't be toggled on without Khoji — but they CAN be toggled
+    // (we auto-enable Khoji). So "disabled" is the visual-ghost state when Khoji
+    // is off AND the agent itself is currently off — to communicate the chain.
+    if (!PERSON_DEPENDENT.has(k)) return false;
+    return !selectedAgents.has('person') && !selectedAgents.has(k);
+  }
+
   return (
     <>
       <PaperCard p={p} color={p.marigold} hardShadow style={{ padding: '22px 24px' }}>
@@ -394,6 +493,35 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
                   }}>{k}</button>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* ─── the crew: per-agent checklist, always visible once we have any input ─── */}
+        {hasInput && (
+          <AgentChecklistV3
+            p={p} agents={AGENTS_DATA[checklistKind] || AGENTS_DATA.person}
+            isSelected={isSelected} toggleAgent={toggleAgent} agentDisabled={agentDisabled} isLocked={isLocked}
+            haveEmail={haveEmail} autoEnabledNote={autoEnabledNote}
+          />
+        )}
+        {!hasInput && hasScreenshot && (
+          <div style={{
+            marginTop: 14, paddingTop: 14, borderTop: `1.5px dashed ${p.ink}24`,
+          }}>
+            <Eyebrow p={p} en="The crew" color={p.inkMute}/>
+            <div style={{
+              marginTop: 8, padding: '10px 12px',
+              border: `1.5px dashed ${p.ink}30`, background: p.paper,
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <span style={{
+                width: 7, height: 7, borderRadius: 999, background: p.stamp,
+                animation: 'pulseDot 1.1s ease-in-out infinite', flexShrink: 0,
+              }}/>
+              <span style={{
+                fontFamily: PAPER_FONTS.mono, fontSize: 12, color: p.inkSoft, lineHeight: 1.4,
+              }}>Crew picked once Jugaadu reads the image.</span>
             </div>
           </div>
         )}
@@ -668,42 +796,147 @@ function Shimmer({ p, width = 100, height = 12 }) {
   );
 }
 
+/* ─────────────────────── crew checklist (idle / pre-Go) ─────────────────────── */
+
+function AgentChecklistV3({ p, agents, isSelected, toggleAgent, agentDisabled, isLocked, haveEmail, autoEnabledNote }) {
+  return (
+    <div style={{
+      marginTop: 14, paddingTop: 14, borderTop: `1.5px dashed ${p.ink}24`,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+        <Eyebrow p={p} en="The crew" color={p.inkMute}/>
+        <span style={{
+          fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.08em',
+          color: p.inkMute, textTransform: 'uppercase',
+        }}>tap to toggle</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {agents.map((a) => {
+          const checked = isSelected(a.k);
+          const disabled = agentDisabled(a.k);
+          const locked = isLocked?.(a.k);
+          // Email row when haveEmail is true: render faded and unchecked with a
+          // dedicated hint ("you've provided it"). User can still tick it back on.
+          const emailProvidedHint = a.k === 'email' && haveEmail && !checked;
+          const needsKhojiHint = disabled;
+          const rowOpacity = disabled || emailProvidedHint ? 0.55 : 1;
+          const ac = colorOf(p, a.color);
+          return (
+            <button
+              key={a.k}
+              onClick={() => toggleAgent(a.k)}
+              aria-disabled={locked || undefined}
+              style={{
+                display: 'grid', gridTemplateColumns: '24px 28px 1fr', gap: 10, alignItems: 'center',
+                padding: '10px 12px', background: checked ? p.paper : 'transparent',
+                border: `1.5px solid ${checked ? p.ink + '40' : p.ink + '20'}`,
+                cursor: locked ? 'default' : 'pointer', textAlign: 'left', opacity: rowOpacity,
+                transition: 'opacity .15s, background .15s, border-color .15s',
+              }}
+            >
+              {/* checkbox (reuses the haveEmail pattern) */}
+              <span style={{
+                width: 20, height: 20, background: checked ? p.ink : 'transparent',
+                color: p.paper, border: `1.5px solid ${p.ink}`,
+                display: 'grid', placeItems: 'center', fontSize: 11, lineHeight: 1,
+                flexShrink: 0,
+              }}>{checked ? '✓' : ''}</span>
+              {/* glyph in the agent's color */}
+              <span style={{
+                width: 26, height: 26, border: `1.5px solid ${ac}`,
+                color: checked ? p.paper : ac, background: checked ? ac : 'transparent',
+                display: 'grid', placeItems: 'center',
+                fontFamily: PAPER_FONTS.display, fontSize: 15,
+              }}>{a.glyph}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontFamily: PAPER_FONTS.sans, fontSize: 14.5, color: p.ink }}>{a.nameEn}</span>
+                  <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.02em' }}>{a.nameHi}</span>
+                </div>
+                <div style={{
+                  fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute,
+                  letterSpacing: '.02em', marginTop: 2, lineHeight: 1.4,
+                }}>
+                  {a.desc}
+                  {locked && (
+                    <span style={{ color: p.inkMute, marginLeft: 8 }}>· always on</span>
+                  )}
+                  {needsKhojiHint && (
+                    <span style={{ color: p.stamp, marginLeft: 8 }}>· needs Person Khoji</span>
+                  )}
+                  {emailProvidedHint && (
+                    <span style={{ color: p.leaf, marginLeft: 8 }}>· provided already</span>
+                  )}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      {autoEnabledNote && (
+        <div style={{
+          marginTop: 8, fontFamily: PAPER_FONTS.mono, fontSize: 11,
+          color: p.leaf, letterSpacing: '.02em', transition: 'opacity .3s',
+        }}>→ {autoEnabledNote}</div>
+      )}
+    </div>
+  );
+}
+
 /* ─────────────────────── working agents row ─────────────────────── */
 
 const AGENTS_DATA = {
   person: [
-    { k: 'person',   nameEn: 'Person Khoji', nameHi: 'खोजी',     glyph: '◆', color: 'leaf',     tag: 'Agent 1',
+    { k: 'person',   nameEn: 'Person Khoji',   nameHi: 'खोजी',       glyph: '◆', color: 'leaf',     desc: 'finds the right human',
       steps: ['scraping their profile…', 'cross-checking LinkedIn…', 'ranking by signal…', 'locking in target…', 'identified ✓'] },
-    { k: 'email',    nameEn: 'Email Wallah', nameHi: 'ईमेल वाला', glyph: '✉', color: 'stamp',    tag: 'Agent 2',
+    { k: 'email',    nameEn: 'Email Wallah',   nameHi: 'ईमेल वाला',  glyph: '✉', color: 'stamp',    desc: 'verifies a working address',
       steps: ['querying Apollo…', 'checking Hunter…', 'verifying MX…', 'cross-validating…', '96% verified'] },
-    { k: 'outreach', nameEn: 'Outreach Bhai',nameHi: 'आउटरीच भाई',glyph: '↗', color: 'marigold', tag: 'Agent 3',
+    { k: 'outreach', nameEn: 'Outreach Bhai',  nameHi: 'आउटरीच भाई', glyph: '↗', color: 'marigold', desc: 'drafts email, LinkedIn & X DMs',
       steps: ['reading their threads…', 'finding a real hook…', 'matching your voice…', 'drafting 3 channels…', 'drafts ready'] },
   ],
   job: [
-    { k: 'resume',   nameEn: 'Resume',       nameHi: 'रेज़्यूमे',   glyph: '§', color: 'marigold', tag: 'Agent 1',
+    { k: 'resume',   nameEn: 'Resume Darzi',   nameHi: 'दर्जी',      glyph: '§', color: 'marigold', desc: 'tailors your CV to the JD',
       steps: ['pulling your CV…', 'matching to JD…', 'rewriting bullets…', 'checking ATS…', 'PDF + Word ready'] },
-    { k: 'person',   nameEn: 'Person Khoji', nameHi: 'खोजी',     glyph: '◆', color: 'leaf',     tag: 'Agent 2',
+    { k: 'person',   nameEn: 'Person Khoji',   nameHi: 'खोजी',       glyph: '◆', color: 'leaf',     desc: 'finds the hiring manager',
       steps: ['scraping the team…', 'ranking by fit…', 'cross-checking LinkedIn…', 'shortlisting…', 'hiring manager picked'] },
-    { k: 'email',    nameEn: 'Email Wallah', nameHi: 'ईमेल वाला', glyph: '✉', color: 'stamp',    tag: 'Agent 3',
+    { k: 'email',    nameEn: 'Email Wallah',   nameHi: 'ईमेल वाला',  glyph: '✉', color: 'stamp',    desc: 'verifies a working address',
       steps: ['querying Apollo…', 'checking Hunter…', 'verifying MX…', 'cross-validating…', '96% verified'] },
-    { k: 'outreach', nameEn: 'Outreach Bhai',nameHi: 'आउटरीच भाई',glyph: '↗', color: 'tea',      tag: 'Agent 4',
+    { k: 'outreach', nameEn: 'Outreach Bhai',  nameHi: 'आउटरीच भाई', glyph: '↗', color: 'tea',      desc: 'drafts the cold email + followup',
       steps: ['reading her threads…', 'finding a hook…', 'matching voice…', 'drafting + queueing followup…', 'cold email ready'] },
   ],
 };
+
+// Agents that need Person Khoji as a prerequisite. Khoji finds the human;
+// without it Email Wallah has nothing to look up and Outreach Bhai has nobody
+// to write to. Resume is independent.
+const PERSON_DEPENDENT = new Set(['email', 'outreach']);
+
+function defaultSelectionFor(kind, haveEmail) {
+  const all = (AGENTS_DATA[kind] || AGENTS_DATA.person).map((a) => a.k);
+  const set = new Set(all);
+  if (haveEmail) set.delete('email');
+  return set;
+}
 
 function colorOf(p, name) {
   return ({ marigold: p.marigold, stamp: p.stamp, leaf: p.leaf, tea: p.tea }[name]) || p.ink;
 }
 
-function AgentRowV3({ p, kind, stage, progress }) {
+function AgentRowV3({ p, kind, stage, progress, selectedAgents }) {
   const isMobile = useIsMobile();
-  const agents = AGENTS_DATA[kind] || AGENTS_DATA.person;
+  const all = AGENTS_DATA[kind] || AGENTS_DATA.person;
+  // Filter to the user's frozen selection. If the run pre-dates the selector or
+  // wasn't given one (e.g. a screenshot-only run), show all agents.
+  const agents = Array.isArray(selectedAgents) && selectedAgents.length > 0
+    ? all.filter((a) => selectedAgents.includes(a.k))
+    : all;
+  const mobileCols = Math.min(agents.length, 2) || 1;
   return (
     <div style={{
       marginTop: 14, display: 'grid',
-      gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : `repeat(${agents.length}, 1fr)`, gap: 12,
+      gridTemplateColumns: isMobile ? `repeat(${mobileCols}, 1fr)` : `repeat(${agents.length || 1}, 1fr)`, gap: 12,
     }}>
-      {agents.map(a => {
+      {agents.map((a, idx) => {
         const pct = progress[a.k] || (stage === 'done' ? 100 : 0);
         const working = stage === 'working' && pct < 100;
         const done = pct >= 100;
@@ -739,7 +972,7 @@ function AgentRowV3({ p, kind, stage, progress }) {
               <span style={{
                 fontFamily: PAPER_FONTS.mono, fontSize: 9.5, letterSpacing: '.16em',
                 color: done ? ac : p.inkMute, textTransform: 'uppercase',
-              }}>{a.tag}</span>
+              }}>Agent {idx + 1}</span>
             </div>
             <div>
               <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 19, lineHeight: 1.05, color: p.ink }}>{a.nameEn}</div>

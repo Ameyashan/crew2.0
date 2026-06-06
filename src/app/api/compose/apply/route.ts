@@ -7,6 +7,7 @@ import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
 import { supabaseAdmin } from "@/lib/supabase";
 import { resolveUserId } from "@/lib/auth";
 import { runWithUser } from "@/lib/user-context";
+import { agentEnabled, parseAgents } from "@/lib/agent-selection";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -24,6 +25,14 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const job_url = (body?.job_url ?? "").toString().trim();
   const intent = body?.intent ? body.intent.toString() : undefined;
+
+  // Crew selector (Phase 2). Undefined → run the whole four-agent pipeline.
+  // Resume Darzi is independent; the people pipeline (Person Khoji → Email
+  // Wallah → Outreach Bhai) is gated as a unit on 'person', with 'email' and
+  // 'outreach' gated individually inside the reach-out agent.
+  const agents = parseAgents(body?.agents);
+  const resumeEnabled = agentEnabled(agents, "resume");
+  const personEnabled = agentEnabled(agents, "person");
 
   // Re-pick: when the user clicks a different candidate in the UI, we re-run
   // only the email + draft for that person (no resume, no sourcing).
@@ -113,6 +122,7 @@ export async function POST(req: NextRequest) {
       const pipeReachOut = async (reachInput: Parameters<typeof runReachOutStream>[0]) => {
         for await (const evt of runReachOutStream({
           ...reachInput,
+          agents,
           compose_run_id: composeRunId ?? undefined,
         })) {
           if (evt.type === "step" && evt.id === "research") {
@@ -317,10 +327,20 @@ export async function POST(req: NextRequest) {
           }
         };
 
+        // Crew selector: only run the branches the user kept. Resume Darzi off
+        // → skip Branch A (and settle the meta promise now so Branch B's
+        // fallback await can't hang). Person Khoji off → skip Branch B entirely
+        // (its dependents, Email & Outreach, can't run without a target).
+        if (!resumeEnabled) settleResumeMeta(null);
+        const resumePromise: Promise<TailoredResume | null> =
+          resumeEnabled ? resumeTask() : Promise.resolve(null);
+        const peoplePromise: Promise<void> =
+          personEnabled ? peopleTask() : Promise.resolve();
+
         // Wait for BOTH branches before recording/closing. allSettled (not all)
         // so a thrown error in one branch can't leave the other enqueuing onto a
         // closed stream — each branch already surfaces its own errors via send().
-        const [resumeSettled] = await Promise.allSettled([resumeTask(), peopleTask()]);
+        const [resumeSettled] = await Promise.allSettled([resumePromise, peoplePromise]);
         const tailored: TailoredResume | null =
           resumeSettled.status === "fulfilled" ? resumeSettled.value : null;
         collectedTailored = tailored;

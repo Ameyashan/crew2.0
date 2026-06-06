@@ -47,6 +47,10 @@ export type Run = {
   // The compose_runs row id reported back by the server once the stream starts.
   // Used by the history page to dedupe and to hydrate the right run.
   composeRunId?: string | null;
+  // The agents the user opted into for this run (e.g. ['person', 'email', 'outreach']).
+  // Frozen at startRun() time; the progress row filters to these. Phase 1 is
+  // display-only — the backend still runs every agent.
+  selectedAgents?: string[];
 };
 
 /* ─────────────────────── module store ─────────────────────── */
@@ -90,7 +94,7 @@ export function useRuns(): Run[] {
 
 export function startRun(
   input: string,
-  opts?: { intent?: string; providedEmail?: boolean; kind?: "person" | "job" },
+  opts?: { intent?: string; providedEmail?: boolean; kind?: "person" | "job"; selectedAgents?: string[] },
 ): string | null {
   const text = (input || "").trim();
   if (!text) return null;
@@ -115,6 +119,7 @@ export function startRun(
     candidates: null,
     error: null,
     createdAt: Date.now(),
+    selectedAgents: Array.isArray(opts?.selectedAgents) ? [...opts.selectedAgents] : undefined,
   };
 
   // newest on top
@@ -145,7 +150,7 @@ export function startRun(
 // runs the person flow with the screenshot forwarded as research context.
 export function startImageRun(
   file: File,
-  opts?: { text?: string; intent?: string; providedEmail?: boolean },
+  opts?: { text?: string; intent?: string; providedEmail?: boolean; selectedAgents?: string[] },
 ): string | null {
   if (!file) return null;
 
@@ -172,6 +177,7 @@ export function startImageRun(
     createdAt: Date.now(),
     imageFile: file,
     screenshot: { name: file.name || "screenshot", size: `${Math.round(file.size / 1024)} KB` },
+    selectedAgents: Array.isArray(opts?.selectedAgents) ? [...opts.selectedAgents] : undefined,
   };
 
   runs = [run, ...runs];
@@ -364,6 +370,7 @@ export async function pickCandidate(
         job_url: jobUrl,
         picked,
         intent: run.intent || undefined,
+        agents: run.selectedAgents || undefined,
         // Keep the cold email anchored on the job, not the picked person's own
         // company, when we re-draft for a different candidate.
         job_context: { role: run.parsed?.role ?? null, company: run.parsed?.company ?? null },
@@ -655,7 +662,11 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
       const res = await fetch("/api/compose/apply", {
         method: "POST",
         headers: { "content-type": "application/json", accept: "text/event-stream" },
-        body: JSON.stringify({ job_url: jobUrl, intent: run.intent || undefined }),
+        body: JSON.stringify({
+          job_url: jobUrl,
+          intent: run.intent || undefined,
+          agents: run.selectedAgents || undefined,
+        }),
         signal,
       });
       if (!res.ok || !res.body) throw new Error(`apply failed: ${res.status}`);
@@ -748,6 +759,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
       if (run.intent) form.append("intent", run.intent);
       if (picked) form.append("picked", JSON.stringify(picked));
       if (run.screenshotId) form.append("screenshot_id", run.screenshotId);
+      if (run.selectedAgents) form.append("agents", JSON.stringify(run.selectedAgents));
       form.append("intent_image", run.imageFile);
       res = await fetch("/api/compose", {
         method: "POST",
@@ -764,6 +776,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           intent: run.intent || undefined,
           picked: picked || undefined,
           screenshot_id: run.screenshotId || undefined,
+          agents: run.selectedAgents || undefined,
         }),
         signal,
       });
