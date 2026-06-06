@@ -773,32 +773,19 @@ function AgentRowV3({ p, kind, stage, progress }) {
 /* ─────────────────────── package (done) ─────────────────────── */
 
 // The email draft surfaced in the package. Shared so the header CTA and the
-// per-card "Open in Gmail" button open the exact same message.
-function buildEmailDraft({ kind, parsed, drafts, enrichment }) {
+// per-card "Open in Gmail" button open the exact same message. Real outreach
+// draft + best-available address; prefer a verified email, fall back to the top
+// format-guess so "To" is never empty. Honest blanks when nothing was found —
+// never fabricated sample copy. Works the same for job and person runs.
+function buildEmailDraft({ drafts, enrichment }) {
   const emailDraft = Array.isArray(drafts) ? drafts.find((d) => d.channel === 'email') : null;
-
-  if (kind === 'job') {
-    // Real outreach draft + email. Prefer a verified address; fall back to the
-    // top format-guess so "To" is never empty and Gmail can open. Honest blanks
-    // only when nothing at all was found — never fabricated sample copy.
-    const guess = Array.isArray(enrichment?.guesses) && enrichment.guesses.length
-      ? enrichment.guesses[0].email : '';
-    return {
-      to: enrichment?.email || guess || '',
-      subject: emailDraft?.subject || '',
-      body: emailDraft?.body || '',
-    };
-  }
-
-  const chosen = parsed.chosen;
-  const verifiedEmail = enrichment?.email || `${chosen.firstName.toLowerCase()}@${chosen.companySlug}.com`;
-  return emailDraft
-    ? { to: verifiedEmail, subject: emailDraft.subject || '', body: emailDraft.body }
-    : {
-        to: verifiedEmail,
-        subject: `the bit about ${chosen.angle} — a 3 min thought`,
-        body: `${chosen.firstName} — caught your ${chosen.recent} and the way you handled the ${chosen.detail} is the cleanest take I've seen on it. I ran into a similar tension at Razorpay last year. Sketched two ways out (3-min watch).\n\nI'd love your take. Either way — hope this finds you well between sprints.\n\n— Sam`,
-      };
+  const guess = Array.isArray(enrichment?.guesses) && enrichment.guesses.length
+    ? enrichment.guesses[0].email : '';
+  return {
+    to: enrichment?.email || guess || '',
+    subject: emailDraft?.subject || '',
+    body: emailDraft?.body || '',
+  };
 }
 
 // "Another angle" presets. Each is a one-line directive the redraft endpoint
@@ -868,7 +855,7 @@ function AnotherAngle({ p, runId, channel, subject, body, recipientName, style }
 }
 
 function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, run, onReset, go }) {
-  const headerEmail = buildEmailDraft({ kind, parsed, drafts, enrichment });
+  const headerEmail = buildEmailDraft({ drafts, enrichment });
   return (
     <div style={{ marginTop: 18 }}>
       <PaperCard p={p} hardShadow color={p.stamp} style={{ padding: '20px 24px' }}>
@@ -910,28 +897,49 @@ function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, run, o
 function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
   const [channel, setChannel] = useState('email'); // email | linkedin | x
   const isMobile = useIsMobile();
-  const chosen = parsed.chosen;
 
-  // Real drafts from /api/compose override the prototype's mocked messages.
+  // The real researched person streamed back from /api/compose (research step).
+  // Fall back to the lightweight paste-preview only for the headline fields, so
+  // the card never goes blank — but everything shown is the actual human, not
+  // fabricated sample copy.
+  const research = run?.person || null;
+  const stub = parsed?.chosen || {};
+  const personName = research?.name || stub.name || null;
+  const personRole = research?.role || stub.role || null;
+  const personCompany = research?.company || stub.company || null;
+  const personLinks = research?.links || {};
+  const personFacts = (research?.context_lines || []).filter(Boolean);
+  const initials = personName
+    ? personName.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
+    : (stub.initials || '?');
+  const matchLabel = research?.match_confidence ? `${research.match_confidence} match` : null;
+
+  // Real drafts from the Outreach agent. The pipeline speaks 'x_dm'; the UI tabs
+  // say 'x' — normalize so the X tab shows its real draft (and a redraft, which
+  // upserts under 'x', lands in the same slot).
   const draftByChannel = {};
-  if (Array.isArray(drafts)) for (const d of drafts) draftByChannel[d.channel] = d;
+  if (Array.isArray(drafts)) for (const d of drafts) {
+    draftByChannel[d.channel === 'x_dm' ? 'x' : d.channel] = d;
+  }
+
+  // Ranked real addresses (verified → plausible → guess) for the email channel.
+  const emailMsg = buildEmailDraft({ drafts, enrichment });
+  const emailCandidates = buildEmailCandidates(enrichment);
+  const emailPrimary = emailCandidates[0] || null;
+  const emailOthers = emailCandidates.slice(1);
 
   const messages = {
-    email: buildEmailDraft({ kind: 'person', parsed, drafts, enrichment }),
-    linkedin: draftByChannel.linkedin
-      ? { to: `linkedin.com/in/${chosen.companySlug}-${chosen.firstName.toLowerCase()}`, subject: null, body: draftByChannel.linkedin.body }
-      : {
-          to: `linkedin.com/in/${chosen.companySlug}-${chosen.firstName.toLowerCase()}`,
-          subject: null,
-          body: `${chosen.firstName} — your recent post on ${chosen.recent} resonated. Worked on a similar problem at Razorpay; would love to compare notes. Quick coffee, your time?`,
-        },
-    x: draftByChannel.x
-      ? { to: `@${chosen.firstName.toLowerCase()}_${chosen.companySlug.slice(0,4)}`, subject: null, body: draftByChannel.x.body }
-      : {
-          to: `@${chosen.firstName.toLowerCase()}_${chosen.companySlug.slice(0,4)}`,
-          subject: null,
-          body: `loved the thread on ${chosen.angle} — esp. the bit about ${chosen.detail}. ran into the same wall a year ago, ended up shipping it backwards. happy to share what didn't work if useful 🙏`,
-        },
+    email: emailMsg,
+    linkedin: {
+      to: personLinks.linkedin ? personLinks.linkedin.replace(/^https?:\/\//, '') : (personName || ''),
+      subject: null,
+      body: draftByChannel.linkedin?.body || '',
+    },
+    x: {
+      to: personLinks.x ? personLinks.x.replace(/^https?:\/\//, '') : (personName || ''),
+      subject: null,
+      body: draftByChannel.x?.body || '',
+    },
   };
   const m = messages[channel];
 
@@ -971,72 +979,105 @@ function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
           padding: '14px 16px', fontFamily: PAPER_FONTS.sans, fontSize: 14, lineHeight: 1.55,
         }}>
           <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute, marginBottom: 6 }}>
-            <span style={{ color: p.inkMute }}>To &nbsp;</span><span style={{ color: p.ink }}>{m.to}</span>
-            <span style={{ color: p.leaf, marginLeft: 8 }}>· verified</span>
+            <span style={{ color: p.inkMute }}>To &nbsp;</span>
+            <span style={{ color: m.to ? p.ink : p.inkMute }}>
+              {m.to || (channel === 'email' ? '(no public email found — add it in Gmail)' : '(profile link not found)')}
+            </span>
+            {channel === 'email' && emailPrimary && <TierBadge p={p} tier={emailPrimary.tier}/>}
           </div>
+          {channel === 'email' && emailOthers.length > 0 && (
+            <EmailOptions p={p} candidates={emailOthers} subject={m.subject} body={m.body}
+              header="other addresses · click to use"/>
+          )}
           {m.subject && (
-            <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute, marginBottom: 8 }}>
+            <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute, marginTop: 6, marginBottom: 8 }}>
               <span style={{ color: p.inkMute }}>Subject &nbsp;</span><span style={{ color: p.ink }}>{m.subject}</span>
             </div>
           )}
-          <div style={{ height: 1, background: p.ink + '14', margin: '4px 0 10px' }}/>
-          <p style={{ margin: 0, whiteSpace: 'pre-wrap', color: p.ink }}>{m.body}</p>
-        </div>
-        <div style={{
-          marginTop: 10, display: 'flex', gap: 14, fontFamily: PAPER_FONTS.mono, fontSize: 11,
-          color: p.inkSoft, letterSpacing: '.04em',
-        }}>
-          <span>● spam score 0.04</span>
-          <span style={{ color: p.inkMute }}>· best send Tue 10:42am</span>
-          <span style={{ color: p.inkMute }}>· followup in 3d</span>
+          <div style={{ height: 1, background: p.ink + '14', margin: '8px 0 10px' }}/>
+          <p style={{ margin: 0, whiteSpace: 'pre-wrap', color: p.ink }}>
+            {m.body || 'The draft for this channel will appear here once the Outreach agent finishes.'}
+          </p>
         </div>
         <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {channel === 'email' && (
-            <InkButton p={p} color={p.stamp} size="sm" onClick={() => {
+            <InkButton p={p} color={p.stamp} size="sm" disabled={!m.body} onClick={() => {
               openGmailCompose({ to: m.to, subject: m.subject, body: m.body });
             }}>Open in Gmail →</InkButton>
           )}
           <AnotherAngle p={p} runId={run?.id} channel={channel} style={{ flex: 1 }}
-            subject={m.subject} body={m.body} recipientName={chosen.name}/>
-          <InkButton p={p} kind="outline" size="sm">✎ Edit</InkButton>
+            subject={m.subject} body={m.body} recipientName={personName}/>
         </div>
       </PaperCard>
 
       {/* person */}
       <PaperCard p={p} style={{ padding: '20px 22px' }}>
-        <Eyebrow p={p} hindi="वो" en="The person · matched 92%" color={p.leaf}/>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
-          <div style={{
-            width: 52, height: 52, background: p.marigold, color: p.paper,
-            display: 'grid', placeItems: 'center', fontFamily: PAPER_FONTS.display, fontSize: 20,
-            border: `1.5px solid ${p.ink}`,
-          }}>{chosen.initials}</div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 19, color: p.ink }}>{chosen.name}</div>
-            <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 13.5, color: p.inkSoft }}>
-              {chosen.role} · {chosen.company}
+        <Eyebrow p={p} hindi="वो" en={matchLabel ? `The person · ${matchLabel}` : 'The person'} color={p.leaf}/>
+        {personName ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
+              <div style={{
+                width: 52, height: 52, background: p.marigold, color: p.paper,
+                display: 'grid', placeItems: 'center', fontFamily: PAPER_FONTS.display, fontSize: 20,
+                border: `1.5px solid ${p.ink}`,
+              }}>{initials}</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 19, color: p.ink }}>{personName}</div>
+                {(personRole || personCompany) && (
+                  <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 13.5, color: p.inkSoft }}>
+                    {[personRole, personCompany].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+                {personLinks.linkedin && (
+                  <a
+                    href={personLinks.linkedin.match(/^https?:\/\//) ? personLinks.linkedin : `https://${personLinks.linkedin}`}
+                    target="_blank" rel="noopener noreferrer"
+                    title="Open LinkedIn profile in a new tab"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 5,
+                      fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.stamp,
+                      textDecoration: 'none', letterSpacing: '.04em',
+                    }}>in · View LinkedIn ↗</a>
+                )}
+              </div>
             </div>
+            {personFacts.length > 0 && (
+              <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {personFacts.map(f => (
+                  <span key={f} style={{
+                    padding: '4px 10px', background: p.paper, border: `1px solid ${p.ink}30`,
+                    fontFamily: PAPER_FONTS.sans, fontSize: 11.5, color: p.ink,
+                  }}>{f}</span>
+                ))}
+              </div>
+            )}
+            <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
+              {emailPrimary && (
+                <KV p={p} k="email" v={emailPrimary.email}
+                  chip={tierMeta(p, emailPrimary.tier).label}
+                  chipColor={tierMeta(p, emailPrimary.tier).color}/>
+              )}
+              {personLinks.linkedin && <KV p={p} k="linkedin" v={personLinks.linkedin.replace(/^https?:\/\//, '')}/>}
+              {personLinks.x && <KV p={p} k="x" v={personLinks.x.replace(/^https?:\/\//, '')}/>}
+              {personLinks.website && <KV p={p} k="website" v={personLinks.website.replace(/^https?:\/\//, '')}/>}
+              {personLinks.github && <KV p={p} k="github" v={personLinks.github.replace(/^https?:\/\//, '')}/>}
+            </div>
+            <button onClick={() => go('people')} style={{
+              marginTop: 12, width: '100%', padding: '10px 12px', background: 'transparent',
+              border: `1.5px dashed ${p.ink}40`, color: p.ink,
+              fontFamily: PAPER_FONTS.mono, fontSize: 11.5, letterSpacing: '.08em',
+              textTransform: 'uppercase', cursor: 'pointer',
+            }}>Save to People ↗</button>
+          </>
+        ) : (
+          <div style={{
+            marginTop: 12, fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
+            fontSize: 13, color: p.inkMute,
+          }}>
+            The crew couldn&apos;t pin down a specific person. Try a LinkedIn or X
+            link, or add a company in the intent box.
           </div>
-        </div>
-        <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {chosen.facts.map(f => (
-            <span key={f} style={{
-              padding: '4px 10px', background: p.paper, border: `1px solid ${p.ink}30`,
-              fontFamily: PAPER_FONTS.sans, fontSize: 11.5, color: p.ink,
-            }}>{f}</span>
-          ))}
-        </div>
-        <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
-          <KV p={p} k="email"    v={`${chosen.firstName.toLowerCase()}@${chosen.companySlug}.com`} chip="96%"/>
-          <KV p={p} k="linkedin" v={`linkedin.com/in/${chosen.companySlug}-${chosen.firstName.toLowerCase()}`} chip="active"/>
-          <KV p={p} k="x"        v={`@${chosen.firstName.toLowerCase()}_designs`} chip="4h ago"/>
-        </div>
-        <button onClick={() => go('people')} style={{
-          marginTop: 12, width: '100%', padding: '10px 12px', background: 'transparent',
-          border: `1.5px dashed ${p.ink}40`, color: p.ink,
-          fontFamily: PAPER_FONTS.mono, fontSize: 11.5, letterSpacing: '.08em',
-          textTransform: 'uppercase', cursor: 'pointer',
-        }}>Save to People ↗</button>
+        )}
       </PaperCard>
     </div>
   );
@@ -1077,7 +1118,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
 
   // Real outreach draft + best-available email via the shared builder.
   const { to: emailTo, subject: emailSubject, body: emailBody } =
-    buildEmailDraft({ kind: 'job', parsed, drafts, enrichment });
+    buildEmailDraft({ drafts, enrichment });
   // Discovered/guessed addresses ranked into confidence tiers (high=verified,
   // medium=plausible, low=pure guess). The first is the primary recipient.
   const emailCandidates = buildEmailCandidates(enrichment);
