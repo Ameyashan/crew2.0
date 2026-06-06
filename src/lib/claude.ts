@@ -281,6 +281,160 @@ export async function identify(input: IdentifyInput): Promise<IdentifyResult> {
   };
 }
 
+// ---------- IDENTIFY FROM IMAGE ----------
+// Vision pass for a screenshot the user dropped into Compose with little or no
+// text. Decides whether the image is a JOB POSTING or a SPECIFIC PERSON, pulls
+// out whatever the picture shows (a visible job URL, company, role, a name or
+// @handle), and hands back a single `query` string the existing text pipeline
+// can run with. No web search here — this only reads the pixels; the downstream
+// job/person agents do the actual searching.
+
+export type ImageMime = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+
+export interface IdentifyImageInput {
+  image: { data: string; media_type: string };
+  text?: string;          // anything the user also typed (a hint, not required)
+  intent?: string;        // optional "what do you want to convey"
+}
+
+export interface IdentifyImageResult {
+  kind: "job" | "person";
+  query: string;          // what to feed the text pipeline (a name, handle, or "role at company")
+  job_url: string | null; // a public posting URL if one is legible in the image
+  company: string | null;
+  role: string | null;
+  person_name: string | null;
+  intent: string | null;  // a disambiguation/intent line synthesized from the image
+  summary: string;        // one short human line: what we saw
+  raw: string;
+}
+
+const IDENTIFY_IMAGE_SYSTEM = `You are triaging a screenshot a user dropped into a cold-outreach tool. They may have typed nothing — the image is the input. Read ONLY what is visible in the image (do not invent or search).
+
+Decide the primary subject:
+- "job"   — the image is a job posting, a "we're hiring" announcement, a careers page, or a job board listing.
+- "person" — the image is about ONE specific human: a LinkedIn/X profile, a tweet, an email signature, a headshot with a name, a team/about page highlighting someone.
+
+Then extract whatever is legibly present:
+- job_url: a public posting URL if one is fully visible and readable (greenhouse/lever/ashby/workday/company careers). null if not clearly legible or it's a login-walled board (LinkedIn/Indeed app views).
+- company: the hiring company (job) or the person's company.
+- role: the job title (job) or the person's title.
+- person_name: a specific person's name if one is shown (the poster/recruiter on a job, or the profile subject). null if no individual is named.
+
+Build "query" — the single best string to search next:
+- person: the person's name (add company if shown, e.g. "Maya Rao Ramp"), or their @handle.
+- job with a named poster/recruiter: that person's name plus company.
+- job with no named person: "<role> at <company>" (e.g. "Staff Backend Engineer at Ramp").
+- Never leave query empty; fall back to the most specific text you can read.
+
+Build "intent": one short line capturing why they'd reach out, e.g. "Applying for the Staff Backend Engineer role at Ramp" or "Reaching out to Maya Rao, Head of Ops at Ramp". null if you truly can't tell.
+
+"summary": one plain sentence describing what the screenshot shows.
+
+Output strict JSON only, no prose, no markdown fences:
+{ "kind": "job" | "person", "query": string, "job_url": string|null, "company": string|null, "role": string|null, "person_name": string|null, "intent": string|null, "summary": string }`;
+
+export async function identifyFromImage(
+  input: IdentifyImageInput
+): Promise<IdentifyImageResult> {
+  const started = Date.now();
+
+  const hint = [
+    input.text?.trim() && `The user also typed: ${input.text.trim()}`,
+    input.intent?.trim() && `Stated intent: ${input.intent.trim()}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const userContent: Anthropic.Messages.ContentBlockParam[] = [
+    {
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: input.image.media_type as ImageMime,
+        data: input.image.data,
+      },
+    },
+    {
+      type: "text",
+      text:
+        (hint ? `${hint}\n\n` : "") +
+        "Classify this screenshot and extract the fields as specified.",
+    },
+  ];
+
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 600,
+      system: IDENTIFY_IMAGE_SYSTEM,
+      messages: [{ role: "user", content: userContent }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") text += block.text;
+    }
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: "compose:identify_image",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+    });
+  }
+
+  let parsed: Partial<IdentifyImageResult> = {};
+  try {
+    parsed = JSON.parse(extractJson(text)) as Partial<IdentifyImageResult>;
+  } catch {
+    parsed = {};
+  }
+
+  const kind: "job" | "person" = parsed.kind === "job" ? "job" : "person";
+  const trimOrNull = (v: unknown) =>
+    typeof v === "string" && v.trim() ? v.trim() : null;
+  const job_url = trimOrNull(parsed.job_url);
+  const company = trimOrNull(parsed.company);
+  const role = trimOrNull(parsed.role);
+  const person_name = trimOrNull(parsed.person_name);
+
+  // Never hand back an empty query — synthesize a sensible fallback so the
+  // downstream pipeline always has something to run.
+  const query =
+    trimOrNull(parsed.query) ||
+    person_name ||
+    [role, company].filter(Boolean).join(" at ") ||
+    input.text?.trim() ||
+    company ||
+    "the subject of this screenshot";
+
+  return {
+    kind,
+    query,
+    job_url,
+    company,
+    role,
+    person_name,
+    intent: trimOrNull(parsed.intent) || input.intent?.trim() || null,
+    summary: trimOrNull(parsed.summary) || "A screenshot you attached.",
+    raw: text,
+  };
+}
+
 // ---------- PUBLIC-WEB EMAIL ----------
 // Find an email the person has PUBLISHED themselves on the open web — their own
 // GitHub profile, personal site, blog "contact/about", paper author line, or a
