@@ -22,6 +22,7 @@ function TodayV3({ p, go }) {
   const [followups, setFollowups] = useState([]);
   const [replies, setReplies] = useState([]);
   const [lastDigest, setLastDigest] = useState(null);
+  const [tomorrow, setTomorrow] = useState({ armed: [], replyExpected: [] });
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -29,6 +30,10 @@ function TodayV3({ p, go }) {
       setFollowups(adaptFollowups(j?.due || []));
       setReplies(adaptReplies(j?.replies || []));
       setLastDigest(j?.last_digest || null);
+      setTomorrow({
+        armed: j?.tomorrow?.armed || [],
+        replyExpected: j?.tomorrow?.reply_expected || [],
+      });
       setLoaded(true);
     }).catch(() => setLoaded(true));
   }, []);
@@ -164,18 +169,25 @@ function TodayV3({ p, go }) {
       <Eyebrow p={p} hindi="कल" en="Coming tomorrow · digest at 8am" color={p.tea}/>
       <div style={{
         marginTop: 12, padding: '16px 20px', background: p.card, border: `1.5px solid ${p.ink}30`,
-        display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: 18,
+        display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: 18,
       }}>
-        {[
-          { hindi: 'दूसरी', label: '3 followups armed',  sub: 'EC, JG, PI · normal cadence' },
-          { hindi: 'खबर',   label: '1 reply expected',   sub: 'Vishnu intro · ETA this week' },
-          { hindi: 'मौके',  label: '2 fresh signals',    sub: 'X · Devon Park, Sophia Singh' },
-        ].map((t, i) => (
-          <div key={i}>
-            <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 19, marginTop: 2 }}>{t.label}</div>
-            <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute, marginTop: 4, letterSpacing: '.04em' }}>{t.sub}</div>
-          </div>
-        ))}
+        {(() => {
+          const tiles = buildTomorrowTiles(tomorrow);
+          if (tiles.length === 0) {
+            return (
+              <div style={{
+                gridColumn: '1 / -1',
+                fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 15, color: p.inkSoft,
+              }}>Nothing queued for tomorrow yet.</div>
+            );
+          }
+          return tiles.map((t, i) => (
+            <div key={i}>
+              <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 19, marginTop: 2 }}>{t.label}</div>
+              <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute, marginTop: 4, letterSpacing: '.04em' }}>{t.sub}</div>
+            </div>
+          ));
+        })()}
       </div>
     </div>
   );
@@ -397,6 +409,32 @@ function adaptReplies(rows) {
       suggested: r.suggested_reply || 'Jugaadu will summarise this shortly. In the meantime, open Compose to draft a reply manually.',
     };
   });
+}
+
+function initialsOf(name) {
+  return (name || '').split(/[\s.@_-]+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '·';
+}
+
+function buildTomorrowTiles({ armed, replyExpected }) {
+  const tiles = [];
+  if (armed?.length) {
+    const initials = armed.slice(0, 3).map((a) => initialsOf(a.person?.name)).join(', ');
+    const more = armed.length > 3 ? ` +${armed.length - 3}` : '';
+    tiles.push({
+      label: `${armed.length} followup${armed.length === 1 ? '' : 's'} armed`,
+      sub: `${initials}${more} · fires before 8am`,
+    });
+  }
+  if (replyExpected?.length) {
+    const oldest = replyExpected.reduce((a, b) => (a.sent_at < b.sent_at ? a : b));
+    const days = Math.max(1, Math.round((Date.now() - new Date(oldest.sent_at).getTime()) / 86400000));
+    const headline = oldest.person?.name || oldest.subject || 'open thread';
+    tiles.push({
+      label: `${replyExpected.length} repl${replyExpected.length === 1 ? 'y' : 'ies'} expected`,
+      sub: `${headline} · waiting ${days}d`,
+    });
+  }
+  return tiles;
 }
 
 function formatShortDate(iso) {

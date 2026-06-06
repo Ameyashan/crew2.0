@@ -143,7 +143,41 @@ export async function loadTodayData() {
     created_at: r.created_at as string,
   }));
 
-  return { due, reviews, replies };
+  // Things that will land in tomorrow's 8am digest:
+  //   armed = pending followups not yet due now, but due before tomorrow's digest fires.
+  const nextDigest = new Date();
+  nextDigest.setDate(nextDigest.getDate() + 1);
+  nextDigest.setHours(8, 0, 0, 0);
+  const { data: armedRaw } = await sb
+    .from("followups")
+    .select("id, due_at, person:people(id,name,email)")
+    .eq("user_id", userId)
+    .eq("status", "pending")
+    .gt("due_at", new Date().toISOString())
+    .lte("due_at", nextDigest.toISOString())
+    .order("due_at", { ascending: true });
+
+  const armed = ((armedRaw ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    id: r.id as string,
+    due_at: r.due_at as string,
+    person: pickPerson(r.person),
+  }));
+
+  // reply_expected = open sent threads still awaiting a reply (same set as `reviews`, presented as a
+  // forward-looking expectation for the next digest).
+  const replyExpected = reviews.map((r) => ({
+    interaction_id: r.interaction_id,
+    sent_at: r.sent_at,
+    person: r.person,
+    subject: r.draft?.subject ?? null,
+  }));
+
+  return {
+    due,
+    reviews,
+    replies,
+    tomorrow: { armed, reply_expected: replyExpected },
+  };
 }
 
 function pickPerson(p: unknown): { id: string; name: string; email: string | null } {
