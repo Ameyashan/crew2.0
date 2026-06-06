@@ -108,7 +108,7 @@ function ComposeV3({ p, go }) {
 
   return (
     <div className="scroll" style={{
-      flex: 1, overflow: 'auto', padding: isMobile ? '24px 16px 64px' : '40px 56px 80px', background: p.paper, color: p.ink,
+      flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? '24px 16px 64px' : '40px 56px 80px', background: p.paper, color: p.ink,
     }}>
       <PageHead p={p}
         eyebrow="Compose · the crew is ready"
@@ -701,11 +701,12 @@ function colorOf(p, name) {
 }
 
 function AgentRowV3({ p, kind, stage, progress }) {
+  const isMobile = useIsMobile();
   const agents = AGENTS_DATA[kind] || AGENTS_DATA.person;
   return (
     <div style={{
       marginTop: 14, display: 'grid',
-      gridTemplateColumns: `repeat(${agents.length}, 1fr)`, gap: 12,
+      gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : `repeat(${agents.length}, 1fr)`, gap: 12,
     }}>
       {agents.map(a => {
         const pct = progress[a.k] || (stage === 'done' ? 100 : 0);
@@ -718,7 +719,7 @@ function AgentRowV3({ p, kind, stage, progress }) {
             background: p.card, color: p.ink,
             border: `1.5px solid ${done ? p.ink : p.ink + '40'}`,
             boxShadow: done ? `4px 4px 0 ${ac}` : 'none',
-            padding: '16px 16px 14px', position: 'relative',
+            padding: '16px 16px 14px', position: 'relative', minWidth: 0,
             minHeight: 168, display: 'flex', flexDirection: 'column', gap: 8,
             transition: 'box-shadow .25s, border-color .25s',
           }}>
