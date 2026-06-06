@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import {
   Bricolage_Grotesque,
   Caveat,
@@ -88,6 +89,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className={`${fontVars} h-full antialiased`}>
       <body>{children}</body>
+      <GoogleAnalytics gaId="G-0DYRW30JVJ" />
     </html>
   );
 }
