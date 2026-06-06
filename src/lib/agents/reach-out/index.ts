@@ -30,6 +30,9 @@ export interface RunReachOutInput {
   // Job-application flow: the role/company this outreach is for. Anchors the
   // draft so a stray intent can't point the email at the wrong company.
   job_context?: { role?: string | null; company?: string | null };
+  // History feature: when set, drafts are tagged with this compose_run_id so
+  // the /app/history detail view can fetch a run's drafts directly.
+  compose_run_id?: string;
 }
 
 export type StepEvent =
@@ -247,6 +250,7 @@ export async function* runReachOutStream(
       intent: input.intent ?? null,
       status: "generated" as const,
       model: result.model,
+      compose_run_id: input.compose_run_id ?? null,
     }));
     const { data: drafts, error: dErr } = await sb
       .from("drafts")

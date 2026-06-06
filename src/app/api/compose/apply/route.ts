@@ -53,6 +53,29 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "job_url must be http(s)" }, { status: 400 });
   }
 
+  // Insert the compose_runs row up front so a job run kicked off on mobile shows
+  // up on desktop. Re-picks are amendments to the original run rather than a new
+  // session, but for simplicity we still record them — the client can dedupe.
+  let composeRunId: string | null = null;
+  try {
+    const { data, error } = await supabaseAdmin()
+      .from("compose_runs")
+      .insert({
+        user_id: userId,
+        kind: "job",
+        input: job_url,
+        intent: intent ?? null,
+        picked: picked ?? null,
+        outcome: "in_flight",
+      })
+      .select("id")
+      .single();
+    if (error) throw error;
+    composeRunId = data?.id ?? null;
+  } catch (e) {
+    console.error("[compose_runs] insert failed", e);
+  }
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -71,22 +94,45 @@ export async function POST(req: NextRequest) {
       let personId: string | null = null;
       let draftId: string | null = null;
 
+      // Collected for compose_runs.output so the history page can reconstruct
+      // the package card (parsed bundle, person research, email enrichment).
+      const collectedDrafts: unknown[] = [];
+      let collectedPerson: unknown = null;
+      let collectedEnrichment: unknown = null;
+      let collectedCandidates: unknown[] | null = null;
+      let collectedTailored: TailoredResume | null = null;
+      let runOutcome: "complete" | "error" | "needs_disambiguation" = "error";
+      let runError: string | null = null;
+
+      if (composeRunId) {
+        send({ type: "compose_run", id: composeRunId });
+      }
+
       // Consume the reach-out agent (research → email → save → draft) for a
       // single person and remap its step ids onto the four-bar job UI.
       const pipeReachOut = async (reachInput: Parameters<typeof runReachOutStream>[0]) => {
-        for await (const evt of runReachOutStream(reachInput)) {
+        for await (const evt of runReachOutStream({
+          ...reachInput,
+          compose_run_id: composeRunId ?? undefined,
+        })) {
           if (evt.type === "step" && evt.id === "research") {
             send({ type: "step", id: "person", status: evt.status, data: (evt as { data?: unknown }).data });
+            if (evt.status === "done") collectedPerson = (evt as { data?: unknown }).data;
           } else if (evt.type === "step" && evt.id === "email_lookup") {
             send({ type: "step", id: "email", status: evt.status, data: (evt as { data?: unknown }).data });
+            if ((evt as { data?: unknown }).data) collectedEnrichment = (evt as { data?: unknown }).data;
           } else if (evt.type === "step" && evt.id === "person_saved") {
             personId = evt.data.id;
             send({ type: "person_saved", data: evt.data });
           } else if (evt.type === "step" && evt.id === "draft") {
             send({ type: "step", id: "outreach", status: evt.status, channel: evt.channel, data: (evt as { data?: unknown }).data });
-            if (evt.status === "done" && evt.data && !draftId) draftId = evt.data.id;
+            if (evt.status === "done" && evt.data) {
+              if (!draftId) draftId = evt.data.id;
+              collectedDrafts.push(evt.data);
+            }
           } else if (evt.type === "error") {
             send({ type: "error", message: evt.message });
+            runError = evt.message;
           }
           // needs_disambiguation is intentionally ignored: in the job flow the
           // person is already chosen from the sourced shortlist (or re-picked),
@@ -105,6 +151,7 @@ export async function POST(req: NextRequest) {
             picked,
             job_context: job_context ?? { role: picked.role, company: picked.company },
           });
+          runOutcome = "complete";
           send({ type: "complete" });
           return;
         }
@@ -120,10 +167,9 @@ export async function POST(req: NextRequest) {
             status: "error",
             message: `${walled} job links are behind a login wall, so Jugaadu can't read them.`,
           });
-          send({
-            type: "error",
-            message: `${walled} job links are behind a login wall, so Jugaadu can't read them. Paste a public posting URL instead — the company's careers page, or a Greenhouse / Lever / Ashby link.`,
-          });
+          runError = `${walled} job links are behind a login wall, so Jugaadu can't read them. Paste a public posting URL instead — the company's careers page, or a Greenhouse / Lever / Ashby link.`;
+          runOutcome = "error";
+          send({ type: "error", message: runError });
           return;
         }
 
@@ -238,6 +284,7 @@ export async function POST(req: NextRequest) {
             console.error("[apply] sourceHiringManagers failed", e);
           }
           send({ type: "candidates", data: candidates });
+          collectedCandidates = candidates;
 
           const top = candidates[0] ?? null;
           if (!top) {
@@ -276,6 +323,7 @@ export async function POST(req: NextRequest) {
         const [resumeSettled] = await Promise.allSettled([resumeTask(), peopleTask()]);
         const tailored: TailoredResume | null =
           resumeSettled.status === "fulfilled" ? resumeSettled.value : null;
+        collectedTailored = tailored;
 
         // Record the bundle. Soft FKs — failure to insert is non-fatal so the
         // client still sees the drafts in the SSE stream.
@@ -299,9 +347,11 @@ export async function POST(req: NextRequest) {
           console.error("[job_applications] insert failed", e);
         }
 
+        runOutcome = "complete";
         send({ type: "complete" });
       } catch (e) {
-        send({ type: "error", message: String(e instanceof Error ? e.message : e) });
+        runError = String(e instanceof Error ? e.message : e);
+        send({ type: "error", message: runError });
       } finally {
         // Sole close for every path (early returns above just `return`). Guard
         // against a double-close throwing out of start() — on buffered
@@ -311,6 +361,46 @@ export async function POST(req: NextRequest) {
           controller.close();
         } catch {
           // already closed
+        }
+
+        // Persist the final compose_runs state. Mirrors what runs-store.ts
+        // patches into the run on stream end, so /app/history can reconstruct
+        // the package card on any device.
+        if (composeRunId) {
+          try {
+            const parsedBundle = collectedTailored
+              ? {
+                  ats_score: collectedTailored.meta?.ats_score ?? null,
+                  ats_score_before: collectedTailored.meta?.ats_score_before ?? null,
+                  target_role: collectedTailored.meta?.target_role ?? null,
+                  target_company: collectedTailored.meta?.target_company ?? null,
+                  team: collectedTailored.meta?.team ?? null,
+                  resume: collectedTailored,
+                  role: collectedTailored.meta?.target_role ?? null,
+                  company: collectedTailored.meta?.target_company ?? null,
+                }
+              : null;
+            await supabaseAdmin()
+              .from("compose_runs")
+              .update({
+                person_id: personId,
+                resume_generation_id: resumeGenerationId,
+                output: {
+                  parsed: parsedBundle,
+                  person: collectedPerson,
+                  enrichment: collectedEnrichment,
+                  candidates: collectedCandidates,
+                  drafts: collectedDrafts,
+                },
+                outcome: runOutcome,
+                error: runError,
+                completed_at: new Date().toISOString(),
+              })
+              .eq("id", composeRunId)
+              .eq("user_id", userId);
+          } catch (e) {
+            console.error("[compose_runs] update failed", e);
+          }
         }
       }
       });

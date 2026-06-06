@@ -12,6 +12,7 @@ const APP_NAV = [
   { id: "today", label: "Today", glyph: "◐" },
   { id: "resume", label: "Resume", glyph: "§" },
   { id: "people", label: "People", glyph: "◆" },
+  { id: "history", label: "History", glyph: "◷" },
   { id: "settings", label: "Settings", glyph: "✦" },
 ] as const;
 

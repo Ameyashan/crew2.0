@@ -42,8 +42,34 @@ export interface Draft {
   status: DraftStatus;
   model: string | null;
   parent_draft_id: string | null;
+  compose_run_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export type ComposeRunKind = "person" | "job";
+export type ComposeRunOutcome =
+  | "complete"
+  | "error"
+  | "needs_disambiguation"
+  | "in_flight";
+
+export interface ComposeRun {
+  id: string;
+  user_id: string;
+  kind: ComposeRunKind;
+  input: string;
+  intent: string | null;
+  provided_email: string | null;
+  screenshot_id: string | null;
+  picked: Record<string, unknown> | null;
+  person_id: string | null;
+  output: Record<string, unknown>;
+  resume_generation_id: string | null;
+  outcome: ComposeRunOutcome;
+  error: string | null;
+  created_at: string;
+  completed_at: string | null;
 }
 
 export interface Interaction {

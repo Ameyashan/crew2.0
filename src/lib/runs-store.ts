@@ -38,9 +38,15 @@ export type Run = {
   steerHistory?: string[];
   // Screenshot-driven runs. `imageFile` is the raw File (client-only; forwarded
   // to the person pipeline as research context). `screenshot` is the display
-  // meta shown in the card header.
+  // meta shown in the card header. `screenshotId` is the id of the row in the
+  // screenshots table after /api/identify-image — forwarded to /api/compose so
+  // compose_runs.screenshot_id links the run back to the image.
   imageFile?: File | null;
   screenshot?: { name: string; size: string } | null;
+  screenshotId?: string | null;
+  // The compose_runs row id reported back by the server once the stream starts.
+  // Used by the history page to dedupe and to hydrate the right run.
+  composeRunId?: string | null;
 };
 
 /* ─────────────────────── module store ─────────────────────── */
@@ -201,6 +207,7 @@ export function startImageRun(
         intent: mergedIntent,
         parsed,
         candidates: kind === "person" ? parsed.candidates : null,
+        screenshotId: typeof data.screenshot_id === "string" ? data.screenshot_id : null,
         stage: "working",
       }));
       launch(id);
@@ -245,6 +252,73 @@ export function retryRun(id: string, picked?: unknown) {
 
 export function updateRun(id: string, partial: Partial<Run>) {
   patch(id, () => partial);
+}
+
+// Push a persisted compose run (loaded from /api/compose/history/[id]) into
+// the ephemeral store as a finished Run. The existing PackageV3 card renders
+// it unchanged, and the action functions (regenerateDraft, steerAllChannels,
+// pickCandidate, regenerateResume) all key off run.id without needing to know
+// the row was hydrated from the DB rather than live-streamed.
+//
+// Returns the local run id. If a run from the same compose_runs row is
+// already in the store, we don't duplicate it — return the existing id.
+export type PersistedComposeRun = {
+  id: string;                                   // compose_runs.id
+  kind: "person" | "job";
+  input: string;
+  intent: string | null;
+  outcome: string;
+  error: string | null;
+  created_at: string;
+  output: {
+    parsed?: unknown;
+    person?: unknown;
+    enrichment?: unknown;
+    candidates?: unknown[] | null;
+    drafts?: unknown[];
+  } | null;
+  screenshot?: { name: string; size: string } | null;
+};
+
+export function hydrateRun(persisted: PersistedComposeRun): string {
+  const existing = runs.find((r) => r.composeRunId === persisted.id);
+  if (existing) return existing.id;
+
+  const out = persisted.output || {};
+  const stage: RunStage = persisted.outcome === "complete" ? "done" : "error";
+  const progress =
+    stage === "done"
+      ? persisted.kind === "job"
+        ? { resume: 100, person: 100, email: 100, outreach: 100 }
+        : { person: 100, email: 100, outreach: 100 }
+      : {};
+  const localId =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `run_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  const run: Run = {
+    id: localId,
+    input: persisted.input,
+    intent: persisted.intent ?? undefined,
+    providedEmail: false,
+    kind: persisted.kind,
+    stage,
+    parsed: out.parsed ?? null,
+    progress,
+    drafts: Array.isArray(out.drafts) && out.drafts.length ? out.drafts : null,
+    enrichment: out.enrichment ?? null,
+    person: out.person ?? null,
+    candidates: Array.isArray(out.candidates) ? out.candidates : null,
+    error: persisted.error,
+    createdAt: new Date(persisted.created_at).getTime(),
+    screenshot: persisted.screenshot ?? null,
+    composeRunId: persisted.id,
+  };
+
+  runs = [run, ...runs];
+  emit();
+  return localId;
 }
 
 // Re-pick a different hiring-manager candidate on a finished job run. Re-runs
@@ -603,6 +677,10 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           } catch {
             continue;
           }
+          if (evt.type === "compose_run" && typeof evt.id === "string") {
+            patch(id, () => ({ composeRunId: evt.id }));
+            continue;
+          }
           if (evt.type === "step") {
             const k = evt.id; // resume | person | email | outreach
             if (evt.status === "start") patch(id, (r) => ({ progress: { ...r.progress, [k]: 10 } }));
@@ -669,6 +747,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
       form.append("text", run.input);
       if (run.intent) form.append("intent", run.intent);
       if (picked) form.append("picked", JSON.stringify(picked));
+      if (run.screenshotId) form.append("screenshot_id", run.screenshotId);
       form.append("intent_image", run.imageFile);
       res = await fetch("/api/compose", {
         method: "POST",
@@ -684,6 +763,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           text: run.input,
           intent: run.intent || undefined,
           picked: picked || undefined,
+          screenshot_id: run.screenshotId || undefined,
         }),
         signal,
       });
@@ -705,6 +785,10 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
         try {
           evt = JSON.parse(line.slice(6));
         } catch {
+          continue;
+        }
+        if (evt.type === "compose_run" && typeof evt.id === "string") {
+          patch(id, () => ({ composeRunId: evt.id }));
           continue;
         }
         if (evt.type === "step") {
