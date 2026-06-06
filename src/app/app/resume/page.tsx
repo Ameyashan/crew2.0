@@ -120,9 +120,8 @@ function ResumeV3({ p, go }) {
       <PaperCard p={p} color={p.marigold} hardShadow style={{ padding: '20px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <Eyebrow p={p} en="Your resume on file"/>
             <div style={{
-              display: 'flex', alignItems: 'center', gap: 14, marginTop: 10,
+              display: 'flex', alignItems: 'center', gap: 14,
             }}>
               <div style={{
                 width: 44, height: 56, background: p.paper, color: p.marigoldDeep,
@@ -194,9 +193,6 @@ function ResumeV3({ p, go }) {
           <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
             {/* URL */}
             <div>
-              <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkSoft, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>
-                Job posting URL
-              </div>
               <input
                 value={jobUrl}
                 onChange={(e) => setJobUrl(e.target.value)}
@@ -224,9 +220,6 @@ function ResumeV3({ p, go }) {
 
             {/* Emphasis */}
             <div>
-              <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkSoft, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>
-                What to change / emphasize
-              </div>
               <textarea
                 value={emphasis}
                 onChange={(e) => setEmphasis(e.target.value)}
@@ -484,9 +477,8 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
             </div>
           </div>
           <div>
-            <Eyebrow p={p} en="Output" color={p.marigold}/>
             <div style={{
-              marginTop: 10, background: p.paper, border: `1.5px solid ${p.ink}30`,
+              background: p.paper, border: `1.5px solid ${p.ink}30`,
               aspectRatio: '8.5/11', padding: '16px 14px', position: 'relative',
               fontFamily: PAPER_FONTS.serif, color: p.ink, fontSize: 8.5, lineHeight: 1.4, overflow: 'hidden',
             }}>

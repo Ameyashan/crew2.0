@@ -10,7 +10,6 @@ import {
   Eyebrow,
   InkButton,
   PageHead,
-  Marginalia,
 } from "@/components/paper/primitives";
 import { openGmailCompose } from "@/lib/gmail";
 
@@ -126,7 +125,6 @@ function TodayV3({ p, go }) {
         <div style={{ flex: 1, height: 4, background: p.ink + '14' }}>
           <div style={{ height: '100%', width: `${((total - remaining) / total) * 100}%`, background: p.stamp, transition: 'width .4s' }}/>
         </div>
-        <Marginalia p={p} rotate={-1} style={{ fontSize: 16 }}>{remaining === 0 ? 'Inbox zero. nice ✓' : ''}</Marginalia>
       </div>
 
       {/* Followups */}
@@ -148,11 +146,6 @@ function TodayV3({ p, go }) {
       {/* Replies needing review */}
       <Eyebrow p={p} en={`Conversations needing review · ${REPLIES.filter(x => !acted[x.id]).length}`} color={p.leaf}/>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, marginBottom: 32 }}>
-        {REPLIES.length === 0 && (
-          <p style={{ margin: 0, fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 16, color: p.inkSoft }}>
-            Inbox zero. Nice.
-          </p>
-        )}
         {REPLIES.map((r, i) => (
           <ReplyRow
             key={r.id} p={p} r={r}
