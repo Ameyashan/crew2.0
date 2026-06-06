@@ -91,16 +91,23 @@ export async function POST(req: NextRequest) {
     }
 
     // Track the upload + what we detected. Non-fatal on failure.
+    let screenshotId: string | null = null;
     try {
-      await sb.from("screenshots").insert({
-        user_id: userId,
-        bucket: BUCKET,
-        path: storedPath ?? path,
-        content_type: image.type,
-        byte_size: image.size,
-        kind: result.kind,
-        detected: result,
-      });
+      const { data, error } = await sb
+        .from("screenshots")
+        .insert({
+          user_id: userId,
+          bucket: BUCKET,
+          path: storedPath ?? path,
+          content_type: image.type,
+          byte_size: image.size,
+          kind: result.kind,
+          detected: result,
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      screenshotId = data?.id ?? null;
     } catch (e) {
       console.error("[screenshots] insert failed", e);
     }
@@ -115,6 +122,7 @@ export async function POST(req: NextRequest) {
       intent: result.intent,
       summary: result.summary,
       storage_path: storedPath,
+      screenshot_id: screenshotId,
     });
   });
 }
