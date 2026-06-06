@@ -857,6 +857,7 @@ function AnotherAngle({ p, runId, channel, subject, body, recipientName, style }
 
 function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, run, onReset, go }) {
   const headerEmail = buildEmailDraft({ drafts, enrichment });
+  const isMobile = useIsMobile();
   return (
     <div style={{ marginTop: 18 }}>
       <PaperCard p={p} hardShadow color={p.stamp} style={{ padding: '20px 24px' }}>
@@ -864,18 +865,24 @@ function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, run, o
           display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
           gap: 18, flexWrap: 'wrap',
         }}>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <Eyebrow p={p} hindi="हो गया" en={`Package ready · ${kind === 'job' ? '47s' : '32s'}`} color={p.stamp}/>
             <div style={{
-              fontFamily: PAPER_FONTS.display, fontSize: 30, lineHeight: 1.05, marginTop: 6, color: p.ink,
+              fontFamily: PAPER_FONTS.display, fontSize: isMobile ? 23 : 30, lineHeight: 1.05, marginTop: 6, color: p.ink,
             }}>
               Everything you need to send,
               <span style={{ fontStyle: 'italic', color: p.stamp }}> in your voice.</span>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <InkButton p={p} kind="outline" onClick={onReset}>↺ Another</InkButton>
-            <InkButton p={p} color={p.stamp} onClick={() => headerEmail.body && openGmailCompose(headerEmail)}>
+          <div style={{
+            display: 'flex', gap: 10,
+            flexDirection: isMobile ? 'column' : 'row',
+            width: isMobile ? '100%' : 'auto',
+          }}>
+            <InkButton p={p} kind="outline" onClick={onReset}
+              style={isMobile ? { width: '100%', justifyContent: 'center' } : undefined}>↺ Another</InkButton>
+            <InkButton p={p} color={p.stamp} onClick={() => headerEmail.body && openGmailCompose(headerEmail)}
+              style={isMobile ? { width: '100%', justifyContent: 'center' } : undefined}>
               <span style={{
                 width: 18, height: 18, background: p.paper, color: p.stamp,
                 display: 'grid', placeItems: 'center', fontFamily: PAPER_FONTS.mono,
