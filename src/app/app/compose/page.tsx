@@ -1057,10 +1057,10 @@ function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
                   chip={tierMeta(p, emailPrimary.tier).label}
                   chipColor={tierMeta(p, emailPrimary.tier).color}/>
               )}
-              {personLinks.linkedin && <KV p={p} k="linkedin" v={personLinks.linkedin.replace(/^https?:\/\//, '')}/>}
-              {personLinks.x && <KV p={p} k="x" v={personLinks.x.replace(/^https?:\/\//, '')}/>}
-              {personLinks.website && <KV p={p} k="website" v={personLinks.website.replace(/^https?:\/\//, '')}/>}
-              {personLinks.github && <KV p={p} k="github" v={personLinks.github.replace(/^https?:\/\//, '')}/>}
+              {personLinks.linkedin && <KV p={p} k="linkedin" v={personLinks.linkedin.replace(/^https?:\/\//, '')} href={withHttps(personLinks.linkedin)}/>}
+              {personLinks.x && <KV p={p} k="x" v={personLinks.x.replace(/^https?:\/\//, '')} href={withHttps(personLinks.x)}/>}
+              {personLinks.website && <KV p={p} k="website" v={personLinks.website.replace(/^https?:\/\//, '')} href={withHttps(personLinks.website)}/>}
+              {personLinks.github && <KV p={p} k="github" v={personLinks.github.replace(/^https?:\/\//, '')} href={withHttps(personLinks.github)}/>}
             </div>
             <button onClick={() => go('people')} style={{
               marginTop: 12, width: '100%', padding: '10px 12px', background: 'transparent',
@@ -1396,9 +1396,9 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
                 <EmailOptions p={p} candidates={emailOthers} subject={emailSubject} body={emailBody}
                   header="other addresses · click to use"/>
               )}
-              {personLinks.linkedin && <KV p={p} k="linkedin" v={personLinks.linkedin.replace(/^https?:\/\//, '')}/>}
-              {personLinks.x && <KV p={p} k="x" v={personLinks.x.replace(/^https?:\/\//, '')}/>}
-              {personLinks.website && <KV p={p} k="website" v={personLinks.website.replace(/^https?:\/\//, '')}/>}
+              {personLinks.linkedin && <KV p={p} k="linkedin" v={personLinks.linkedin.replace(/^https?:\/\//, '')} href={withHttps(personLinks.linkedin)}/>}
+              {personLinks.x && <KV p={p} k="x" v={personLinks.x.replace(/^https?:\/\//, '')} href={withHttps(personLinks.x)}/>}
+              {personLinks.website && <KV p={p} k="website" v={personLinks.website.replace(/^https?:\/\//, '')} href={withHttps(personLinks.website)}/>}
             </div>
             <button onClick={() => go('people')} style={{
               marginTop: 12, width: '100%', padding: '10px 12px', background: 'transparent',
@@ -1768,15 +1768,32 @@ function EmailOptions({ p, candidates, subject, body, header }) {
   );
 }
 
-function KV({ p, k, v, chip, chipColor }) {
+function withHttps(url) {
+  if (!url) return url;
+  return /^https?:\/\//.test(url) ? url : `https://${url}`;
+}
+
+function KV({ p, k, v, chip, chipColor, href }) {
   const cc = chipColor || p.stamp;
+  const valueStyle = {
+    flex: 1, fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.ink,
+    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+  };
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
       padding: '6px 10px', background: p.paper, border: `1px solid ${p.ink}20`,
     }}>
       <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute, letterSpacing: '.04em', width: 64 }}>{k}</span>
-      <span style={{ flex: 1, fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
+      {href ? (
+        <a href={href} target="_blank" rel="noopener noreferrer"
+          title={`Open ${k} in a new tab`}
+          style={{ ...valueStyle, color: p.stamp, textDecoration: 'underline', textUnderlineOffset: 2 }}>
+          {v}
+        </a>
+      ) : (
+        <span style={valueStyle}>{v}</span>
+      )}
       {chip && <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10, color: cc, padding: '2px 6px', background: cc + '14', whiteSpace: 'nowrap', letterSpacing: '.04em' }}>{chip}</span>}
     </div>
   );
