@@ -334,6 +334,7 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
       next.delete('email');
       return next;
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setSelectedAgents is stable
   }, [haveEmail]);
 
   // Fade out the auto-enabled hint after ~2s.
@@ -345,7 +346,14 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
 
   function isSelected(k) { return selectedAgents.has(k); }
 
+  // Person Khoji is the irreducible core of the person flow — research is what
+  // identifies who to reach, so email/outreach (and the run itself) are
+  // meaningless without it. Lock it on there; in the job flow it's a free toggle
+  // (drop it to "just tailor my résumé").
+  function isLocked(k) { return k === 'person' && checklistKind === 'person'; }
+
   function toggleAgent(k) {
+    if (isLocked(k)) return;
     const next = new Set(selectedAgents);
     if (next.has(k)) {
       next.delete(k);
@@ -492,8 +500,8 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
         {/* ─── the crew: per-agent checklist, always visible once we have any input ─── */}
         {hasInput && (
           <AgentChecklistV3
-            p={p} kind={checklistKind} agents={AGENTS_DATA[checklistKind] || AGENTS_DATA.person}
-            isSelected={isSelected} toggleAgent={toggleAgent} agentDisabled={agentDisabled}
+            p={p} agents={AGENTS_DATA[checklistKind] || AGENTS_DATA.person}
+            isSelected={isSelected} toggleAgent={toggleAgent} agentDisabled={agentDisabled} isLocked={isLocked}
             haveEmail={haveEmail} autoEnabledNote={autoEnabledNote}
           />
         )}
@@ -790,7 +798,7 @@ function Shimmer({ p, width = 100, height = 12 }) {
 
 /* ─────────────────────── crew checklist (idle / pre-Go) ─────────────────────── */
 
-function AgentChecklistV3({ p, kind, agents, isSelected, toggleAgent, agentDisabled, haveEmail, autoEnabledNote }) {
+function AgentChecklistV3({ p, agents, isSelected, toggleAgent, agentDisabled, isLocked, haveEmail, autoEnabledNote }) {
   return (
     <div style={{
       marginTop: 14, paddingTop: 14, borderTop: `1.5px dashed ${p.ink}24`,
@@ -806,6 +814,7 @@ function AgentChecklistV3({ p, kind, agents, isSelected, toggleAgent, agentDisab
         {agents.map((a) => {
           const checked = isSelected(a.k);
           const disabled = agentDisabled(a.k);
+          const locked = isLocked?.(a.k);
           // Email row when haveEmail is true: render faded and unchecked with a
           // dedicated hint ("you've provided it"). User can still tick it back on.
           const emailProvidedHint = a.k === 'email' && haveEmail && !checked;
@@ -816,11 +825,12 @@ function AgentChecklistV3({ p, kind, agents, isSelected, toggleAgent, agentDisab
             <button
               key={a.k}
               onClick={() => toggleAgent(a.k)}
+              aria-disabled={locked || undefined}
               style={{
                 display: 'grid', gridTemplateColumns: '24px 28px 1fr', gap: 10, alignItems: 'center',
                 padding: '10px 12px', background: checked ? p.paper : 'transparent',
                 border: `1.5px solid ${checked ? p.ink + '40' : p.ink + '20'}`,
-                cursor: 'pointer', textAlign: 'left', opacity: rowOpacity,
+                cursor: locked ? 'default' : 'pointer', textAlign: 'left', opacity: rowOpacity,
                 transition: 'opacity .15s, background .15s, border-color .15s',
               }}
             >
@@ -848,11 +858,14 @@ function AgentChecklistV3({ p, kind, agents, isSelected, toggleAgent, agentDisab
                   letterSpacing: '.02em', marginTop: 2, lineHeight: 1.4,
                 }}>
                   {a.desc}
+                  {locked && (
+                    <span style={{ color: p.inkMute, marginLeft: 8 }}>· always on</span>
+                  )}
                   {needsKhojiHint && (
                     <span style={{ color: p.stamp, marginLeft: 8 }}>· needs Person Khoji</span>
                   )}
                   {emailProvidedHint && (
-                    <span style={{ color: p.leaf, marginLeft: 8 }}>· you've provided it</span>
+                    <span style={{ color: p.leaf, marginLeft: 8 }}>· provided already</span>
                   )}
                 </div>
               </div>

@@ -370,6 +370,7 @@ export async function pickCandidate(
         job_url: jobUrl,
         picked,
         intent: run.intent || undefined,
+        agents: run.selectedAgents || undefined,
         // Keep the cold email anchored on the job, not the picked person's own
         // company, when we re-draft for a different candidate.
         job_context: { role: run.parsed?.role ?? null, company: run.parsed?.company ?? null },
@@ -661,7 +662,11 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
       const res = await fetch("/api/compose/apply", {
         method: "POST",
         headers: { "content-type": "application/json", accept: "text/event-stream" },
-        body: JSON.stringify({ job_url: jobUrl, intent: run.intent || undefined }),
+        body: JSON.stringify({
+          job_url: jobUrl,
+          intent: run.intent || undefined,
+          agents: run.selectedAgents || undefined,
+        }),
         signal,
       });
       if (!res.ok || !res.body) throw new Error(`apply failed: ${res.status}`);
@@ -754,6 +759,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
       if (run.intent) form.append("intent", run.intent);
       if (picked) form.append("picked", JSON.stringify(picked));
       if (run.screenshotId) form.append("screenshot_id", run.screenshotId);
+      if (run.selectedAgents) form.append("agents", JSON.stringify(run.selectedAgents));
       form.append("intent_image", run.imageFile);
       res = await fetch("/api/compose", {
         method: "POST",
@@ -770,6 +776,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           intent: run.intent || undefined,
           picked: picked || undefined,
           screenshot_id: run.screenshotId || undefined,
+          agents: run.selectedAgents || undefined,
         }),
         signal,
       });

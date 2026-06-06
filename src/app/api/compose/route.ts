@@ -3,6 +3,7 @@ import { runReachOutStream, type RunReachOutInput } from "@/lib/agents/reach-out
 import { resolveUserId } from "@/lib/auth";
 import { runWithUser } from "@/lib/user-context";
 import { supabaseAdmin } from "@/lib/supabase";
+import { parseAgents } from "@/lib/agent-selection";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -33,6 +34,7 @@ async function parseInput(req: NextRequest): Promise<
     const image = form.get("intent_image");
     const providedEmail = form.get("provided_email");
     const screenshotId = form.get("screenshot_id");
+    const agentsRaw = form.get("agents");
 
     let picked: RunReachOutInput["picked"] | undefined;
     if (typeof pickedRaw === "string" && pickedRaw.trim()) {
@@ -40,6 +42,15 @@ async function parseInput(req: NextRequest): Promise<
         picked = JSON.parse(pickedRaw);
       } catch {
         return { error: "invalid picked json", status: 400 };
+      }
+    }
+
+    let agents: string[] | undefined;
+    if (typeof agentsRaw === "string" && agentsRaw.trim()) {
+      try {
+        agents = parseAgents(JSON.parse(agentsRaw));
+      } catch {
+        return { error: "invalid agents json", status: 400 };
       }
     }
 
@@ -65,6 +76,7 @@ async function parseInput(req: NextRequest): Promise<
           typeof providedEmail === "string" && providedEmail.trim()
             ? providedEmail.trim()
             : undefined,
+        agents,
       },
       screenshot_id:
         typeof screenshotId === "string" && screenshotId.trim()
@@ -84,6 +96,7 @@ async function parseInput(req: NextRequest): Promise<
         typeof body?.provided_email === "string" && body.provided_email.trim()
           ? body.provided_email.trim()
           : undefined,
+      agents: parseAgents(body?.agents),
     },
     screenshot_id:
       typeof body?.screenshot_id === "string" && body.screenshot_id.trim()

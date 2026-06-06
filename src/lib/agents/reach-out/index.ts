@@ -15,6 +15,7 @@ import { findEmailHunter as findEmail } from "@/lib/hunter";
 import { supabaseAdmin } from "@/lib/supabase";
 import { currentUserId } from "@/lib/user-context";
 import { getProfile, senderContextFromProfile } from "@/lib/profile";
+import { agentEnabled } from "@/lib/agent-selection";
 
 export interface RunReachOutInput {
   text: string;
@@ -33,6 +34,10 @@ export interface RunReachOutInput {
   // History feature: when set, drafts are tagged with this compose_run_id so
   // the /app/history detail view can fetch a run's drafts directly.
   compose_run_id?: string;
+  // Crew selector (Phase 2): the agents the user opted into. Research always
+  // runs (it's the identity step everything else depends on); 'email' gates the
+  // address lookup and 'outreach' gates the drafting. Undefined → run all.
+  agents?: string[];
 }
 
 export type StepEvent =
@@ -94,8 +99,10 @@ export async function* runReachOutStream(
       return;
     }
 
-    // Email lookup — skip when the user already has the email
+    // Email lookup — skip when the user already has the email, OR when they
+    // deselected Email Wallah in the crew checklist.
     const providedEmail = input.provided_email?.trim();
+    const emailEnabled = agentEnabled(input.agents, "email");
     let enrichment: Awaited<ReturnType<typeof findEmail>>;
     let enrichmentForUi: Awaited<ReturnType<typeof findEmail>>;
     if (providedEmail) {
@@ -105,6 +112,19 @@ export async function* runReachOutStream(
         confidence: 1,
         source: "user_provided",
         domain,
+        guesses: [],
+        message: null,
+      };
+      enrichmentForUi = enrichment;
+      yield { type: "step", id: "email_lookup", status: "skipped", data: enrichmentForUi };
+    } else if (!emailEnabled) {
+      // Email Wallah was switched off — don't hunt for an address. Downstream
+      // drafting still works; the "To" line just stays empty.
+      enrichment = {
+        email: null,
+        confidence: 0,
+        source: "skipped",
+        domain: null,
         guesses: [],
         message: null,
       };
@@ -210,73 +230,77 @@ export async function* runReachOutStream(
       data: { id: personId, name: personRow.name, role: personRow.role, company: personRow.company },
     };
 
-    // Drafts: emit start for each, then await all in parallel and emit done as they land
-    const channels: Channel[] = ["email", "x_dm", "linkedin"];
-    for (const c of channels) yield { type: "step", id: "draft", status: "start", channel: c };
+    // Drafts: emit start for each, then await all in parallel and emit done as
+    // they land. Skipped wholesale when Outreach Bhai is switched off — the run
+    // then ends at "person found (+ maybe email)" with no drafts.
+    if (agentEnabled(input.agents, "outreach")) {
+      const channels: Channel[] = ["email", "x_dm", "linkedin"];
+      for (const c of channels) yield { type: "step", id: "draft", status: "start", channel: c };
 
-    const senderCtx = senderContextFromProfile(profile);
-    const draftPromises = channels.map((c) =>
-      draft({
-        person_context: ctx,
-        channel: c,
-        intent: input.intent,
-        job_context: input.job_context,
-        sender_context: senderCtx || undefined,
-        sender_writing_samples: profile?.writing_samples ?? undefined,
-        sender_full_name: profile?.full_name ?? undefined,
-        sender_linkedin: profile?.linkedin_url ?? undefined,
-      }).then((r) => ({ channel: c, result: r }))
-    );
+      const senderCtx = senderContextFromProfile(profile);
+      const draftPromises = channels.map((c) =>
+        draft({
+          person_context: ctx,
+          channel: c,
+          intent: input.intent,
+          job_context: input.job_context,
+          sender_context: senderCtx || undefined,
+          sender_writing_samples: profile?.writing_samples ?? undefined,
+          sender_full_name: profile?.full_name ?? undefined,
+          sender_linkedin: profile?.linkedin_url ?? undefined,
+        }).then((r) => ({ channel: c, result: r }))
+      );
 
-    // Yield results as each promise settles
-    const settled = await Promise.allSettled(draftPromises);
-    const okResults: { channel: Channel; result: Awaited<ReturnType<typeof draft>> }[] = [];
-    for (const s of settled) {
-      if (s.status === "fulfilled") okResults.push(s.value);
-      else console.error("[draft]", s.reason);
-    }
+      // Yield results as each promise settles
+      const settled = await Promise.allSettled(draftPromises);
+      const okResults: { channel: Channel; result: Awaited<ReturnType<typeof draft>> }[] = [];
+      for (const s of settled) {
+        if (s.status === "fulfilled") okResults.push(s.value);
+        else console.error("[draft]", s.reason);
+      }
 
-    if (okResults.length === 0) {
-      throw new Error("all drafts failed");
-    }
+      if (okResults.length === 0) {
+        throw new Error("all drafts failed");
+      }
 
-    // Persist drafts + interactions, then emit done
-    const draftRows = okResults.map(({ channel, result }) => ({
-      user_id: currentUserId(),
-      person_id: personId,
-      channel,
-      subject: result.subject,
-      body: result.body,
-      intent: input.intent ?? null,
-      status: "generated" as const,
-      model: result.model,
-      compose_run_id: input.compose_run_id ?? null,
-    }));
-    const { data: drafts, error: dErr } = await sb
-      .from("drafts")
-      .insert(draftRows)
-      .select("id, channel, subject, body");
-    if (dErr) throw new Error(`drafts insert: ${dErr.message}`);
-
-    await sb.from("interactions").insert(
-      drafts!.map((d) => ({
+      // Persist drafts + interactions, then emit done
+      const draftRows = okResults.map(({ channel, result }) => ({
         user_id: currentUserId(),
         person_id: personId,
-        agent_type: "reach_out",
-        interaction_type: "drafted",
-        channel: d.channel,
-        draft_id: d.id,
-      }))
-    );
+        channel,
+        subject: result.subject,
+        body: result.body,
+        intent: input.intent ?? null,
+        status: "generated" as const,
+        model: result.model,
+        compose_run_id: input.compose_run_id ?? null,
+      }));
+      const { data: drafts, error: dErr } = await sb
+        .from("drafts")
+        .insert(draftRows)
+        .select("id, channel, subject, body");
+      if (dErr) throw new Error(`drafts insert: ${dErr.message}`);
 
-    for (const d of drafts!) {
-      yield {
-        type: "step",
-        id: "draft",
-        status: "done",
-        channel: d.channel as Channel,
-        data: { id: d.id as string, channel: d.channel as Channel, subject: d.subject as string | null, body: d.body as string },
-      };
+      await sb.from("interactions").insert(
+        drafts!.map((d) => ({
+          user_id: currentUserId(),
+          person_id: personId,
+          agent_type: "reach_out",
+          interaction_type: "drafted",
+          channel: d.channel,
+          draft_id: d.id,
+        }))
+      );
+
+      for (const d of drafts!) {
+        yield {
+          type: "step",
+          id: "draft",
+          status: "done",
+          channel: d.channel as Channel,
+          data: { id: d.id as string, channel: d.channel as Channel, subject: d.subject as string | null, body: d.body as string },
+        };
+      }
     }
 
     yield { type: "complete" };
