@@ -1066,9 +1066,6 @@ function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
     <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr', gap: 12 }}>
       {/* draft */}
       <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 12 }}>
-          <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.leaf, letterSpacing: '.06em' }}>VOICE 96%</span>
-        </div>
         <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
           {[
             { id: 'email',    label: '✉ Email',     desc: 'cold email' },
@@ -1426,11 +1423,8 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
 
       {/* email draft */}
       <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ marginBottom: 8 }}>
           <Eyebrow p={p} en="Cold email · drafted" color={p.tea}/>
-          <span style={{
-            fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.leaf, letterSpacing: '.06em',
-          }}>VOICE 96%</span>
         </div>
         <div style={{
           background: p.paper, border: `1.5px solid ${p.ink}30`,

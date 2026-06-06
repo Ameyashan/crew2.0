@@ -101,10 +101,10 @@ function TodayV3({ p, go }) {
       flex: 1, overflow: 'auto', padding: isMobile ? '24px 16px 64px' : '36px 56px 80px', background: p.paper, color: p.ink,
     }}>
       <PageHead p={p}
-        eyebrow={`Today · ${new Date(2026, 4, 17).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`}
+        eyebrow={`Today · ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`}
         title={remaining === 0 ? 'Inbox zero.' : `${remaining} ${remaining === 1 ? 'thing' : 'things'}`}
         italic={remaining === 0 ? 'You\'re done.' : 'need you.'}
-        sub={`Last digest 5/17, 8:00 AM — ${FOLLOWUPS.length} followups · ${REPLIES.length} replies to review · ~ ${Math.max(2, Math.round(remaining * 0.6))} min`}
+        sub={`${lastDigest?.generated_at ? `Last digest ${new Date(lastDigest.generated_at).toLocaleString('en-US', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })} — ` : ''}${FOLLOWUPS.length} followups · ${REPLIES.length} replies to review · ~ ${Math.max(2, Math.round(remaining * 0.6))} min`}
         right={isMobile ? null : (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 14,
