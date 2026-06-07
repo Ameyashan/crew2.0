@@ -71,6 +71,19 @@ Leave BOTH out if you didn't see the JD. Be honest: if the candidate's real back
 - "reason": one short clause tying the edit to the JD, e.g. "JD leads with real-time systems".
 Never invent a "before" you didn't actually change, and never claim a change you didn't make. Leave "changes" out entirely if you didn't see the JD/brief (same condition as the ATS scores).`;
 
+// Appended to SYSTEM_PROMPT only when a custom resume-writing Agent Skill is
+// configured (RESUME_SKILL_ID). The skill runs in the code-execution container
+// and encodes the user's own resume conventions; the strict JSON contract above
+// still stands because the app renders, previews, scores, and exports from it.
+export const SKILL_SYSTEM_SUFFIX = `
+
+USING THE RESUME-WRITER SKILL
+A custom "resume-writer" Agent Skill is loaded in your environment. It encodes the user's established preferences for how their resume should read and be structured — use it to shape this resume, and feel free to run its scripts and use its templates via the code execution tools.
+Requirements that OVERRIDE anything the skill says about its own output format:
+- Your FINAL message MUST be the strict JSON object defined in OUTPUT above and nothing else (no prose, no markdown fences). The application renders, previews, scores, and exports the resume from that JSON — a document file alone is not consumable by the app.
+- If the skill also writes a formatted file (e.g. .docx/.pdf) into the container, that is welcome — it will be offered to the user as a download — but it does NOT replace the required JSON.
+- Every HARD RULE above still applies: never fabricate facts, never drop a role or degree, and respect the page budget and the user's highlights.`;
+
 export function buildUserPrompt(
   input: ResumeTailorInput & { resume_text: string; full_name?: string | null }
 ): string {

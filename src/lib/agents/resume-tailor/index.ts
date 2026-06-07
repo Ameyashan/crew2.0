@@ -3,7 +3,7 @@ import { extractJson } from "@/lib/claude";
 import { logAgentRun } from "@/lib/agent-runs";
 import { getProfile } from "@/lib/profile";
 import { lintAntiAi, describeViolations, antiAiWritingGuide } from "@/lib/writing/anti-ai";
-import { SYSTEM_PROMPT, buildUserPrompt } from "./prompt";
+import { SYSTEM_PROMPT, SKILL_SYSTEM_SUFFIX, buildUserPrompt } from "./prompt";
 import type {
   ResumeChange,
   ResumeChangeKind,
@@ -13,6 +13,24 @@ import type {
 } from "./types";
 
 const MODEL = "claude-sonnet-4-6";
+
+// Custom resume-writer Agent Skill, uploaded via the Skills API (see
+// scripts/upload-resume-skill.mjs). When set, the darzi runs inside a
+// code-execution container with this skill loaded; when unset, it falls back to
+// the plain web_search tailoring path so the feature degrades cleanly.
+const SKILL_ID = process.env.RESUME_SKILL_ID?.trim() || null;
+
+// Beta features required to load an Agent Skill in the code-execution container.
+const SKILL_BETAS: Anthropic.Beta.AnthropicBeta[] = [
+  "code-execution-2025-08-25",
+  "skills-2025-10-02",
+  "files-api-2025-04-14",
+];
+
+// The skill executes inside a server-side code-execution loop that can pause
+// (stop_reason "pause_turn") before emitting the final JSON. Bound how many
+// times we hand the turn back to let it resume.
+const MAX_TURNS = 6;
 
 let _client: Anthropic | null = null;
 function client() {
@@ -50,93 +68,131 @@ export async function* runResumeTailorStream(
     let outTokens = 0;
     let outcome: "ok" | "error" = "ok";
     let err: string | null = null;
+    // Files the skill writes into the code-execution container (e.g. a formatted
+    // .docx/.pdf). Surfaced to the user as downloads alongside the JSON render.
+    const artifacts: { file_id: string }[] = [];
+
+    // web_search reads the job posting; when a resume-writer skill is configured
+    // we also enable the code-execution tool the skill runs inside.
+    const tools: Anthropic.Beta.Messages.BetaToolUnion[] = [
+      {
+        type: "web_search_20250305",
+        name: "web_search",
+        max_uses: 3,
+      } as unknown as Anthropic.Beta.Messages.BetaToolUnion,
+    ];
+    if (SKILL_ID) {
+      tools.push({
+        type: "code_execution_20250825",
+        name: "code_execution",
+      } as unknown as Anthropic.Beta.Messages.BetaToolUnion);
+    }
+    const system = SKILL_ID ? SYSTEM_PROMPT + SKILL_SYSTEM_SUFFIX : SYSTEM_PROMPT;
 
     try {
-      const stream = client().messages.stream({
-        model: MODEL,
-        max_tokens: 4000,
-        system: SYSTEM_PROMPT,
-        tools: [
-          {
-            type: "web_search_20250305",
-            name: "web_search",
-            max_uses: 3,
-          } as unknown as Anthropic.Messages.Tool,
-        ],
-        messages: [{ role: "user", content: userPrompt }],
-      });
+      const messages: Anthropic.Beta.Messages.BetaMessageParam[] = [
+        { role: "user", content: userPrompt },
+      ];
+      let skillSignaled = false;
 
-      const toolBlocks = new Map<number, { name: string; partial: string }>();
-      let lastProgressAt = 0;
-      let lastProgressChars = 0;
-      let textForProgress = "";
+      for (let turn = 0; turn < MAX_TURNS; turn++) {
+        const stream = client().beta.messages.stream({
+          model: MODEL,
+          max_tokens: 8000,
+          system,
+          ...(SKILL_ID
+            ? {
+                betas: SKILL_BETAS,
+                container: {
+                  skills: [
+                    { type: "custom", skill_id: SKILL_ID, version: "latest" },
+                  ],
+                },
+              }
+            : {}),
+          tools,
+          messages,
+        });
 
-      for await (const evt of stream) {
-        if (evt.type === "content_block_start") {
-          const block = evt.content_block as {
-            type: string;
-            name?: string;
-          };
-          if (
-            (block.type === "server_tool_use" || block.type === "tool_use") &&
-            block.name === "web_search"
-          ) {
-            toolBlocks.set(evt.index, { name: block.name, partial: "" });
-          }
-        } else if (evt.type === "content_block_delta") {
-          const delta = evt.delta as {
-            type: string;
-            text?: string;
-            partial_json?: string;
-          };
-          if (delta.type === "text_delta" && delta.text) {
-            text += delta.text;
-            textForProgress += delta.text;
-            const now = Date.now();
-            if (
-              now - lastProgressAt > 250 &&
-              textForProgress.length - lastProgressChars > 80
-            ) {
-              const bullets = (textForProgress.match(/\.\s*"/g) || []).length;
-              lastProgressAt = now;
-              lastProgressChars = textForProgress.length;
-              yield {
-                type: "progress",
-                chars: textForProgress.length,
-                bullets,
-              };
+        const toolBlocks = new Map<number, { name: string; partial: string }>();
+        let turnText = "";
+        let lastProgressAt = 0;
+        let lastProgressChars = 0;
+
+        for await (const evt of stream) {
+          if (evt.type === "content_block_start") {
+            const block = evt.content_block as { type: string; name?: string };
+            if (block.type === "server_tool_use" || block.type === "tool_use") {
+              if (block.name === "web_search") {
+                toolBlocks.set(evt.index, { name: block.name, partial: "" });
+              } else if (
+                (block.name === "code_execution" ||
+                  block.name === "bash_code_execution") &&
+                !skillSignaled
+              ) {
+                // One progress ping the first time the skill actually runs.
+                skillSignaled = true;
+                yield { type: "tool", name: "skill" };
+              }
             }
-          } else if (delta.type === "input_json_delta" && delta.partial_json) {
+          } else if (evt.type === "content_block_delta") {
+            const delta = evt.delta as {
+              type: string;
+              text?: string;
+              partial_json?: string;
+            };
+            if (delta.type === "text_delta" && delta.text) {
+              turnText += delta.text;
+              const now = Date.now();
+              if (
+                now - lastProgressAt > 250 &&
+                turnText.length - lastProgressChars > 80
+              ) {
+                const bullets = (turnText.match(/\.\s*"/g) || []).length;
+                lastProgressAt = now;
+                lastProgressChars = turnText.length;
+                yield { type: "progress", chars: turnText.length, bullets };
+              }
+            } else if (delta.type === "input_json_delta" && delta.partial_json) {
+              const b = toolBlocks.get(evt.index);
+              if (b) b.partial += delta.partial_json;
+            }
+          } else if (evt.type === "content_block_stop") {
             const b = toolBlocks.get(evt.index);
-            if (b) b.partial += delta.partial_json;
-          }
-        } else if (evt.type === "content_block_stop") {
-          const b = toolBlocks.get(evt.index);
-          if (b) {
-            let query: string | null = null;
-            try {
-              const parsed = JSON.parse(b.partial) as { query?: string };
-              query = parsed.query ?? null;
-            } catch {
-              // partial JSON didn't parse — skip
-            }
-            toolBlocks.delete(evt.index);
-            if (query) {
-              yield { type: "tool", name: "web_search", query };
+            if (b) {
+              let query: string | null = null;
+              try {
+                const parsed = JSON.parse(b.partial) as { query?: string };
+                query = parsed.query ?? null;
+              } catch {
+                // partial JSON didn't parse — skip
+              }
+              toolBlocks.delete(evt.index);
+              if (query) yield { type: "tool", name: "web_search", query };
             }
           }
         }
-      }
 
-      const final = await stream.finalMessage();
-      inTokens = final.usage.input_tokens;
-      outTokens = final.usage.output_tokens;
-      // Prefer the SDK's reassembled text when available (it includes any
-      // final text block we didn't capture via deltas).
-      if (!text) {
-        for (const block of final.content) {
-          if (block.type === "text") text += block.text;
+        const final = await stream.finalMessage();
+        inTokens += final.usage.input_tokens;
+        outTokens += final.usage.output_tokens;
+        collectArtifacts(final.content, artifacts);
+
+        // Server paused its tool loop — hand the turn back and let it resume.
+        if (final.stop_reason === "pause_turn") {
+          messages.push({ role: "assistant", content: final.content });
+          continue;
         }
+
+        // Done. Prefer streamed text; fall back to the SDK's reassembled blocks
+        // (which include any final text block we didn't capture via deltas).
+        text = turnText;
+        if (!text) {
+          for (const block of final.content) {
+            if (block.type === "text") text += block.text;
+          }
+        }
+        break;
       }
     } catch (e) {
       outcome = "error";
@@ -155,6 +211,8 @@ export async function* runResumeTailorStream(
           page_count: input.page_count,
           has_highlights: !!input.highlights?.trim(),
           has_feedback: !!input.regenerate_notes?.trim(),
+          skill_id: SKILL_ID,
+          artifacts: artifacts.length,
         },
       });
     }
@@ -168,6 +226,16 @@ export async function* runResumeTailorStream(
           "Couldn't read the job posting (probably auth-walled). Paste the job description into Highlights and re-run.",
       };
       return;
+    }
+
+    // Record which skill shaped this resume, plus any files it produced, so the
+    // saved generation can offer them as downloads and the live UI can link them.
+    parsed.meta.skill_id = SKILL_ID;
+    if (artifacts.length) {
+      parsed.meta.artifacts = artifacts.map((a) => ({ file_id: a.file_id }));
+      for (const a of artifacts) {
+        yield { type: "artifact", file_id: a.file_id };
+      }
     }
 
     // Enforce the anti-AI writing skill on the generated copy: lint every bullet,
@@ -199,6 +267,35 @@ export async function* runResumeTailorStream(
     yield { type: "complete" };
   } catch (e) {
     yield { type: "error", message: String(e instanceof Error ? e.message : e) };
+  }
+}
+
+// Pull file IDs out of any code-execution results the skill produced, so a
+// formatted resume document the skill wrote in the container can be offered as a
+// download. Dedupes against what we've already collected across pause_turn loops.
+function collectArtifacts(
+  content: Anthropic.Beta.Messages.BetaContentBlock[],
+  artifacts: { file_id: string }[]
+): void {
+  for (const block of content) {
+    if (
+      block.type !== "code_execution_tool_result" &&
+      block.type !== "bash_code_execution_tool_result"
+    ) {
+      continue;
+    }
+    const inner = (block as { content?: { content?: unknown } }).content;
+    const items = inner?.content;
+    if (!Array.isArray(items)) continue;
+    for (const it of items) {
+      const fid =
+        it && typeof it === "object" && "file_id" in it
+          ? (it as { file_id?: unknown }).file_id
+          : undefined;
+      if (typeof fid === "string" && !artifacts.some((a) => a.file_id === fid)) {
+        artifacts.push({ file_id: fid });
+      }
+    }
   }
 }
 

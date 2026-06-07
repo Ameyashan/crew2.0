@@ -21,6 +21,7 @@ Built per the prompts in `../crew_prompts.md`. Single-user, no auth, no payments
    SUPABASE_URL=https://ccikbznbrjpruwiqzxib.supabase.co
    SUPABASE_SERVICE_ROLE_KEY=...   # or use the anon publishable key, since RLS is off
    CRON_SECRET=anything-long
+   RESUME_SKILL_ID=skill_...       # optional — custom resume-writer Agent Skill (see "Resume darzi skill")
    ```
 2. `npm run dev`
 3. Open <http://localhost:3000>.
@@ -46,6 +47,21 @@ The Supabase migration in `supabase/migrations/0001_init.sql` has already been a
 ## Voice
 
 Edit `voice/samples.md` directly. Each fenced block is a sample; an optional first-line `# email` / `# x_dm` / `# linkedin` scopes it to that channel. Drafts pull samples in as few-shot context per call. Cache invalidates on file mtime change.
+
+## Resume darzi skill
+
+The resume *darzi* (`src/lib/agents/resume-tailor`) can run on top of a custom **Agent Skill** — your own `resume-writer` skill that encodes how you like your resume written. Skills are filesystem-based and run inside Claude's code-execution container, so two things are required:
+
+1. **Upload the skill to the Claude API.** Custom Skills don't sync across surfaces, so a skill you built in Claude Code or claude.ai has to be uploaded to the API separately. Point the helper at the skill folder (the directory containing `SKILL.md`):
+   ```
+   ANTHROPIC_API_KEY=sk-ant-... node scripts/upload-resume-skill.mjs ./path/to/resume-writer
+   ```
+   It prints a `skill_id` (e.g. `skill_…`).
+2. **Set `RESUME_SKILL_ID`** to that id. When present, the darzi adds the code-execution tool + the `code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14` betas and loads the skill via `container.skills`. When absent, it falls back to the plain `web_search` tailoring path — no behavior change.
+
+The darzi still returns the strict `TailoredResume` JSON (the app renders, previews, scores, and exports from it). If the skill also writes a formatted file (`.docx`/`.pdf`) in the container, the `file_id` is surfaced on the tailor stream as an `artifact` event and persisted in `resume_generations.meta.artifacts`; download it via `GET /api/resume/skill-file?file_id=…`.
+
+> Note: skills run in the code-execution container, which has **no network access** — the skill's own scripts can't fetch the job URL. The darzi still reads the posting with the `web_search` server tool and feeds it in, so keep the job-URL flow as the source of the JD. This composition (web_search + code_execution + skills in one request) is worth a live smoke-test before relying on it.
 
 ## What's deliberately not here (per the prompts)
 

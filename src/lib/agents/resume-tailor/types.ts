@@ -57,6 +57,10 @@ export type TailoredResume = {
     generated_at: string;
     ats_score?: number; // 0-100, tailored resume self-scored against the JD; null when JD wasn't reachable
     ats_score_before?: number; // 0-100, the ORIGINAL resume scored against the same JD (the baseline before tailoring)
+    skill_id?: string | null; // the resume-writer Agent Skill used to shape this resume, if any
+    // Files the skill wrote inside the code-execution container (e.g. a formatted
+    // .docx/.pdf). Downloadable via /api/resume/skill-file?file_id=…
+    artifacts?: { file_id: string; filename?: string }[];
   };
 };
 
@@ -83,7 +87,9 @@ export type ResumeTailorStepEvent =
       data: { resume: TailoredResume };
     }
   | { type: "tool"; name: "web_search"; query: string }
+  | { type: "tool"; name: "skill" }
   | { type: "progress"; chars: number; bullets: number }
+  | { type: "artifact"; file_id: string; filename?: string }
   | { type: "saved"; id: string }
   | { type: "complete" }
   | { type: "error"; message: string };
