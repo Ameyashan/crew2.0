@@ -105,13 +105,11 @@ function ComposeV3({ p, go }) {
 
     if (file) {
       // Screenshot-first: the vision pass decides job vs person and extracts a
-      // query. Any typed text/intent rides along as a hint. We don't pass a
-      // selection for screenshot-only runs — the kind isn't known yet, so the
-      // checklist was the placeholder and the run uses all agents for the
-      // resolved kind.
-      const opts = { text: input, intent, providedEmail: haveEmail };
-      if (input.trim().length > 0) opts.selectedAgents = selectedArr;
-      startImageRun(file, opts);
+      // query. The user's checklist selection rides along too — picks that
+      // don't apply to the resolved kind are silently dropped server-side and
+      // surfaced as a "heads up" note on the run card (e.g. Resume Darzi on a
+      // person screenshot).
+      startImageRun(file, { text: input, intent, providedEmail: haveEmail, selectedAgents: selectedArr });
     } else {
       const kind = kindOverride || classifyKind(input);
       startRun(input, {
@@ -210,6 +208,28 @@ function RunCard({ p, run, go }) {
       {/* parsing → shimmer preview */}
       {run.stage === 'parsing' && (
         <ParsedCard p={p} stage="parsing" kind={run.kind} parsed={run.parsed} hideConfirm/>
+      )}
+
+      {/* Resume Darzi was opted in, but the resolved kind is a person — there's
+          no JD to tailor against. We don't block the run; we warn and continue
+          with whatever else was selected. */}
+      {(run.stage === 'working' || run.stage === 'done')
+        && run.kind === 'person'
+        && Array.isArray(run.selectedAgents)
+        && run.selectedAgents.includes('resume') && (
+        <div style={{
+          marginTop: 12, padding: '8px 12px',
+          border: `1.5px dashed ${p.marigold}`, background: p.paper,
+          display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <span style={{
+            fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.16em',
+            color: p.marigoldDeep, textTransform: 'uppercase', flexShrink: 0,
+          }}>heads up</span>
+          <span style={{
+            fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkSoft, lineHeight: 1.4,
+          }}>Resume Darzi needs a job link — skipping for this {run.screenshot ? 'screenshot' : 'run'}. The rest is on it.</span>
+        </div>
       )}
 
       {/* working / done → the agent row */}
@@ -314,14 +334,25 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
     setScreenshot({ name: f.name, size: `${Math.round(f.size / 1024)} KB`, file: f });
   }
 
-  // Reset the agent selection to the kind's defaults whenever the detected kind
-  // changes (text-flips-classification OR user clicks a "Not right?" pill). The
-  // 'fuzzy' kind shares the person flow so it shares the person checklist.
-  const checklistKind = detected === 'job' ? 'job' : 'person';
+  // Three modes for the checklist:
+  // - 'person': text/URL classified as a person. Khoji is locked on (research
+  //   is the irreducible identity step in that flow).
+  // - 'job':    text/URL classified as a job. Khoji is a free toggle.
+  // - 'screenshot': only an image attached, kind not yet known. We show the
+  //   full 4-agent superset so the user can pre-pick the crew before vision
+  //   resolves kind. Nothing is locked — the run card warns later if a chosen
+  //   agent can't apply to the resolved kind.
+  const crewMode = (!hasInput && hasScreenshot)
+    ? 'screenshot'
+    : (detected === 'job' ? 'job' : 'person');
+  const checklistAgents = crewMode === 'person' ? AGENTS_DATA.person : AGENTS_DATA.job;
+  // Reset to the mode's defaults whenever the mode changes (text-flips-kind,
+  // override pill, screenshot attached/removed). 'fuzzy' folds into 'person'.
   useEffect(() => {
-    setSelectedAgents(defaultSelectionFor(checklistKind, haveEmail));
+    const kindForDefaults = crewMode === 'person' ? 'person' : 'job';
+    setSelectedAgents(defaultSelectionFor(kindForDefaults, haveEmail));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- haveEmail is mirrored separately below
-  }, [checklistKind, setSelectedAgents]);
+  }, [crewMode, setSelectedAgents]);
 
   // Mirror the haveEmail shortcut into the checklist without nuking other
   // selections. When haveEmail flips ON, strip email; when it flips OFF, don't
@@ -348,9 +379,9 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
 
   // Person Khoji is the irreducible core of the person flow — research is what
   // identifies who to reach, so email/outreach (and the run itself) are
-  // meaningless without it. Lock it on there; in the job flow it's a free toggle
-  // (drop it to "just tailor my résumé").
-  function isLocked(k) { return k === 'person' && checklistKind === 'person'; }
+  // meaningless without it. Lock it on there; in the job flow and the
+  // screenshot superset it's a free toggle ("just tailor my résumé", etc.).
+  function isLocked(k) { return k === 'person' && crewMode === 'person'; }
 
   function toggleAgent(k) {
     if (isLocked(k)) return;
@@ -497,33 +528,16 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
           </div>
         )}
 
-        {/* ─── the crew: per-agent checklist, always visible once we have any input ─── */}
-        {hasInput && (
+        {/* ─── the crew: per-agent checklist, visible once we have any input ─── */}
+        {(hasInput || hasScreenshot) && (
           <AgentChecklistV3
-            p={p} agents={AGENTS_DATA[checklistKind] || AGENTS_DATA.person}
+            p={p} agents={checklistAgents}
             isSelected={isSelected} toggleAgent={toggleAgent} agentDisabled={agentDisabled} isLocked={isLocked}
             haveEmail={haveEmail} autoEnabledNote={autoEnabledNote}
+            footnote={crewMode === 'screenshot'
+              ? 'Jugaadu picks what applies once it reads the image.'
+              : null}
           />
-        )}
-        {!hasInput && hasScreenshot && (
-          <div style={{
-            marginTop: 14, paddingTop: 14, borderTop: `1.5px dashed ${p.ink}24`,
-          }}>
-            <Eyebrow p={p} en="The crew" color={p.inkMute}/>
-            <div style={{
-              marginTop: 8, padding: '10px 12px',
-              border: `1.5px dashed ${p.ink}30`, background: p.paper,
-              display: 'flex', alignItems: 'center', gap: 10,
-            }}>
-              <span style={{
-                width: 7, height: 7, borderRadius: 999, background: p.stamp,
-                animation: 'pulseDot 1.1s ease-in-out infinite', flexShrink: 0,
-              }}/>
-              <span style={{
-                fontFamily: PAPER_FONTS.mono, fontSize: 12, color: p.inkSoft, lineHeight: 1.4,
-              }}>Crew picked once Jugaadu reads the image.</span>
-            </div>
-          </div>
         )}
 
         <div style={{
@@ -798,7 +812,7 @@ function Shimmer({ p, width = 100, height = 12 }) {
 
 /* ─────────────────────── crew checklist (idle / pre-Go) ─────────────────────── */
 
-function AgentChecklistV3({ p, agents, isSelected, toggleAgent, agentDisabled, isLocked, haveEmail, autoEnabledNote }) {
+function AgentChecklistV3({ p, agents, isSelected, toggleAgent, agentDisabled, isLocked, haveEmail, autoEnabledNote, footnote }) {
   return (
     <div style={{
       marginTop: 14, paddingTop: 14, borderTop: `1.5px dashed ${p.ink}24`,
@@ -878,6 +892,12 @@ function AgentChecklistV3({ p, agents, isSelected, toggleAgent, agentDisabled, i
           marginTop: 8, fontFamily: PAPER_FONTS.mono, fontSize: 11,
           color: p.leaf, letterSpacing: '.02em', transition: 'opacity .3s',
         }}>→ {autoEnabledNote}</div>
+      )}
+      {footnote && (
+        <div style={{
+          marginTop: 8, fontFamily: PAPER_FONTS.mono, fontSize: 11,
+          color: p.inkMute, letterSpacing: '.02em',
+        }}>{footnote}</div>
       )}
     </div>
   );
