@@ -25,7 +25,17 @@ if (!existsSync(join(dir, "SKILL.md"))) {
   process.exit(1);
 }
 
-const top = basename(dir.replace(/[/\\]+$/, ""));
+// The API requires the uploaded directory name to match the `name:` declared in
+// SKILL.md's frontmatter — derive it from there so this doesn't depend on what
+// the local folder happens to be called. Fall back to the folder name.
+const skillMd = readFileSync(join(dir, "SKILL.md"), "utf8");
+const frontmatter = skillMd.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/);
+const nameMatch = frontmatter?.[1].match(/^\s*name:\s*(.+?)\s*$/m);
+const top = nameMatch
+  ? nameMatch[1].replace(/^["']|["']$/g, "").trim()
+  : basename(dir.replace(/[/\\]+$/, ""));
+console.log(`Uploading skill directory "${top}" from ${dir} ...`);
+
 const SKIP = new Set([".git", "node_modules", ".DS_Store"]);
 
 function walk(d) {
