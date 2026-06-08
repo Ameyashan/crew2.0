@@ -51,6 +51,11 @@ export type Run = {
   // Frozen at startRun() time; the progress row filters to these. Phase 1 is
   // display-only — the backend still runs every agent.
   selectedAgents?: string[];
+  // Job runs born from a "we're hiring" screenshot: the person who posted the
+  // opening, read off the image by the vision pass. Forwarded to the job
+  // pipeline so the hiring-manager search starts from (and falls back to) the
+  // poster — the most reachable known contact — instead of dead-ending.
+  poster?: { name: string; role?: string | null; company?: string | null; linkedin?: string | null } | null;
 };
 
 /* ─────────────────────── module store ─────────────────────── */
@@ -207,12 +212,26 @@ export function startImageRun(
       const mergedIntent = run.intent || (data.intent ? String(data.intent) : undefined);
       const parsed = kind === "job" ? inferJobV3(resolvedInput) : inferPersonV3(resolvedInput);
 
+      // A "we're hiring" screenshot usually names whoever posted it. On the job
+      // flow that person is dropped today; carry them through so the
+      // hiring-manager search can start from (and fall back to) them.
+      const poster =
+        kind === "job" && typeof data.person_name === "string" && data.person_name.trim()
+          ? {
+              name: data.person_name.trim(),
+              role: typeof data.role === "string" ? data.role : null,
+              company: typeof data.company === "string" ? data.company : null,
+              linkedin: null,
+            }
+          : null;
+
       patch(id, () => ({
         kind,
         input: resolvedInput,
         intent: mergedIntent,
         parsed,
         candidates: kind === "person" ? parsed.candidates : null,
+        poster,
         screenshotId: typeof data.screenshot_id === "string" ? data.screenshot_id : null,
         stage: "working",
       }));
@@ -666,6 +685,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           job_url: jobUrl,
           intent: run.intent || undefined,
           agents: run.selectedAgents || undefined,
+          poster: run.poster || undefined,
         }),
         signal,
       });

@@ -55,6 +55,20 @@ export async function POST(req: NextRequest) {
       }
     : null;
 
+  // The person who posted the opening, read off a "we're hiring" screenshot by
+  // the vision pass. They're the most reachable known contact, so we seed the
+  // hiring-manager sourcing with them and fall back to them if the web search
+  // turns up nobody — that's how you'd start by hand: research the poster first.
+  const poster =
+    body?.poster && (body.poster.name ?? "").toString().trim()
+      ? {
+          name: body.poster.name.toString().trim(),
+          role: body.poster.role ? body.poster.role.toString() : null,
+          company: body.poster.company ? body.poster.company.toString() : null,
+          linkedin: body.poster.linkedin ? body.poster.linkedin.toString() : null,
+        }
+      : null;
+
   if (!job_url) {
     return Response.json({ error: "job_url is required" }, { status: 400 });
   }
@@ -265,12 +279,16 @@ export async function POST(req: NextRequest) {
           if (!meta?.company) meta = await resumeMetaReady;
 
           const role = meta?.role ?? null;
-          const company = meta?.company ?? null;
+          // Fall back to the poster's company when the posting itself couldn't
+          // be read (login-walled board, unreadable lnkd.in link) — the poster
+          // is still a real lead we can research and email.
+          const company = meta?.company ?? poster?.company ?? null;
           const team = meta?.team ?? null;
 
-          if (!company) {
-            // No company from either source — honest dead-end for the people
-            // steps (the resume branch reports its own status separately).
+          if (!company && !poster) {
+            // No company from any source AND no poster to fall back on — honest
+            // dead-end for the people steps (the resume branch reports its own
+            // status separately).
             send({
               type: "step",
               id: "person",
@@ -285,14 +303,38 @@ export async function POST(req: NextRequest) {
           const composeIntent = intent || [role, company].filter(Boolean).join(" at ");
 
           // Source a ranked shortlist of likely hiring managers by searching
-          // "[team] [role] [company]" (the way a candidate would).
+          // "[team] [role] [company]" (the way a candidate would), seeded with
+          // the poster of the opening when we have one.
           let candidates: Awaited<ReturnType<typeof sourceHiringManagers>>["candidates"] = [];
           try {
-            const sourced = await sourceHiringManagers({ role, company, team });
+            const sourced = await sourceHiringManagers({
+              role,
+              company: company ?? poster?.company ?? "",
+              team,
+              poster,
+            });
             candidates = sourced.candidates ?? [];
           } catch (e) {
             console.error("[apply] sourceHiringManagers failed", e);
           }
+
+          // Guarantee the poster is reachable even if sourcing flat-out failed
+          // (network error, empty result) — sourceHiringManagers already folds
+          // them in on a successful call, but a thrown error skips that path.
+          if (poster && !candidates.some((c) => c.name?.trim().toLowerCase() === poster.name.toLowerCase())) {
+            candidates = [
+              {
+                name: poster.name,
+                role: poster.role ?? null,
+                company: poster.company ?? company ?? null,
+                location: null,
+                linkedin: poster.linkedin ?? null,
+                why: "posted this opening — start here",
+              },
+              ...candidates,
+            ];
+          }
+
           send({ type: "candidates", data: candidates });
           collectedCandidates = candidates;
 

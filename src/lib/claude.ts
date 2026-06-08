@@ -7,6 +7,11 @@ import {
   describeViolations,
   type AntiAiViolation,
 } from "@/lib/writing/anti-ai";
+import {
+  SOURCE_HM_SYSTEM,
+  buildSourceHmUserPrompt,
+  type SourceHmPromptInput,
+} from "@/lib/agents/hiring-manager/playbook";
 
 const MODEL = "claude-sonnet-4-6";
 
@@ -664,53 +669,18 @@ export async function parseJobMeta(job_url: string): Promise<JobMeta> {
 // right person to reach out to. Mirrors how a candidate searches LinkedIn by
 // "[team] [role] [company]". Reuses the IdentifyCandidate/IdentifyResult shape.
 
-export interface SourceHiringManagersInput {
-  role?: string | null;
-  company: string;
-  team?: string | null;
-  location?: string | null;
-}
-
-const SOURCE_HM_SYSTEM = `You are a sourcing researcher. Given a job's role, company, and (optionally) the team it sits in, return a SHORT ranked list of the real people most likely to be the HIRING MANAGER for that role — or, failing that, the most relevant person to cold-email about it. The user will pick one before we draft outreach.
-
-Search strategy (this is how a candidate would do it by hand):
-1. Primary query: "[team] [role] [company]" — e.g. "Research Product Manager Thinking Machines Lab". Also run it as "site:linkedin.com/in [team] [role] [company]".
-2. The hiring manager usually MANAGES this role, so also search for the team's leader: "[company] head of [team]", "[company] [team] lead/director/VP", and "site:linkedin.com/in [company] [team] manager".
-3. If no team is given, fall back to "[role] [company]" and "[company] hiring manager [role]".
-4. Check the company's team/about/leadership pages when LinkedIn is thin.
-
-Ranking:
-- Rank by likelihood of being the person who hires/manages this role (team leads, EMs, directors, founders at small companies) first, then close-adjacent senior people on the same team.
-- Prefer people whose current company clearly matches the company named below.
-
-Rules:
-- NEVER fabricate. Only return people you actually found evidence for. If you find nobody plausible, return an empty list.
-- Fill role, company, location, and the linkedin URL whenever you can find them.
-- "why" is one short line tying them to this role/team ("Head of Research at Thinking Machines — likely manager for this PM role"). Keep it factual.
-
-Output strict JSON only, no prose:
-{
-  "candidates": [
-    { "name": string, "role": string|null, "company": string|null, "location": string|null, "linkedin": string|null, "why": string|null }
-  ]
-}`;
+// Inputs mirror the playbook's prompt shape. The strategy/heuristics this agent
+// follows live in the editable playbook (agents/hiring-manager/playbook.ts);
+// this function owns only the orchestration — the API call, parsing, and the
+// deterministic poster guardrail below.
+export type SourceHiringManagersInput = SourceHmPromptInput;
 
 export async function sourceHiringManagers(
   input: SourceHiringManagersInput
 ): Promise<IdentifyResult> {
   const started = Date.now();
-  const teamRolePhrase = [input.team, input.role].filter(Boolean).join(" ");
-  const userPrompt = [
-    `Company: ${input.company}`,
-    input.role && `Role: ${input.role}`,
-    input.team
-      ? `Team / org: ${input.team}`
-      : `Team / org: (not stated in the posting — fall back to "[role] [company]")`,
-    input.location && `Location: ${input.location}`,
-    `Primary search to run first: "${[teamRolePhrase, input.company].filter(Boolean).join(" ")}"`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const poster = input.poster?.name?.trim() ? input.poster : null;
+  const userPrompt = buildSourceHmUserPrompt(input);
 
   let text = "";
   let inTokens = 0;
@@ -750,7 +720,7 @@ export async function sourceHiringManagers(
       latency_ms: Date.now() - started,
       outcome,
       error: err,
-      meta: { company: input.company, role: input.role, team: input.team },
+      meta: { company: input.company, role: input.role, team: input.team, poster: poster?.name ?? null },
     });
   }
 
@@ -761,10 +731,32 @@ export async function sourceHiringManagers(
   } catch {
     parsed = {};
   }
-  return {
-    candidates: Array.isArray(parsed.candidates) ? parsed.candidates.slice(0, 5) : [],
-    raw: text,
-  };
+  let candidates = Array.isArray(parsed.candidates) ? parsed.candidates.slice(0, 5) : [];
+
+  // Belt-and-braces: the poster raised their hand in public, so they're the one
+  // contact we can always reach. If the model dropped them (or returned nothing
+  // at all), fold them back in so the job flow never dead-ends when we had a
+  // name in hand. Match loosely on name to avoid a duplicate row.
+  if (poster) {
+    const already = candidates.some(
+      (c) => c.name?.trim().toLowerCase() === poster.name.trim().toLowerCase()
+    );
+    if (!already) {
+      candidates = [
+        {
+          name: poster.name,
+          role: poster.role ?? null,
+          company: poster.company ?? input.company ?? null,
+          location: null,
+          linkedin: poster.linkedin ?? null,
+          why: "posted this opening — start here",
+        },
+        ...candidates,
+      ].slice(0, 5);
+    }
+  }
+
+  return { candidates, raw: text };
 }
 
 // ---------- DRAFT ----------
