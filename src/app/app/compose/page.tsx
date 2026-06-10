@@ -1052,7 +1052,7 @@ const ANGLE_PRESETS = [
 // rewrite presets. Selecting one calls regenerateDraft, which swaps the new copy
 // into the run's drafts so the card re-renders. Reads its busy/error state from
 // the live run so a rewrite kicked off here shows progress anywhere it's mounted.
-function AnotherAngle({ p, runId, channel, subject, body, recipientName, style }) {
+function AnotherAngle({ p, runId, channel, subject, body, recipientName, style, slot }) {
   const [open, setOpen] = useState(false);
   const runs = useRuns();
   const run = runs.find((r) => r.id === runId);
@@ -1079,7 +1079,7 @@ function AnotherAngle({ p, runId, channel, subject, body, recipientName, style }
             {ANGLE_PRESETS.map((preset, i) => (
               <button key={preset.id} onClick={() => {
                 setOpen(false);
-                regenerateDraft(runId, channel, preset.directive, { subject, body, recipientName });
+                regenerateDraft(runId, channel, preset.directive, { subject, body, recipientName }, slot);
               }} style={{
                 display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer',
                 padding: '8px 12px', background: 'transparent', color: p.ink,
@@ -1462,6 +1462,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
   const [notes, setNotes] = useState('');
   const [downloading, setDownloading] = useState(null); // 'pdf' | 'docx' | null
   const [dlError, setDlError] = useState(null);
+  const [activeKey, setActiveKey] = useState('poster'); // dual-contact toggle: 'poster' | 'hiring_manager'
   const isMobile = useIsMobile();
   const regenerating = !!run?.regenerating;
 
@@ -1487,26 +1488,46 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
   const resume = parsed?.resume;
   const changes = Array.isArray(resume?.changes) ? resume.changes : [];
 
+  // Dual-contact (screenshot) runs hold a poster + hiring-manager contact, each
+  // with its own research / email / drafts; legacy runs carry a single contact in
+  // the person/enrichment/drafts props. Build the slot list and pick the active.
+  const contacts = run?.contacts || null;
+  const hasDual = !!(contacts && (contacts.poster || contacts.hiring_manager));
+  const slots = [];
+  if (contacts?.poster) slots.push({ key: 'poster', label: 'Posted by', c: contacts.poster });
+  if (contacts?.hiring_manager && !contacts.hiring_manager.sameAsPoster) {
+    slots.push({ key: 'hiring_manager', label: 'Hiring manager', c: contacts.hiring_manager });
+  }
+  const activeSlot = slots.find((s) => s.key === activeKey) || slots[0] || null;
+  const posterIsHM = !!contacts?.hiring_manager?.sameAsPoster;
+  const effPerson     = hasDual ? (activeSlot?.c?.person ?? null)     : person;
+  const effEnrichment = hasDual ? (activeSlot?.c?.enrichment ?? null) : enrichment;
+  const effDrafts     = hasDual ? (activeSlot?.c?.drafts ?? null)     : drafts;
+
   // Real outreach draft + best-available email via the shared builder.
   const { to: emailTo, subject: emailSubject, body: emailBody } =
-    buildEmailDraft({ drafts, enrichment });
+    buildEmailDraft({ drafts: effDrafts, enrichment: effEnrichment });
   // Discovered/guessed addresses ranked into confidence tiers (high=verified,
   // medium=plausible, low=pure guess). The first is the primary recipient.
-  const emailCandidates = buildEmailCandidates(enrichment);
+  const emailCandidates = buildEmailCandidates(effEnrichment);
   const emailPrimary = emailCandidates[0] || null;
   const emailOthers = emailCandidates.slice(1);
 
-  const personName = person?.name || null;
-  const personRole = person?.role || null;
-  const personCompany = person?.company || jobCompany || null;
-  const personFacts = (person?.context_lines || []).filter(Boolean);
-  const personLinks = person?.links || {};
+  const personName = effPerson?.name || null;
+  const personRole = effPerson?.role || null;
+  const personCompany = effPerson?.company || jobCompany || null;
+  const personFacts = (effPerson?.context_lines || []).filter(Boolean);
+  const personLinks = effPerson?.links || {};
   const initials = personName
     ? personName.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
     : '?';
-  const matchLabel = person?.match_confidence ? `${person.match_confidence} match` : null;
+  const matchLabel = effPerson?.match_confidence ? `${effPerson.match_confidence} match` : null;
   const candidates = Array.isArray(run?.candidates) ? run.candidates : [];
-  const searched = person?.searched || null;
+  const searched = effPerson?.searched || null;
+  // The person card's eyebrow names which contact is showing.
+  const personEyebrow = hasDual
+    ? `${activeSlot?.label || 'Contact'}${matchLabel ? ` · ${matchLabel}` : ''}`
+    : (matchLabel ? `Hiring manager · ${matchLabel}` : 'Hiring manager');
 
   return (
     <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1.2fr 1fr', gap: 12 }}>
@@ -1691,7 +1712,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
       {/* email draft */}
       <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
         <div style={{ marginBottom: 8 }}>
-          <Eyebrow p={p} en="Cold email · drafted" color={p.tea}/>
+          <Eyebrow p={p} en={hasDual && activeSlot ? `Cold email · ${activeSlot.label}` : 'Cold email · drafted'} color={p.tea}/>
         </div>
         <div style={{
           background: p.paper, border: `1.5px solid ${p.ink}30`,
@@ -1723,13 +1744,37 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
             openGmailCompose({ to: emailTo, subject: emailSubject, body: emailBody });
           }}>Open in Gmail →</InkButton>
           <AnotherAngle p={p} runId={run?.id} channel="email" style={{ flex: 1 }}
-            subject={emailSubject} body={emailBody} recipientName={personName}/>
+            subject={emailSubject} body={emailBody} recipientName={personName}
+            slot={hasDual ? activeSlot?.key : undefined}/>
         </div>
       </PaperCard>
 
-      {/* person */}
+      {/* person — for a screenshot run this toggles between the poster and the
+          most-probable hiring manager; the email card above follows the toggle. */}
       <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
-        <Eyebrow p={p} en={matchLabel ? `Hiring manager · ${matchLabel}` : 'Hiring manager'} color={p.leaf}/>
+        <Eyebrow p={p} en={personEyebrow} color={p.leaf}/>
+        {slots.length >= 2 && (
+          <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
+            {slots.map((s) => {
+              const on = activeSlot?.key === s.key;
+              return (
+                <button key={s.key} onClick={() => setActiveKey(s.key)} style={{
+                  flex: 1, padding: '7px 8px', cursor: 'pointer',
+                  background: on ? p.ink : 'transparent', color: on ? p.paper : p.inkSoft,
+                  border: `1.5px solid ${on ? p.ink : p.ink + '30'}`,
+                  fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.04em',
+                  textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>{s.label}{s.c?.person?.name ? ` · ${s.c.person.name.split(/\s+/)[0]}` : ''}</button>
+              );
+            })}
+          </div>
+        )}
+        {posterIsHM && (
+          <div style={{
+            marginTop: 8, fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
+            fontSize: 11.5, color: p.inkMute, lineHeight: 1.4,
+          }}>The person who posted this role is also the hiring manager.</div>
+        )}
         {personName ? (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
@@ -1800,8 +1845,9 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
           </div>
         )}
 
-        {/* shortlist → re-pick the contact the cold email is drafted to */}
-        {candidates.length > (personName ? 1 : 0) && (
+        {/* shortlist → re-pick the hiring manager the cold email is drafted to.
+            Only on the hiring-manager slot (the poster is fixed). */}
+        {(!hasDual || activeKey === 'hiring_manager') && candidates.length > (personName ? 1 : 0) && (
           <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1.5px dashed ${p.ink}24` }}>
             <button onClick={() => setPicking(!picking)} style={{
               background: 'transparent', border: 'none', color: p.inkSoft, padding: 0,

@@ -7,6 +7,15 @@ import { useSyncExternalStore } from "react";
 
 export type RunStage = "parsing" | "working" | "done" | "error";
 
+// One contact in a dual-contact (screenshot) job run — the poster or the hiring
+// manager — with its own research, email enrichment, and channel drafts.
+export type ContactData = {
+  person: unknown;
+  enrichment: unknown;
+  drafts: unknown[];
+  sameAsPoster?: boolean;
+};
+
 export type Run = {
   id: string;
   input: string;
@@ -44,10 +53,22 @@ export type Run = {
   imageFile?: File | null;
   screenshot?: { name: string; size: string } | null;
   screenshotId?: string | null;
-  // The person named in a screenshot the vision pass classified as a job (the
-  // poster/recruiter of a "we're hiring" post). The job flow reaches out to them
-  // directly instead of sourcing a hiring manager from scratch.
+  // Screenshot-driven job run context. `fromScreenshot` switches the job path
+  // into dual-contact mode; the rest is forwarded to /api/compose/apply so it can
+  // resolve the real opening, tailor the résumé, and reach BOTH the poster
+  // (the person who announced the role) and the sourced hiring manager.
+  fromScreenshot?: boolean;
+  screenshotJobUrl?: string | null;
   screenshotPersonName?: string | null;
+  screenshotRole?: string | null;
+  screenshotCompany?: string | null;
+  // Dual-contact results: each slot holds its own research + email + drafts. The
+  // package card toggles between them. `sameAsPoster` marks a hiring-manager slot
+  // that collapsed into the poster (they're the same person).
+  contacts?: {
+    poster?: ContactData | null;
+    hiring_manager?: ContactData | null;
+  } | null;
   // The compose_runs row id reported back by the server once the stream starts.
   // Used by the history page to dedupe and to hydrate the right run.
   composeRunId?: string | null;
@@ -201,15 +222,30 @@ export function startImageRun(
       }
       if (!runs.some((r) => r.id === id)) return; // dismissed while classifying
 
-      // A job posting only takes the (resume-tailoring) job flow when we have a
-      // real http(s) URL to fetch. Otherwise route through the person flow and
-      // search for whoever is posting / the right contact.
       const hasJobUrl =
         typeof data.job_url === "string" && /^https?:\/\//i.test(data.job_url);
-      const kind: "person" | "job" = data.kind === "job" && hasJobUrl ? "job" : "person";
-      const resolvedInput = kind === "job" ? data.job_url : (data.query || typed || run.input);
+      const personName =
+        typeof data.person_name === "string" && data.person_name.trim()
+          ? data.person_name.trim()
+          : null;
+      const detRole = typeof data.role === "string" && data.role.trim() ? data.role.trim() : null;
+      const detCompany = typeof data.company === "string" && data.company.trim() ? data.company.trim() : null;
+
+      // A hiring-post screenshot runs the JOB flow (résumé + poster + hiring
+      // manager) whenever there's something to act on — a URL, a role+company, or
+      // a named poster. The server resolves the real opening when the screenshot
+      // link can't be fetched. Everything else (a profile, a tweet) runs person.
+      const canJob = data.kind === "job" && (hasJobUrl || (!!detRole && !!detCompany) || !!personName);
+      const kind: "person" | "job" = canJob ? "job" : "person";
+      const resolvedInput =
+        kind === "job"
+          ? (hasJobUrl ? data.job_url : ([detRole, detCompany].filter(Boolean).join(" at ") || personName || typed || run.input))
+          : (data.query || typed || run.input);
       const mergedIntent = run.intent || (data.intent ? String(data.intent) : undefined);
-      const parsed = kind === "job" ? inferJobV3(resolvedInput) : inferPersonV3(resolvedInput);
+      const parsed =
+        kind === "job"
+          ? { ...inferJobV3(hasJobUrl ? data.job_url : (detCompany || "")), role: detRole || undefined, company: detCompany || undefined }
+          : inferPersonV3(resolvedInput);
 
       patch(id, () => ({
         kind,
@@ -218,13 +254,14 @@ export function startImageRun(
         parsed,
         candidates: kind === "person" ? parsed.candidates : null,
         screenshotId: typeof data.screenshot_id === "string" ? data.screenshot_id : null,
-        // Carry the poster's name into the job flow so it can reach out to them
-        // rather than re-sourcing a hiring manager. (Person runs already search
-        // for this name via resolvedInput, so it only matters on the job path.)
-        screenshotPersonName:
-          typeof data.person_name === "string" && data.person_name.trim()
-            ? data.person_name.trim()
-            : null,
+        // Screenshot-job context forwarded to /api/compose/apply so it can find
+        // the real opening, tailor the résumé, and reach out to BOTH the poster
+        // and the hiring manager.
+        fromScreenshot: kind === "job",
+        screenshotJobUrl: kind === "job" ? (hasJobUrl ? data.job_url : null) : null,
+        screenshotPersonName: personName,
+        screenshotRole: detRole,
+        screenshotCompany: detCompany,
         stage: "working",
       }));
       launch(id);
@@ -293,6 +330,7 @@ export type PersistedComposeRun = {
     enrichment?: unknown;
     candidates?: unknown[] | null;
     drafts?: unknown[];
+    contacts?: { poster?: ContactData | null; hiring_manager?: ContactData | null } | null;
   } | null;
   screenshot?: { name: string; size: string } | null;
 };
@@ -327,6 +365,7 @@ export function hydrateRun(persisted: PersistedComposeRun): string {
     enrichment: out.enrichment ?? null,
     person: out.person ?? null,
     candidates: Array.isArray(out.candidates) ? out.candidates : null,
+    contacts: out.contacts ?? null,
     error: persisted.error,
     createdAt: new Date(persisted.created_at).getTime(),
     screenshot: persisted.screenshot ?? null,
@@ -355,20 +394,44 @@ export async function pickCandidate(
   };
   if (!picked.name) return;
 
-  const jobUrl = run.input.match(/^https?:\/\//) ? run.input : `https://${run.input}`;
+  // On a dual-contact (screenshot) run the re-pick updates the hiring-manager
+  // slot; otherwise it replaces the single legacy contact.
+  const dual = !!run.contacts;
+  const jobUrl = run.fromScreenshot
+    ? (run.screenshotJobUrl || "")
+    : (run.input.match(/^https?:\/\//) ? run.input : `https://${run.input}`);
+  const newPerson = (prev: unknown) => ({
+    ...((prev as object) || {}),
+    name: picked.name,
+    role: picked.role,
+    company: picked.company,
+    links: picked.linkedin ? { linkedin: picked.linkedin } : ((prev as { links?: unknown })?.links || {}),
+    context_lines: [],
+  });
+  const patchPicked = (partial: { person?: unknown; enrichment?: unknown; drafts?: unknown[] }) =>
+    patch(id, (r) => {
+      if (dual) {
+        const contacts = { ...(r.contacts || {}) } as Record<string, ContactData>;
+        const cur = contacts.hiring_manager || { person: null, enrichment: null, drafts: [] };
+        contacts.hiring_manager = {
+          ...cur,
+          sameAsPoster: false,
+          person: partial.person !== undefined ? partial.person : cur.person,
+          enrichment: partial.enrichment !== undefined ? partial.enrichment : cur.enrichment,
+          drafts: partial.drafts ?? cur.drafts,
+        };
+        return { contacts };
+      }
+      return {
+        ...(partial.person !== undefined ? { person: partial.person } : {}),
+        ...(partial.enrichment !== undefined ? { enrichment: partial.enrichment } : {}),
+        ...(partial.drafts ? { drafts: partial.drafts } : {}),
+      };
+    });
 
   // Reflect the click immediately, then light the email/outreach bars.
-  patch(id, (r) => ({
-    person: {
-      ...((r.person as object) || {}),
-      name: picked.name,
-      role: picked.role,
-      company: picked.company,
-      links: picked.linkedin ? { linkedin: picked.linkedin } : (r.person?.links || {}),
-      context_lines: [],
-    },
-    progress: { ...r.progress, person: 100, email: 10, outreach: 10 },
-  }));
+  patchPicked({ person: newPerson(dual ? run.contacts?.hiring_manager?.person : run.person) });
+  patch(id, (r) => ({ progress: { ...r.progress, person: 100, email: 10, outreach: 10 } }));
 
   controllers.get(id)?.abort();
   const controller = new AbortController();
@@ -385,6 +448,10 @@ export async function pickCandidate(
         // Keep the cold email anchored on the job, not the picked person's own
         // company, when we re-draft for a different candidate.
         job_context: { role: run.parsed?.role ?? null, company: run.parsed?.company ?? null },
+        // So the re-pick passes server validation even when the screenshot had no
+        // fetchable URL (the picked branch short-circuits before using these).
+        detected_role: run.screenshotRole || undefined,
+        detected_company: run.screenshotCompany || undefined,
       }),
       signal: controller.signal,
     });
@@ -423,12 +490,12 @@ export async function pickCandidate(
         }
       }
     }
-    patch(id, (r) => ({
-      drafts: collectedDrafts.length ? collectedDrafts : r.drafts,
-      enrichment: collectedEnrichment || r.enrichment,
-      person: collectedPerson || r.person,
-      progress: { ...r.progress, person: 100, email: 100, outreach: 100 },
-    }));
+    patchPicked({
+      person: collectedPerson || undefined,
+      enrichment: collectedEnrichment || undefined,
+      drafts: collectedDrafts.length ? collectedDrafts : undefined,
+    });
+    patch(id, (r) => ({ progress: { ...r.progress, person: 100, email: 100, outreach: 100 } }));
   } catch (e) {
     if (controller.signal.aborted) return; // dismissed/cleared
     // Keep the existing package; just restore the bars and log.
@@ -520,6 +587,9 @@ export async function regenerateDraft(
   channel: string, // UI channel: 'email' | 'linkedin' | 'x'
   directive: string,
   current: { subject?: string | null; body?: string | null; recipientName?: string | null },
+  // On a dual-contact run, which contact's draft to rewrite ('poster' |
+  // 'hiring_manager'). Undefined → the legacy single draft list.
+  slot?: string,
 ) {
   const run = runs.find((r) => r.id === id);
   if (!run) return;
@@ -544,6 +614,17 @@ export async function regenerateDraft(
     if (!res.ok) throw new Error(`redraft failed: ${res.status}`);
     const data = await res.json();
     if (data?.error) throw new Error(data.error);
+    const next = { subject: data.subject ?? current?.subject ?? null, body: data.body };
+    if (slot) {
+      // Dual-contact run — swap the rewrite into the active contact's drafts.
+      patch(id, (r) => {
+        const contacts = { ...(r.contacts || {}) } as Record<string, ContactData>;
+        const cur = contacts[slot] || { person: null, enrichment: null, drafts: [] };
+        contacts[slot] = { ...cur, drafts: upsertDraft(cur.drafts, channel, next) };
+        return { contacts, redrafting: null, redraftError: null };
+      });
+      return;
+    }
     patch(id, (r) => ({
       drafts: upsertDraft(r.drafts, channel, {
         subject: data.subject ?? current?.subject ?? null,
@@ -666,20 +747,40 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
       let collectedPerson: unknown = null;
       let collectedCandidates: unknown[] | null = null;
       let bundle = { ats_score: null, ats_score_before: null, target_role: null, target_company: null, team: null, resume: null };
-      const jobUrl = run.input.match(/^https?:\/\//)
-        ? run.input
-        : `https://${run.input}`;
+      // A screenshot run carries its real URL in screenshotJobUrl (may be null —
+      // the server then searches for the opening). A typed run uses run.input.
+      const jobUrl = run.fromScreenshot
+        ? (run.screenshotJobUrl || "")
+        : (run.input.match(/^https?:\/\//) ? run.input : `https://${run.input}`);
+
+      // Patch one contact slot ("poster" | "hiring_manager") on a dual-contact run.
+      const patchContact = (slot: string, partial: Partial<ContactData>) =>
+        patch(id, (r) => {
+          const contacts = { ...(r.contacts || {}) } as Record<string, ContactData>;
+          const cur = contacts[slot] || { person: null, enrichment: null, drafts: [] };
+          contacts[slot] = { ...cur, ...partial };
+          return { contacts };
+        });
+      const pushContactDraft = (slot: string, d: unknown) =>
+        patch(id, (r) => {
+          const contacts = { ...(r.contacts || {}) } as Record<string, ContactData>;
+          const cur = contacts[slot] || { person: null, enrichment: null, drafts: [] };
+          contacts[slot] = { ...cur, drafts: [...(cur.drafts || []), d] };
+          return { contacts };
+        });
 
       const res = await fetch("/api/compose/apply", {
         method: "POST",
         headers: { "content-type": "application/json", accept: "text/event-stream" },
         body: JSON.stringify({
-          job_url: jobUrl,
+          job_url: jobUrl || undefined,
           intent: run.intent || undefined,
           agents: run.selectedAgents || undefined,
-          // When this job run came from a screenshot that named its poster, the
-          // server reaches out to them instead of sourcing a hiring manager.
+          // Screenshot-job context: lets the server resolve the real opening and
+          // reach out to both the poster and the hiring manager.
           person_name: run.screenshotPersonName || undefined,
+          detected_role: run.screenshotRole || undefined,
+          detected_company: run.screenshotCompany || undefined,
         }),
         signal,
       });
@@ -708,20 +809,30 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           }
           if (evt.type === "step") {
             const k = evt.id; // resume | person | email | outreach
-            if (evt.status === "start") patch(id, (r) => ({ progress: { ...r.progress, [k]: 10 } }));
+            if (evt.status === "start") patch(id, (r) => ({ progress: { ...r.progress, [k]: Math.max(r.progress?.[k] || 0, 10) } }));
             else if (evt.status === "done" || evt.status === "skipped")
               patch(id, (r) => ({ progress: { ...r.progress, [k]: 100 } }));
-            if (k === "resume" && evt.status === "done" && evt.data) {
-              bundle = { ...bundle, ...evt.data };
-            }
-            if (k === "person" && evt.status === "done" && evt.data) collectedPerson = evt.data;
-            if (k === "email" && evt.data) collectedEnrichment = evt.data;
-            if (k === "outreach" && evt.status === "done" && evt.data) {
-              collectedDrafts.push(evt.data);
+            if (evt.slot) {
+              // Dual-contact run: route person/email/outreach into the slot.
+              if (k === "person" && evt.status === "done" && evt.data) patchContact(evt.slot, { person: evt.data });
+              if (k === "email" && evt.data) patchContact(evt.slot, { enrichment: evt.data });
+              if (k === "outreach" && evt.status === "done" && evt.data) pushContactDraft(evt.slot, evt.data);
+            } else {
+              if (k === "resume" && evt.status === "done" && evt.data) {
+                bundle = { ...bundle, ...evt.data };
+              }
+              if (k === "person" && evt.status === "done" && evt.data) collectedPerson = evt.data;
+              if (k === "email" && evt.data) collectedEnrichment = evt.data;
+              if (k === "outreach" && evt.status === "done" && evt.data) {
+                collectedDrafts.push(evt.data);
+              }
             }
           } else if (evt.type === "candidates") {
             collectedCandidates = Array.isArray(evt.data) ? evt.data : [];
             patch(id, () => ({ candidates: collectedCandidates }));
+          } else if (evt.type === "contact_meta") {
+            // The hiring manager collapsed into the poster (same person).
+            if (evt.slot && evt.data?.sameAsPoster) patchContact(evt.slot, { sameAsPoster: true });
           } else if (evt.type === "error") {
             throw new Error(evt.message || "apply error");
           }

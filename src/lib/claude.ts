@@ -1,6 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { logAgentRun } from "@/lib/agent-runs";
-import { authWalledJobHost } from "@/lib/job-url";
 import { loadVoiceSamples, type VoiceSample } from "@/lib/voice";
 import {
   antiAiWritingGuide,
@@ -408,13 +407,11 @@ export async function identifyFromImage(
   const kind: "job" | "person" = parsed.kind === "job" ? "job" : "person";
   const trimOrNull = (v: unknown) =>
     typeof v === "string" && v.trim() ? v.trim() : null;
-  // A login-walled / shortener URL (LinkedIn, lnkd.in, Indeed, Glassdoor) can't
-  // actually be fetched downstream, so don't hand it back as a job_url. Dropping
-  // it reroutes the run to the person flow — which is what the user wants when
-  // they screenshot a "we're hiring" post that names the poster (we reach out to
-  // that person) rather than chasing an unreadable job board.
-  const rawJobUrl = trimOrNull(parsed.job_url);
-  const job_url = rawJobUrl && !authWalledJobHost(rawJobUrl) ? rawJobUrl : null;
+  // Keep the URL as-is even when it's a LinkedIn/lnkd.in share — the job flow
+  // detects an unfetchable link server-side and searches for the real opening
+  // instead, so a "we're hiring" screenshot still tailors a résumé and surfaces
+  // both the poster and the hiring manager.
+  const job_url = trimOrNull(parsed.job_url);
   const company = trimOrNull(parsed.company);
   const role = trimOrNull(parsed.role);
   const person_name = trimOrNull(parsed.person_name);
@@ -662,6 +659,116 @@ export async function parseJobMeta(job_url: string): Promise<JobMeta> {
     role: parsed.role ?? null,
     company: parsed.company ?? null,
     team: parsed.team ?? null,
+  };
+}
+
+// ---------- FIND JOB OPENING ----------
+// When a screenshot names a role + company but the link can't be fetched (a
+// LinkedIn / lnkd.in share, or a screenshot with no visible URL), search the
+// open web for the company's actual posting. The URL it returns feeds the
+// résumé tailor and lets us read the team → hiring manager off a real JD.
+
+export interface FindJobOpeningInput {
+  role?: string | null;
+  company: string;
+}
+
+export interface FindJobOpeningResult {
+  job_url: string | null; // best public posting URL found, null if none
+  team: string | null; // team/department/org the role sits in, if legible
+  role: string | null; // the role as the posting names it
+}
+
+const FIND_JOB_OPENING_SYSTEM = `You locate the single most probable PUBLIC job posting for a given role at a given company, so it can be fetched and read later.
+
+Use the web_search tool. Strategy:
+1. Search "<company> careers <role>", then "<role> <company>" with site filters: site:greenhouse.io, site:lever.co, site:ashbyhq.com, site:jobs.<company-domain>, and the company's own careers/jobs page.
+2. Prefer, in order: the company's own careers page or its ATS (Greenhouse / Lever / Ashby / Workday) > a reputable aggregator. AVOID login-walled boards (LinkedIn, Indeed, Glassdoor) — their URLs can't be fetched.
+3. Pick the ONE opening that best matches the role title at THIS company. If several levels exist, prefer the closest title match.
+
+Also read, if visible: the team/department/org the role sits in, and the role title exactly as posted.
+
+Rules:
+- NEVER fabricate a URL. Only return a link you actually found in results. If nothing credible matches, return job_url: null.
+- The URL must be a real, public, fetchable posting — not a search results page and not a login-walled board.
+
+Output strict JSON only, no prose, no markdown fences:
+{ "job_url": string|null, "team": string|null, "role": string|null }`;
+
+export async function findJobOpening(
+  input: FindJobOpeningInput
+): Promise<FindJobOpeningResult> {
+  const blank: FindJobOpeningResult = { job_url: null, team: null, role: null };
+  if (!input.company?.trim()) return blank;
+
+  const started = Date.now();
+  const userPrompt = [
+    `Company: ${input.company}`,
+    input.role && `Role: ${input.role}`,
+    `Find the company's own public posting for this role.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 400,
+      system: FIND_JOB_OPENING_SYSTEM,
+      tools: [
+        {
+          type: "web_search_20250305",
+          name: "web_search",
+          max_uses: 4,
+        } as unknown as Anthropic.Messages.Tool,
+      ],
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") text += block.text;
+    }
+  } catch (e) {
+    // Best-effort: a failure here just means "no opening found" — the caller
+    // falls back to tailoring from the role/company brief.
+    outcome = "error";
+    err = String(e);
+  } finally {
+    await logAgentRun({
+      agent_type: "compose:find_job_opening",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { company: input.company, role: input.role ?? null },
+    });
+  }
+
+  if (outcome === "error") return blank;
+
+  let parsed: Partial<FindJobOpeningResult> = {};
+  try {
+    parsed = JSON.parse(extractJson(text)) as Partial<FindJobOpeningResult>;
+  } catch {
+    return blank;
+  }
+  const job_url =
+    typeof parsed.job_url === "string" && /^https?:\/\//i.test(parsed.job_url.trim())
+      ? parsed.job_url.trim()
+      : null;
+  return {
+    job_url,
+    team: typeof parsed.team === "string" && parsed.team.trim() ? parsed.team.trim() : null,
+    role: typeof parsed.role === "string" && parsed.role.trim() ? parsed.role.trim() : null,
   };
 }
 
