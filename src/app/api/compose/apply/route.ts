@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { runResumeTailorStream } from "@/lib/agents/resume-tailor";
 import { runReachOutStream } from "@/lib/agents/reach-out";
-import { sourceHiringManagers, parseJobMeta, type JobMeta } from "@/lib/claude";
+import { sourceHiringManagers, parseJobMeta, findJobOpening, type JobMeta } from "@/lib/claude";
 import { authWalledJobHost } from "@/lib/job-url";
 import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -25,6 +25,15 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const job_url = (body?.job_url ?? "").toString().trim();
   const intent = body?.intent ? body.intent.toString() : undefined;
+  // A screenshot-driven job run may name the person who posted the role (the
+  // recruiter / hiring manager who announced it). When present, we reach out to
+  // them directly instead of sourcing a hiring manager from scratch.
+  const posterName = body?.person_name ? body.person_name.toString().trim() : "";
+  // The role/company the vision pass read off the screenshot. Used to search for
+  // the real opening when the screenshot link can't be fetched, and as a fallback
+  // when the posting itself won't parse.
+  const detectedRole = body?.detected_role ? body.detected_role.toString().trim() : "";
+  const detectedCompany = body?.detected_company ? body.detected_company.toString().trim() : "";
 
   // Crew selector (Phase 2). Undefined → run the whole four-agent pipeline.
   // Resume Darzi is independent; the people pipeline (Person Khoji → Email
@@ -55,10 +64,14 @@ export async function POST(req: NextRequest) {
       }
     : null;
 
-  if (!job_url) {
+  // A screenshot-driven run can carry a named poster and/or a detected
+  // role+company instead of a usable URL — the server resolves the real opening
+  // from those. Outside that mode we still require a fetchable job_url.
+  const screenshotMode = !!posterName || !!(detectedRole && detectedCompany);
+  if (!job_url && !screenshotMode) {
     return Response.json({ error: "job_url is required" }, { status: 400 });
   }
-  if (!/^https?:\/\//i.test(job_url)) {
+  if (job_url && !/^https?:\/\//i.test(job_url)) {
     return Response.json({ error: "job_url must be http(s)" }, { status: 400 });
   }
 
@@ -72,7 +85,7 @@ export async function POST(req: NextRequest) {
       .insert({
         user_id: userId,
         kind: "job",
-        input: job_url,
+        input: job_url || [detectedRole, detectedCompany].filter(Boolean).join(" at ") || posterName,
         intent: intent ?? null,
         picked: picked ?? null,
         outcome: "in_flight",
@@ -110,6 +123,11 @@ export async function POST(req: NextRequest) {
       let collectedEnrichment: unknown = null;
       let collectedCandidates: unknown[] | null = null;
       let collectedTailored: TailoredResume | null = null;
+      // Dual-contact (screenshot) mode: the poster and the hiring manager, each
+      // with their own research + email + drafts. Persisted to compose_runs.output
+      // so /app/history can rebuild the toggle. Empty for legacy single-contact runs.
+      type Contact = { person: unknown; enrichment: unknown; drafts: unknown[]; personId: string | null; draftId: string | null; sameAsPoster?: boolean };
+      const collectedContacts: Record<string, Contact> = {};
       let runOutcome: "complete" | "error" | "needs_disambiguation" = "error";
       let runError: string | null = null;
 
@@ -150,6 +168,67 @@ export async function POST(req: NextRequest) {
         }
       };
 
+      // Dual-contact variant of pipeReachOut: run the reach-out pipeline for ONE
+      // slot ("poster" | "hiring_manager") and tag every step with that slot so
+      // the client can drive a poster⇄hiring-manager toggle. A failure in one
+      // slot becomes an honest dead-end for that slot only — it never takes the
+      // other contact (or the résumé) down with it.
+      const runContactSlot = async (
+        slot: "poster" | "hiring_manager",
+        reachInput: Parameters<typeof runReachOutStream>[0],
+      ) => {
+        const c: Contact = collectedContacts[slot] ?? {
+          person: null, enrichment: null, drafts: [], personId: null, draftId: null,
+        };
+        collectedContacts[slot] = c;
+        send({ type: "step", id: "person", slot, status: "start" });
+        try {
+          for await (const evt of runReachOutStream({
+            ...reachInput,
+            agents,
+            compose_run_id: composeRunId ?? undefined,
+          })) {
+            if (evt.type === "step" && evt.id === "research") {
+              send({ type: "step", id: "person", slot, status: evt.status, data: (evt as { data?: unknown }).data });
+              if (evt.status === "done") c.person = (evt as { data?: unknown }).data;
+            } else if (evt.type === "step" && evt.id === "email_lookup") {
+              send({ type: "step", id: "email", slot, status: evt.status, data: (evt as { data?: unknown }).data });
+              if ((evt as { data?: unknown }).data) c.enrichment = (evt as { data?: unknown }).data;
+            } else if (evt.type === "step" && evt.id === "person_saved") {
+              c.personId = evt.data.id;
+              send({ type: "person_saved", slot, data: evt.data });
+            } else if (evt.type === "step" && evt.id === "draft") {
+              send({ type: "step", id: "outreach", slot, status: evt.status, channel: evt.channel, data: (evt as { data?: unknown }).data });
+              if (evt.status === "done" && evt.data) {
+                if (!c.draftId) c.draftId = evt.data.id;
+                c.drafts.push(evt.data);
+              }
+            } else if (evt.type === "error") {
+              // One contact failed — mark its slot done-empty and keep going.
+              send({ type: "step", id: "person", slot, status: "done", data: { name: null, role: null, company: null, searched: null, candidates: [] } });
+              send({ type: "step", id: "email", slot, status: "done", data: { email: null, guesses: [] } });
+              send({ type: "step", id: "outreach", slot, status: "done", channel: "email", data: null });
+            }
+          }
+        } catch (e) {
+          console.error(`[apply] contact slot ${slot} failed`, e);
+          send({ type: "step", id: "outreach", slot, status: "done", channel: "email", data: null });
+        }
+      };
+
+      // Resolve a fetchable opening for a screenshot run: if the screenshot's link
+      // is unfetchable (LinkedIn/lnkd.in share) or missing, search the open web for
+      // the company's real posting so the résumé tailor + hiring-manager sourcing
+      // have a JD to work from.
+      const resolveOpening = async (): Promise<{ url: string | null; team: string | null }> => {
+        if (job_url && !authWalledJobHost(job_url)) return { url: job_url, team: null };
+        if (!detectedCompany) return { url: null, team: null };
+        const found = await findJobOpening({ role: detectedRole || null, company: detectedCompany }).catch(
+          (e) => { console.error("[apply] findJobOpening failed", e); return null; },
+        );
+        return { url: found?.job_url ?? null, team: found?.team ?? null };
+      };
+
       try {
         // ── Re-pick path: the user clicked a different candidate. Skip resume +
         // sourcing and just re-run email + draft for that person.
@@ -161,6 +240,161 @@ export async function POST(req: NextRequest) {
             picked,
             job_context: job_context ?? { role: picked.role, company: picked.company },
           });
+          runOutcome = "complete";
+          send({ type: "complete" });
+          return;
+        }
+
+        // ── Screenshot dual-contact flow: tailor the résumé against the real
+        // opening, and surface BOTH the person who posted the role and the
+        // most-probable hiring manager — each with their own email + drafts.
+        if (screenshotMode) {
+          const { url: openingUrl, team: openingTeam } = await resolveOpening();
+
+          // Branch A — résumé. Tailor against the resolved opening; if we never
+          // found a fetchable URL, fall back to a role/company brief. A résumé
+          // failure here is non-fatal (the contacts still ship).
+          const resumeTask = async (): Promise<TailoredResume | null> => {
+            if (!resumeEnabled) return null;
+            send({ type: "step", id: "resume", status: "start" });
+            const tailorInput = openingUrl
+              ? { job_url: openingUrl, page_count: 2 as const }
+              : {
+                  page_count: 2 as const,
+                  highlights: [
+                    detectedRole && `Target role: ${detectedRole}`,
+                    detectedCompany && `Company: ${detectedCompany}`,
+                    intent,
+                  ].filter(Boolean).join("\n"),
+                };
+            let resume: TailoredResume | null = null;
+            try {
+              for await (const evt of runResumeTailorStream(tailorInput)) {
+                if (evt.type === "step" && evt.id === "tailor" && evt.status === "done") resume = evt.data.resume;
+                if (evt.type === "saved") resumeGenerationId = evt.id;
+                if (evt.type === "error") {
+                  // Non-fatal: report the résumé step as errored but keep the run alive.
+                  send({ type: "step", id: "resume", status: "error", message: evt.message });
+                  return null;
+                }
+                if (evt.type === "progress") send({ type: "progress", id: "resume", chars: evt.chars, bullets: evt.bullets });
+              }
+            } catch (e) {
+              console.error("[apply] screenshot résumé failed", e);
+              send({ type: "step", id: "resume", status: "error", message: "Résumé tailoring failed." });
+              return null;
+            }
+            send({
+              type: "step", id: "resume", status: "done",
+              data: {
+                resume_generation_id: resumeGenerationId,
+                target_role: resume?.meta?.target_role,
+                target_company: resume?.meta?.target_company,
+                team: resume?.meta?.team ?? null,
+                ats_score: resume?.meta?.ats_score,
+                ats_score_before: resume?.meta?.ats_score_before,
+                resume,
+              },
+            });
+            return resume;
+          };
+
+          // Branch B — the two contacts.
+          const peopleTask = async () => {
+            if (!personEnabled) return;
+            const meta = openingUrl
+              ? await parseJobMeta(openingUrl).catch((e) => {
+                  console.error("[apply] parseJobMeta failed", e);
+                  return null as JobMeta | null;
+                })
+              : null;
+            const role = meta?.role ?? (detectedRole || null);
+            const company = meta?.company ?? (detectedCompany || null);
+            const team = meta?.team ?? openingTeam ?? null;
+            const composeIntent = intent || [role, company].filter(Boolean).join(" at ") || undefined;
+            const jc = { role, company };
+            const samePerson = (n?: string | null) =>
+              !!posterName && !!n && n.trim().toLowerCase() === posterName.trim().toLowerCase();
+
+            // Poster contact — the human who announced the role.
+            const posterTask = posterName
+              ? runContactSlot("poster", { text: posterName, intent: composeIntent, job_context: jc })
+              : Promise.resolve();
+
+            // Hiring-manager contact — sourced from role/company/team, skipping the
+            // poster (already covered) and collapsing when they're the same person.
+            const hmTask = (async () => {
+              let candidates: Awaited<ReturnType<typeof sourceHiringManagers>>["candidates"] = [];
+              if (company) {
+                try {
+                  candidates = (await sourceHiringManagers({ role, company, team })).candidates ?? [];
+                } catch (e) {
+                  console.error("[apply] sourceHiringManagers failed", e);
+                }
+              }
+              send({ type: "candidates", slot: "hiring_manager", data: candidates });
+              collectedCandidates = candidates;
+              const top = candidates.find((c) => c.name && !samePerson(c.name)) ?? null;
+              if (!top) {
+                if (candidates.some((c) => samePerson(c.name))) {
+                  // The poster IS the hiring manager — collapse to one contact.
+                  collectedContacts["hiring_manager"] = {
+                    person: null, enrichment: null, drafts: [], personId: null, draftId: null, sameAsPoster: true,
+                  };
+                  send({ type: "contact_meta", slot: "hiring_manager", data: { sameAsPoster: true } });
+                } else {
+                  const query = [team, role, company].filter(Boolean).join(" ");
+                  send({ type: "step", id: "person", slot: "hiring_manager", status: "done", data: { name: null, role, company, searched: query, candidates: [] } });
+                  send({ type: "step", id: "email", slot: "hiring_manager", status: "done", data: { email: null, guesses: [] } });
+                  send({ type: "step", id: "outreach", slot: "hiring_manager", status: "done", channel: "email", data: null });
+                }
+                return;
+              }
+              await runContactSlot("hiring_manager", {
+                text: top.name,
+                intent: composeIntent,
+                picked: { name: top.name, role: top.role ?? null, company: top.company ?? null, linkedin: top.linkedin ?? null },
+                job_context: jc,
+              });
+            })();
+
+            await Promise.allSettled([posterTask, hmTask]);
+          };
+
+          const [resumeSettled] = await Promise.allSettled([resumeTask(), peopleTask()]);
+          collectedTailored = resumeSettled.status === "fulfilled" ? resumeSettled.value : null;
+
+          // Mirror the primary (poster, else hiring manager) onto the legacy
+          // collected* fields so job_applications + history keep a single contact.
+          const primary = collectedContacts["poster"] ?? collectedContacts["hiring_manager"] ?? null;
+          if (primary) {
+            collectedPerson = primary.person;
+            collectedEnrichment = primary.enrichment;
+            if (Array.isArray(primary.drafts)) collectedDrafts.push(...primary.drafts);
+            personId = primary.personId ?? personId;
+            draftId = primary.draftId ?? draftId;
+          }
+
+          try {
+            const { data, error } = await supabaseAdmin()
+              .from("job_applications")
+              .insert({
+                user_id: userId,
+                job_url: openingUrl || job_url || null,
+                job_json: collectedTailored?.meta ?? null,
+                resume_generation_id: resumeGenerationId,
+                person_id: personId,
+                draft_id: draftId,
+                status: "drafted",
+              })
+              .select("id")
+              .single();
+            if (error) throw error;
+            if (data?.id) send({ type: "saved", id: data.id });
+          } catch (e) {
+            console.error("[job_applications] insert failed", e);
+          }
+
           runOutcome = "complete";
           send({ type: "complete" });
           return;
@@ -411,6 +645,7 @@ export async function POST(req: NextRequest) {
                   enrichment: collectedEnrichment,
                   candidates: collectedCandidates,
                   drafts: collectedDrafts,
+                  contacts: Object.keys(collectedContacts).length ? collectedContacts : null,
                 },
                 outcome: runOutcome,
                 error: runError,
