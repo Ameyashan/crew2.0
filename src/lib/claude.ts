@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { logAgentRun } from "@/lib/agent-runs";
+import { authWalledJobHost } from "@/lib/job-url";
 import { loadVoiceSamples, type VoiceSample } from "@/lib/voice";
 import {
   antiAiWritingGuide,
@@ -407,7 +408,13 @@ export async function identifyFromImage(
   const kind: "job" | "person" = parsed.kind === "job" ? "job" : "person";
   const trimOrNull = (v: unknown) =>
     typeof v === "string" && v.trim() ? v.trim() : null;
-  const job_url = trimOrNull(parsed.job_url);
+  // A login-walled / shortener URL (LinkedIn, lnkd.in, Indeed, Glassdoor) can't
+  // actually be fetched downstream, so don't hand it back as a job_url. Dropping
+  // it reroutes the run to the person flow — which is what the user wants when
+  // they screenshot a "we're hiring" post that names the poster (we reach out to
+  // that person) rather than chasing an unreadable job board.
+  const rawJobUrl = trimOrNull(parsed.job_url);
+  const job_url = rawJobUrl && !authWalledJobHost(rawJobUrl) ? rawJobUrl : null;
   const company = trimOrNull(parsed.company);
   const role = trimOrNull(parsed.role);
   const person_name = trimOrNull(parsed.person_name);

@@ -5,6 +5,11 @@
 // that's guaranteed to fail.
 const AUTH_WALLED_HOSTS: { match: RegExp; label: string }[] = [
   { match: /(^|\.)linkedin\.com$/, label: "LinkedIn" },
+  // LinkedIn's own link shortener. It 301s to the real posting, but a plain
+  // fetch / web_search can't follow it into LinkedIn's login wall — and a
+  // hiring post shared this way is really "a person announcing a role", which
+  // belongs in the person flow, not the job-board flow.
+  { match: /(^|\.)lnkd\.in$/, label: "LinkedIn" },
   { match: /(^|\.)glassdoor\.[a-z.]+$/, label: "Glassdoor" },
   { match: /(^|\.)indeed\.[a-z.]+$/, label: "Indeed" },
 ];

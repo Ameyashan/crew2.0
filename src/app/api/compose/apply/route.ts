@@ -25,6 +25,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const job_url = (body?.job_url ?? "").toString().trim();
   const intent = body?.intent ? body.intent.toString() : undefined;
+  // A screenshot-driven job run may name the person who posted the role (the
+  // recruiter / hiring manager who announced it). When present, we reach out to
+  // them directly instead of sourcing a hiring manager from scratch.
+  const posterName = body?.person_name ? body.person_name.toString().trim() : "";
 
   // Crew selector (Phase 2). Undefined → run the whole four-agent pipeline.
   // Resume Darzi is independent; the people pipeline (Person Khoji → Email
@@ -268,9 +272,10 @@ export async function POST(req: NextRequest) {
           const company = meta?.company ?? null;
           const team = meta?.team ?? null;
 
-          if (!company) {
-            // No company from either source — honest dead-end for the people
-            // steps (the resume branch reports its own status separately).
+          // No company AND no named poster — honest dead-end for the people steps
+          // (the resume branch reports its own status separately). A named poster
+          // is enough to proceed even when the posting's company can't be parsed.
+          if (!company && !posterName) {
             send({
               type: "step",
               id: "person",
@@ -284,14 +289,29 @@ export async function POST(req: NextRequest) {
 
           const composeIntent = intent || [role, company].filter(Boolean).join(" at ");
 
-          // Source a ranked shortlist of likely hiring managers by searching
-          // "[team] [role] [company]" (the way a candidate would).
+          // Build the contact shortlist. When the screenshot named the person who
+          // posted the role, THEY are the contact — reach out to them directly.
+          // Otherwise source a ranked shortlist of likely hiring managers by
+          // searching "[team] [role] [company]" (the way a candidate would).
           let candidates: Awaited<ReturnType<typeof sourceHiringManagers>>["candidates"] = [];
-          try {
-            const sourced = await sourceHiringManagers({ role, company, team });
-            candidates = sourced.candidates ?? [];
-          } catch (e) {
-            console.error("[apply] sourceHiringManagers failed", e);
+          if (posterName) {
+            candidates = [
+              {
+                name: posterName,
+                role: null,
+                company: company ?? null,
+                location: null,
+                linkedin: null,
+                why: "Posted this role",
+              },
+            ];
+          } else {
+            try {
+              const sourced = await sourceHiringManagers({ role, company: company!, team });
+              candidates = sourced.candidates ?? [];
+            } catch (e) {
+              console.error("[apply] sourceHiringManagers failed", e);
+            }
           }
           send({ type: "candidates", data: candidates });
           collectedCandidates = candidates;

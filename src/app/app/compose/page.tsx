@@ -1627,6 +1627,20 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
           </div>
         )}
 
+        {/* No changelog came back — say so plainly instead of silently dropping
+            the panel (which reads as a broken feature, especially on mobile).
+            A null ATS alongside it means the tailor never read the posting. */}
+        {resume && changes.length === 0 && (
+          <div style={{
+            marginTop: 10, paddingTop: 10, borderTop: `1.5px dashed ${p.ink}24`,
+            fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 12, color: p.inkMute, lineHeight: 1.4,
+          }}>
+            {atsScore == null
+              ? "No change log — Jugaadu couldn't read this job posting, so this is a light reformat of your existing resume rather than a tailored rewrite. Paste the job description into Notes and re-run to tailor it."
+              : "No change log for this run — the tailor didn't flag specific edits."}
+          </div>
+        )}
+
         {/* regenerate with notes — reruns ONLY the resume agent */}
         {showNotes && (
           <div style={{

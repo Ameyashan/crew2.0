@@ -44,6 +44,10 @@ export type Run = {
   imageFile?: File | null;
   screenshot?: { name: string; size: string } | null;
   screenshotId?: string | null;
+  // The person named in a screenshot the vision pass classified as a job (the
+  // poster/recruiter of a "we're hiring" post). The job flow reaches out to them
+  // directly instead of sourcing a hiring manager from scratch.
+  screenshotPersonName?: string | null;
   // The compose_runs row id reported back by the server once the stream starts.
   // Used by the history page to dedupe and to hydrate the right run.
   composeRunId?: string | null;
@@ -214,6 +218,13 @@ export function startImageRun(
         parsed,
         candidates: kind === "person" ? parsed.candidates : null,
         screenshotId: typeof data.screenshot_id === "string" ? data.screenshot_id : null,
+        // Carry the poster's name into the job flow so it can reach out to them
+        // rather than re-sourcing a hiring manager. (Person runs already search
+        // for this name via resolvedInput, so it only matters on the job path.)
+        screenshotPersonName:
+          typeof data.person_name === "string" && data.person_name.trim()
+            ? data.person_name.trim()
+            : null,
         stage: "working",
       }));
       launch(id);
@@ -666,6 +677,9 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           job_url: jobUrl,
           intent: run.intent || undefined,
           agents: run.selectedAgents || undefined,
+          // When this job run came from a screenshot that named its poster, the
+          // server reaches out to them instead of sourcing a hiring manager.
+          person_name: run.screenshotPersonName || undefined,
         }),
         signal,
       });
