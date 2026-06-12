@@ -163,21 +163,29 @@ export async function POST(req: NextRequest) {
         let outcome: "complete" | "error" | "needs_disambiguation" = "error";
         let errorMessage: string | null = null;
 
+        // Guarded enqueue: once the client disconnects (e.g. the phone was
+        // locked) enqueue throws. Swallow it so the agent loop keeps running to
+        // completion and we still persist the result — the client recovers by
+        // polling compose_runs.
+        const send = (obj: unknown) => {
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+          } catch {
+            // stream already closed/cancelled — drop the event, keep working
+          }
+        };
+
         try {
           if (composeRunId) {
             // Send the run id back so the client can stash it (used later when
             // the user reopens the run from /app/history).
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({ type: "compose_run", id: composeRunId })}\n\n`
-              )
-            );
+            send({ type: "compose_run", id: composeRunId });
           }
           for await (const evt of runReachOutStream({
             ...input,
             compose_run_id: composeRunId ?? undefined,
           })) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(evt)}\n\n`));
+            send(evt);
 
             if (evt.type === "step" && evt.id === "research" && evt.status === "done") {
               person = evt.data;
@@ -204,13 +212,15 @@ export async function POST(req: NextRequest) {
         } catch (e) {
           outcome = "error";
           errorMessage = String(e instanceof Error ? e.message : e);
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ type: "error", message: errorMessage })}\n\n`
-            )
-          );
+          send({ type: "error", message: errorMessage });
         } finally {
-          controller.close();
+          // Guard against a double/late close throwing — on a disconnected stream
+          // that rejection would skip the compose_runs persist below.
+          try {
+            controller.close();
+          } catch {
+            // already closed
+          }
         }
 
         // Update the run row outside the SSE controller — the client has already
