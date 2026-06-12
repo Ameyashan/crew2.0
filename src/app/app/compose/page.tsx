@@ -169,7 +169,7 @@ function RunCard({ p, run, go }) {
     : `${numberWord[activeCount] || activeCount} agents on it`;
   const stageLabel = {
     parsing: 'reading…',
-    working: agentsLabel,
+    working: run.reconnecting ? 'reconnecting…' : agentsLabel,
     done:    'package ready',
     error:   'needs attention',
   }[run.stage];

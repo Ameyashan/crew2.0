@@ -31,6 +31,9 @@ export type Run = {
   candidates: unknown[] | null;
   error: string | null;
   createdAt: number;
+  // True while a dropped streaming connection is being recovered by polling the
+  // persisted run (e.g. after the phone was locked mid-run). UI shows "reconnecting…".
+  reconnecting?: boolean;
   // Resume "regenerate with notes" state (job runs only).
   regenerating?: boolean;
   regenError?: string | null;
@@ -299,7 +302,9 @@ export function retryRun(id: string, picked?: unknown) {
     drafts: null,
     enrichment: null,
     person: null,
+    contacts: null,
     error: null,
+    reconnecting: false,
   }));
   launch(id, picked);
 }
@@ -834,7 +839,9 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
             // The hiring manager collapsed into the poster (same person).
             if (evt.slot && evt.data?.sameAsPoster) patchContact(evt.slot, { sameAsPoster: true });
           } else if (evt.type === "error") {
-            throw new Error(evt.message || "apply error");
+            // Server-reported (terminal) error — persisted to compose_runs, so
+            // skip the reconnect poll and surface it straight away.
+            throw Object.assign(new Error(evt.message || "apply error"), { serverReported: true });
           }
         }
       }
@@ -961,7 +968,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
             stage: "done",
           }));
         } else if (evt.type === "error") {
-          throw new Error(evt.message || "compose error");
+          throw Object.assign(new Error(evt.message || "compose error"), { serverReported: true });
         }
       }
     }
@@ -977,13 +984,118 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
     }
   } catch (e) {
     if (signal.aborted) return; // dismissed/cleared — not an error
-    patch(id, () => ({ stage: "error", error: String(e?.message || e) }));
+    // A terminal error the server already reported (and persisted) — show it now.
+    if (e?.serverReported) {
+      patch(id, () => ({ stage: "error", error: String(e?.message || e), reconnecting: false }));
+      return;
+    }
+    // Otherwise this is a network drop (the classic: phone locked / tab
+    // backgrounded kills the streaming connection). Not a real failure — the
+    // server keeps running and persists to compose_runs, so recover by polling
+    // for the finished run instead of giving up with "Load failed".
+    const recovered = await recoverFromDrop(id, signal);
+    if (!recovered) {
+      patch(id, () => ({ stage: "error", error: String(e?.message || e), reconnecting: false }));
+    }
   } finally {
     controllers.delete(id);
   }
 }
 
-/* ─────────────────────── parsing helpers (own the parse) ─────────────────────── */
+// The connection died mid-stream but the server-side run lives on. If we already
+// learned the compose_runs id, keep the working UI and poll the persisted run
+// until it finishes (or we give up), then patch the result in. Returns true when
+// it handled the drop (recovered OR set its own terminal state), false when it
+// can't recover (no run id yet) so the caller hard-errors.
+async function recoverFromDrop(id: string, signal: AbortSignal): Promise<boolean> {
+  const run = runs.find((r) => r.id === id);
+  const composeRunId = run?.composeRunId;
+  if (!composeRunId) return false; // dropped before we knew the run — can't recover
+
+  patch(id, () => ({ reconnecting: true, error: null, stage: "working" }));
+
+  const deadline = Date.now() + 4 * 60 * 1000; // give the server up to ~4 min
+  let delay = 2500;
+  while (Date.now() < deadline) {
+    if (signal.aborted) return true;
+    await sleep(delay, signal);
+    if (signal.aborted) return true;
+    // While backgrounded (locked) timers are frozen anyway — wait until we're
+    // foreground again before spending a poll.
+    await waitForVisible(signal);
+    if (signal.aborted) return true;
+    try {
+      const res = await fetch(`/api/compose/history/${composeRunId}`, { signal });
+      if (res.ok) {
+        const json = await res.json().catch(() => null);
+        const persisted = json?.run;
+        if (persisted && persisted.outcome && persisted.outcome !== "in_flight") {
+          applyPersisted(id, persisted);
+          return true;
+        }
+      }
+    } catch {
+      if (signal.aborted) return true;
+      // transient — keep polling
+    }
+    delay = Math.min(Math.round(delay * 1.4), 9000);
+  }
+
+  patch(id, () => ({
+    reconnecting: false,
+    stage: "error",
+    error: "Lost the connection (the app was backgrounded) before the run finished. Tap Retry — your work so far is saved in History.",
+  }));
+  return true;
+}
+
+// Patch a live run in place from its persisted compose_runs row (same field
+// mapping as hydrateRun, but onto the existing run rather than a fresh one).
+function applyPersisted(id: string, persisted: PersistedComposeRun) {
+  const out = persisted.output || {};
+  const stage: RunStage = persisted.outcome === "complete" ? "done" : "error";
+  const progress =
+    persisted.outcome === "complete"
+      ? persisted.kind === "job"
+        ? { resume: 100, person: 100, email: 100, outreach: 100 }
+        : { person: 100, email: 100, outreach: 100 }
+      : undefined;
+  patch(id, (r) => ({
+    parsed: out.parsed ?? r.parsed,
+    drafts: Array.isArray(out.drafts) && out.drafts.length ? out.drafts : r.drafts,
+    enrichment: out.enrichment ?? r.enrichment,
+    person: out.person ?? r.person,
+    candidates: Array.isArray(out.candidates) ? out.candidates : r.candidates,
+    contacts: out.contacts ?? r.contacts,
+    progress: progress ?? r.progress,
+    error: persisted.outcome === "complete" ? null : (persisted.error ?? r.error),
+    reconnecting: false,
+    stage,
+  }));
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => { clearTimeout(t); resolve(); }, { once: true });
+  });
+}
+
+// Resolves once the document is foreground again (immediately if it already is).
+function waitForVisible(signal?: AbortSignal): Promise<void> {
+  if (typeof document === "undefined" || !document.hidden) return Promise.resolve();
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      document.removeEventListener("visibilitychange", onVis);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const onVis = () => { if (!document.hidden) { cleanup(); resolve(); } };
+    const onAbort = () => { cleanup(); resolve(); };
+    document.addEventListener("visibilitychange", onVis);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 export function detectKind(s: string): "person" | "job" {
   const lo = (s || "").toLowerCase();
