@@ -8,10 +8,10 @@ import {
 import {
   inferDomain,
   buildGuesses,
-  lookupEmployer,
   type FindEmailResult,
   type EmailGuess,
 } from "@/lib/apollo";
+import { lookupEmployer } from "@/lib/employer";
 import { findEmailHunter as findEmail } from "@/lib/hunter";
 import { supabaseAdmin } from "@/lib/supabase";
 import { currentUserId } from "@/lib/user-context";
@@ -103,11 +103,12 @@ export async function* runReachOutStream(
     }
 
     // Employer-of-record. The research model derives `company`/`role` from web
-    // search, which can rank a PAST employer as current. Apollo's people/match
-    // (keyed on the LinkedIn URL) returns the person's CURRENT organization as a
-    // structured field — trust it over the synthesized company, and take its
-    // primary domain as the authoritative one for the email lookup below. Degrades
-    // to the research company when Apollo has no match / isn't on the plan.
+    // search, which can rank a PAST employer as current. A structured people-data
+    // provider (Apollo → PeopleDataLabs → Proxycurl, keyed on the LinkedIn URL)
+    // returns the person's CURRENT organization as a structured field — trust it
+    // over the synthesized company, and take its primary domain as the
+    // authoritative one for the email lookup below. Degrades to the research
+    // company when no provider is configured / nobody matches.
     const linkedinForLookup = ctx.links?.linkedin ?? input.picked?.linkedin ?? null;
     const employer = await lookupEmployer({
       name: ctx.name ?? input.picked?.name,

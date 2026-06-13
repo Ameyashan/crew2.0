@@ -187,7 +187,7 @@ export interface EmployerLookup {
   linkedin_url: string | null;
 }
 
-export async function lookupEmployer(input: {
+export async function lookupEmployerApollo(input: {
   name?: string | null;
   company?: string | null;
   linkedin_url?: string | null;
