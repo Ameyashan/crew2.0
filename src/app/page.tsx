@@ -7,6 +7,7 @@ import { PAPER_FONTS } from "@/components/paper/fonts";
 import { usePaperTheme } from "@/components/paper/use-paper-theme";
 import { signInWithGoogle } from "@/lib/supabase-browser";
 import { useIsMobile } from "@/lib/use-is-mobile";
+import { HowItWorks } from "@/components/landing/HowItWorks";
 
 /* ─────────────────────── Jugaadu logo ─────────────────────── */
 /* A boxy stamp echoing the newspaper aesthetic — a J anchored by a
@@ -382,6 +383,7 @@ function WorkspaceLanding({ p, headline, foreground, dark }) {
     }}>
       <Masthead3 p={p} mode="workspace"/>
       <WorkspaceHero p={p} headline={headline} foreground={foreground}/>
+      <HowItWorks p={p}/>
       <AmbitionsBanner p={p}/>
       <AppsOnStage p={p} foreground={foreground}/>
       <WhatShipsToday p={p} foreground={foreground}/>
