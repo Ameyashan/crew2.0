@@ -29,6 +29,10 @@ export interface ResearchInput {
   free_text?: string;
   intent?: string;          // user's stated goal — strong disambiguation signal
   intent_image?: { data: string; media_type: string }; // base64 screenshot
+  // Job / hiring-manager flow: the company this person MUST currently work at.
+  // When set, a researched identity that isn't currently there is treated as the
+  // wrong person and forces disambiguation rather than a confidently-wrong brief.
+  expect_company?: string | null;
 }
 
 export interface ResearchResult {
@@ -39,19 +43,26 @@ export interface ResearchResult {
   context_lines: string[];                          // 3 lines
   candidates?: { name: string; role?: string; company?: string; linkedin?: string }[];
   match_confidence?: "high" | "medium" | "low";    // how sure we picked the right person
+  // Identity guards (see RESEARCH_SYSTEM). identity_consistent is false when the
+  // returned name/role/company/linkedin/context don't all describe ONE person;
+  // currently_at_company answers the expect_company check (null when none given).
+  identity_consistent?: boolean;
+  currently_at_company?: boolean | null;
   raw: string;
 }
 
-const RESEARCH_SYSTEM = `You are a research analyst preparing a single-shot brief on ONE specific person, used to draft a cold outreach.
+const RESEARCH_SYSTEM = `You are a research analyst preparing a single-shot brief on ONE specific person, used to draft a cold outreach. Reporting the WRONG person is the worst possible outcome — worse than returning nothing.
 
-DISAMBIGUATION IS THE PRIMARY JOB. Common names match many people. You MUST pick the right one.
+DISAMBIGUATION IS THE PRIMARY JOB. Common names match many different people. You MUST converge on one real human and report ONLY facts that belong to that same human.
 
 Procedure:
-1. If a LinkedIn URL or X URL is provided, that is the canonical anchor — start there.
+1. If a LinkedIn or X URL is provided, that profile is the canonical identity. Everything you report — role, company, and every context line — MUST describe the person on THAT profile. LinkedIn is often login-walled and you cannot read it directly; in that case corroborate the SAME individual from sources that unambiguously refer to that exact person. Do NOT import facts about a different person who merely shares the name.
 2. Otherwise, search "site:linkedin.com/in <name>" first to enumerate candidates.
-3. The user's "Intent" line is the strongest disambiguation signal. If they say "PM at Wayfair", the right candidate works at (or is interviewing for) Wayfair. Match against company, city, role, or topic.
-4. If multiple plausible candidates exist, pick the one that best matches the intent. Set match_confidence to "high" only when the linkedin profile or another authoritative source confirms BOTH the name AND a feature from the intent (company, role, location).
-5. If NO candidate clearly matches the intent, return name as null and list up to 3 candidates so the user can disambiguate. Do NOT pad with facts about the wrong person.
+3. The user's "Intent" line is the strongest disambiguation signal. If they say "PM at Wayfair", the right candidate currently works at (or is interviewing for) Wayfair. Match against company, city, role, or topic.
+4. EXPECTED COMPANY: if an "Expected company" is given, the correct person CURRENTLY works there. If the most famous/most-covered person with this name has since moved to a different employer, they are almost certainly the WRONG person for this brief — do not report them. Find the person who is currently at the expected company, even if they are far less prominent.
+5. SINGLE-IDENTITY CHECK, before you answer: do the linkedin URL, the role, the company, and ALL THREE context lines describe one and the same person? If any field comes from a different individual, you have MIXED two people.
+
+When you are NOT certain you have a single, correctly-identified person — or when an Expected company is given and this person is not currently there — DO NOT assert a brief. Instead return "name": null and list the distinct people you found in "candidates" (up to 3) so the user can choose. Padding the wrong person with real-sounding facts is exactly the failure this guard prevents.
 
 Use the web_search tool. Prefer the person's own profile, posts, and recent press over second-hand sources. NEVER mix facts from different people.
 
@@ -63,15 +74,20 @@ Output strict JSON, no prose before or after:
   "links": { "linkedin"?: string, "x"?: string, "website"?: string, "github"?: string },
   "context_lines": [string, string, string],
   "candidates": [{ "name": string, "role"?: string, "company"?: string, "linkedin"?: string }],
-  "match_confidence": "high" | "medium" | "low"
+  "match_confidence": "high" | "medium" | "low",
+  "identity_consistent": boolean,
+  "currently_at_company": boolean | null
 }
+
+- "identity_consistent": true ONLY if name, role, company, links.linkedin, and every context line describe ONE person. If you mixed sources, set it false and return name = null + candidates.
+- "currently_at_company": when an Expected company is given, true only if you confirmed this person works there NOW; false if they have moved on or were never there; null if no Expected company was given or you cannot tell.
+- Set match_confidence "high" ONLY when an authoritative source confirms BOTH the name AND a distinguishing feature (the linkedin profile, company, role, or location) AND identity_consistent is true.
 
 Rules for context_lines:
 - Exactly 3 lines, each tied to the SAME person you confirmed above.
-- Each line is a concrete, specific, recent fact: something they made, said, shipped, or are working on.
-- Each line must contain a specific noun: a project, company, paper, number, post topic.
+- Each line is a concrete, specific, recent fact: something they made, said, shipped, or are working on, containing a specific noun (a project, company, paper, number, post topic).
 - No flattery, no "thought leader," no "passionate about", no generic descriptors.
-- If you cannot verify 3 specific facts about the right person, return fewer (pad with empty strings). Do NOT invent or borrow from other people with the same name.`;
+- If you cannot verify 3 specific facts about the right person, return fewer (pad with empty strings). Do NOT invent or borrow from other people with the same name. When in doubt, prefer name=null + candidates.`;
 
 export async function research(input: ResearchInput): Promise<ResearchResult> {
   const started = Date.now();
@@ -81,6 +97,8 @@ export async function research(input: ResearchInput): Promise<ResearchResult> {
     input.x_post_url && `X post: ${input.x_post_url}`,
     input.free_text && `Context the user pasted:\n${input.free_text}`,
     input.intent && `Intent (use to disambiguate which person this is):\n${input.intent}`,
+    input.expect_company &&
+      `Expected company (the correct person MUST currently work here): ${input.expect_company}`,
     input.intent_image &&
       `Attached: a screenshot the user provided as additional context — extract any role, company, team, or other specifics visible in it.`,
   ]
@@ -160,14 +178,31 @@ function parseResearch(text: string, input: ResearchInput): ResearchResult {
     ? parsed.context_lines.slice(0, 3)
     : [];
   while (lines.length < 3) lines.push("");
+  const candidates = Array.isArray(parsed.candidates)
+    ? parsed.candidates.slice(0, 5)
+    : undefined;
+
+  // Identity guard — never assert a brief we can't stand behind. Drop the
+  // asserted identity (name=null → the caller forces disambiguation) when the
+  // model reports the facts don't all belong to one person, or when an expected
+  // company was required and this person isn't currently there. We only act on
+  // an explicit negative so a missing field can't over-trigger the guard and
+  // dead-end the happy path.
+  const expectCompany = input.expect_company?.trim() || null;
+  const inconsistent = parsed.identity_consistent === false;
+  const wrongCompany = !!expectCompany && parsed.currently_at_company === false;
+  const force = inconsistent || wrongCompany;
+
   return {
-    name: parsed.name ?? input.name ?? null,
-    role: parsed.role ?? null,
-    company: parsed.company ?? null,
-    links: parsed.links ?? {},
-    context_lines: lines,
-    candidates: Array.isArray(parsed.candidates) ? parsed.candidates.slice(0, 5) : undefined,
-    match_confidence: parsed.match_confidence,
+    name: force ? null : parsed.name ?? input.name ?? null,
+    role: force ? null : parsed.role ?? null,
+    company: force ? null : parsed.company ?? null,
+    links: force ? {} : parsed.links ?? {},
+    context_lines: force ? ["", "", ""] : lines,
+    candidates,
+    match_confidence: force ? "low" : parsed.match_confidence,
+    identity_consistent: parsed.identity_consistent,
+    currently_at_company: parsed.currently_at_company ?? null,
     raw: text,
   };
 }
@@ -804,11 +839,15 @@ Search strategy (this is how a candidate would do it by hand):
 
 Ranking:
 - Rank by likelihood of being the person who hires/manages this role (team leads, EMs, directors, founders at small companies) first, then close-adjacent senior people on the same team.
-- Prefer people whose current company clearly matches the company named below.
+
+CURRENT EMPLOYMENT IS MANDATORY:
+- Only return people who CURRENTLY work at the company named below. A hiring manager must be at the company now.
+- EXCLUDE anyone whose public profile or recent press shows they have LEFT for a different employer — even if they are well known and previously held a senior role there. A former employee is never the hiring manager.
+- Same-name collisions are common: when several different people share a name, return ONLY the one you can verify is currently at this company. Never blend a famous person's history onto a different person who happens to share the name. If you cannot tell which one is at the company, leave that name out.
 
 Rules:
-- NEVER fabricate. Only return people you actually found evidence for. If you find nobody plausible, return an empty list.
-- Fill role, company, location, and the linkedin URL whenever you can find them.
+- NEVER fabricate. Only return people you actually found evidence for, currently at this company. If you find nobody plausible, return an empty list.
+- Fill role, company, location, and the linkedin URL whenever you can find them. The "company" you return for each candidate must be the company named below (their current employer).
 - "why" is one short line tying them to this role/team ("Head of Research at Thinking Machines — likely manager for this PM role"). Keep it factual.
 
 Output strict JSON only, no prose:

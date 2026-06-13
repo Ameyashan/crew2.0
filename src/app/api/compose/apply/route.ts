@@ -161,10 +161,17 @@ export async function POST(req: NextRequest) {
           } else if (evt.type === "error") {
             send({ type: "error", message: evt.message });
             runError = evt.message;
+          } else if (evt.type === "needs_disambiguation") {
+            // Research couldn't confirm the auto-picked person is the right,
+            // currently-employed human — so don't draft to them. The research
+            // "done" event already streamed name=null, and the sourced shortlist
+            // went out via {type:"candidates"}; close the email + outreach bars
+            // so the UI settles on "pick the right person" instead of hanging.
+            collectedCandidates =
+              Array.isArray(evt.data) && evt.data.length ? evt.data : collectedCandidates;
+            send({ type: "step", id: "email", status: "done", data: { email: null, guesses: [] } });
+            send({ type: "step", id: "outreach", status: "done", channel: "email", data: null });
           }
-          // needs_disambiguation is intentionally ignored: in the job flow the
-          // person is already chosen from the sourced shortlist (or re-picked),
-          // so we let the draft proceed to the anchored candidate.
         }
       };
 
@@ -206,6 +213,13 @@ export async function POST(req: NextRequest) {
             } else if (evt.type === "error") {
               // One contact failed — mark its slot done-empty and keep going.
               send({ type: "step", id: "person", slot, status: "done", data: { name: null, role: null, company: null, searched: null, candidates: [] } });
+              send({ type: "step", id: "email", slot, status: "done", data: { email: null, guesses: [] } });
+              send({ type: "step", id: "outreach", slot, status: "done", channel: "email", data: null });
+            } else if (evt.type === "needs_disambiguation") {
+              // Couldn't confirm this slot's person is the right, currently-employed
+              // human — close email + outreach so the slot settles on a re-pick
+              // rather than drafting to the wrong person. (Research already
+              // streamed name=null for the person step.)
               send({ type: "step", id: "email", slot, status: "done", data: { email: null, guesses: [] } });
               send({ type: "step", id: "outreach", slot, status: "done", channel: "email", data: null });
             }

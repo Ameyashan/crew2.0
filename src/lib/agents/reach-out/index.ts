@@ -73,6 +73,11 @@ export async function* runReachOutStream(
     yield { type: "step", id: "research", status: "start" };
     // If a candidate was already picked in step 1, anchor research on the LinkedIn URL
     // (much higher fidelity than a name search).
+    // Job / hiring-manager flow: the person must currently work at the job's
+    // company. Passing it lets research reject a same-name person who has moved
+    // on (the "shown at Speak, but really an Anthropic IC" failure) instead of
+    // asserting a wrong brief.
+    const expectCompany = input.job_context?.company ?? null;
     const researchInput = input.picked?.linkedin
       ? {
           linkedin_url: input.picked.linkedin,
@@ -81,23 +86,28 @@ export async function* runReachOutStream(
             input.intent ||
             [input.picked.role, input.picked.company].filter(Boolean).join(" at "),
           intent_image: input.intent_image,
+          expect_company: expectCompany,
         }
       : {
           ...classify(input.text),
-          // When a candidate was picked (job flow / disambiguation retry), force
-          // the name so research anchors on it and never dead-ends into another
-          // disambiguation prompt — parseResearch falls back to this name.
+          // When a candidate was picked (job flow / disambiguation retry), anchor
+          // research on that name — but research may still null it out and force a
+          // re-pick if it can't confirm a single, correct person (see parseResearch).
           ...(input.picked?.name ? { name: input.picked.name } : {}),
           intent: input.intent,
           intent_image: input.intent_image,
+          expect_company: expectCompany,
         };
     const ctx = await research(researchInput);
 
     // Disambiguation gate first — no point resolving an employer for a person we
-    // couldn't even identify.
-    if (!ctx.name && ctx.candidates && ctx.candidates.length > 0) {
+    // couldn't even identify. Research nulls the name when it can't stand behind
+    // the identity (mixed facts, or not currently at the expected company), so a
+    // gated result forces a re-pick here rather than drafting a confidently-wrong
+    // brief — even when no alternative candidates came back.
+    if (!ctx.name) {
       yield { type: "step", id: "research", status: "done", data: ctx };
-      yield { type: "needs_disambiguation", data: ctx.candidates };
+      yield { type: "needs_disambiguation", data: ctx.candidates ?? [] };
       yield { type: "complete" };
       return;
     }
