@@ -4,6 +4,10 @@ export interface FindEmailInput {
   name: string;
   company?: string;
   linkedin_url?: string;
+  // An authoritative company domain (e.g. from Apollo's organization record).
+  // When set, providers use it directly instead of guessing a domain from the
+  // company name — which is unreliable for companies whose name ≠ domain.
+  domain?: string | null;
 }
 
 export interface EmailGuess {
@@ -79,7 +83,7 @@ export async function findEmail(input: FindEmailInput): Promise<FindEmailResult>
       const code = (raw as { error_code?: string } | null)?.error_code;
       const msg = (raw as { error?: string } | null)?.error ?? null;
       if (resp.status === 403 || code === "API_INACCESSIBLE") {
-        const domain = guessDomain(input.company);
+        const domain = input.domain ?? guessDomain(input.company);
         const guesses = domain ? buildGuesses(input.name, domain) : [];
         result = {
           ...blank("apollo_inaccessible"),
@@ -104,6 +108,7 @@ export async function findEmail(input: FindEmailInput): Promise<FindEmailResult>
           : personalEmails.find((e) => e && !/^email_not_unlocked@/i.test(e)) ?? null;
       const org = person?.organization as Record<string, unknown> | undefined;
       const domain =
+        input.domain ??
         (org?.primary_domain as string | undefined) ??
         (org?.website_url ? hostnameFrom(org.website_url as string) : null) ??
         guessDomain(input.company);
@@ -161,6 +166,99 @@ export async function findEmail(input: FindEmailInput): Promise<FindEmailResult>
 
 function blank(source: FindEmailResult["source"]): FindEmailResult {
   return { email: null, confidence: 0, source, domain: null, guesses: [] };
+}
+
+// The structured employer-of-record for a person: their CURRENT organization as
+// Apollo's people/match returns it (a real field on their profile), plus that
+// org's primary domain. This is far more reliable than asking an LLM to
+// web_search and synthesize "where do they work" — the model can rank a past
+// employer as current (e.g. tagging Anthropic as "previously" and inventing a
+// new current company). Keyed on the LinkedIn URL when available, which Apollo
+// treats as a strong identity anchor.
+//
+// This does NOT request an email reveal (no reveal_personal_emails), so it's the
+// cheaper enrichment mode — email finding stays on the Hunter/public path. Returns
+// null on any miss, error, or when the Apollo plan blocks people lookups, so the
+// caller cleanly falls back to the research model's company.
+export interface EmployerLookup {
+  company: string | null; // current organization name
+  domain: string | null; // its primary domain
+  title: string | null; // their current title
+  linkedin_url: string | null;
+}
+
+export async function lookupEmployer(input: {
+  name?: string | null;
+  company?: string | null;
+  linkedin_url?: string | null;
+}): Promise<EmployerLookup | null> {
+  const apiKey = process.env.APOLLO_API_KEY;
+  if (!apiKey) return null;
+  // Need at least one identity anchor. A LinkedIn URL is by far the strongest.
+  if (!input.linkedin_url && !input.name) return null;
+
+  const started = Date.now();
+  let outcome: "ok" | "error" | "no_match" = "ok";
+  let err: string | null = null;
+  try {
+    const body: Record<string, unknown> = {};
+    const [first, ...rest] = (input.name || "").trim().split(/\s+/);
+    if (first) body.first_name = first;
+    if (rest.length) body.last_name = rest.join(" ");
+    // Pass the (possibly stale) company only as a hint; the linkedin_url is what
+    // actually pins the match, so a wrong company hint can't mislead it.
+    if (input.company) body.organization_name = input.company;
+    if (input.linkedin_url) body.linkedin_url = input.linkedin_url;
+
+    const resp = await fetch(`${APOLLO_BASE}/people/match`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
+        "x-api-key": apiKey,
+      },
+      body: JSON.stringify(body),
+    });
+    const raw = (await resp.json().catch(() => null)) as
+      | { person?: Record<string, unknown> }
+      | null;
+    if (!resp.ok) {
+      outcome = "error";
+      err = `apollo ${resp.status}`;
+      return null;
+    }
+    const person = raw?.person;
+    if (!person) {
+      outcome = "no_match";
+      return null;
+    }
+    const org = person.organization as Record<string, unknown> | undefined;
+    const company = (org?.name as string | undefined) ?? null;
+    const domain =
+      (org?.primary_domain as string | undefined) ??
+      (org?.website_url ? hostnameFrom(org.website_url as string) : null) ??
+      null;
+    const title = (person.title as string | undefined) ?? null;
+    const linkedin_url =
+      (person.linkedin_url as string | undefined) ?? input.linkedin_url ?? null;
+    if (!company && !domain) {
+      outcome = "no_match";
+      return null;
+    }
+    return { company, domain, title, linkedin_url };
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    return null;
+  } finally {
+    await logAgentRun({
+      agent_type: "apollo:lookup_employer",
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { input },
+    });
+  }
 }
 
 function hostnameFrom(url: string): string | null {
