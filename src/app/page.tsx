@@ -7,7 +7,7 @@ import { PAPER_FONTS } from "@/components/paper/fonts";
 import { usePaperTheme } from "@/components/paper/use-paper-theme";
 import { signInWithGoogle } from "@/lib/supabase-browser";
 import { useIsMobile } from "@/lib/use-is-mobile";
-import { HowItWorks } from "@/components/landing/HowItWorks";
+import { CrewRunWindow } from "@/components/landing/HowItWorks";
 
 /* ─────────────────────── Jugaadu logo ─────────────────────── */
 /* A boxy stamp echoing the newspaper aesthetic — a J anchored by a
@@ -119,10 +119,10 @@ const HEADLINE_PRESETS = [
   {
     id: 'leverage',
     eyebrow: 'Vol. I · the personal OS for ambition',
-    pre: 'Get a crew.',
-    main: 'Save your time.',
-    italic: 'Grow on its dime.',
-    sub: 'A small staff of agents handles the busywork — applying, publishing, briefing, learning — so the work that compounds becomes the only work you do.',
+    pre: 'Jobs get filled',
+    main: "before they're posted.",
+    italic: 'Get there first.',
+    sub: "The best roles are filled through referrals before they ever reach the job board. Your crew finds the opening, the person who actually decides, and a verified way in — so you're first in line, not lost in the pile. Don't be average, be jugaadu.",
   },
   {
     id: 'os',
@@ -382,8 +382,7 @@ function WorkspaceLanding({ p, headline, foreground, dark }) {
            repeating-linear-gradient(0deg, rgba(0,0,0,.012) 0 1px, transparent 1px 3px)`,
     }}>
       <Masthead3 p={p} mode="workspace"/>
-      <WorkspaceHero p={p} headline={headline} foreground={foreground}/>
-      <HowItWorks p={p}/>
+      <WorkspaceHero p={p} headline={headline}/>
       <AmbitionsBanner p={p}/>
       <AppsOnStage p={p} foreground={foreground}/>
       <WhatShipsToday p={p} foreground={foreground}/>
@@ -394,7 +393,7 @@ function WorkspaceLanding({ p, headline, foreground, dark }) {
   );
 }
 
-function WorkspaceHero({ p, headline, foreground }) {
+function WorkspaceHero({ p, headline }) {
   const router = useRouter();
   const isMobile = useIsMobile();
   return (
@@ -445,13 +444,15 @@ function WorkspaceHero({ p, headline, foreground }) {
           </div>
         </div>
 
-        <WorkspaceWindow p={p} foreground={foreground}/>
+        <CrewRunWindow p={p}/>
       </div>
     </section>
   );
 }
 
-/* The visual centerpiece: a mock OS window with 4 agent panes tiled inside. */
+/* A mock OS window with 4 agent panes tiled inside. Retained for reuse — the
+   hero now leads with the live <CrewRunWindow/> animation instead, but this
+   static crew snapshot is kept around for a possible future section. */
 function WorkspaceWindow({ p, foreground }) {
   const isMobile = useIsMobile();
   const fg = foreground.map((id) => AGENTS_V3.find((a) => a.id === id)).filter(Boolean);

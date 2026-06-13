@@ -155,6 +155,19 @@ export function HowItWorks({ p }) {
   );
 }
 
+/* ─────────────────────── hero embed: just the window ─────────────────────── */
+
+// The self-playing window on its own, for the hero's right column — where the
+// numbered rail and section header would be redundant. The window narrates
+// itself via its title/status bars and the per-agent labels on each revealed
+// block, so it reads as "watch the crew run" the moment you land.
+export function CrewRunWindow({ p }) {
+  const isMobile = useIsMobile();
+  const reduced = useReducedMotion();
+  const { step, local } = usePlayhead(reduced);
+  return <RunWindow p={p} step={step} local={local} isMobile={isMobile} />;
+}
+
 /* ─────────────────────── left: numbered narrative ─────────────────────── */
 
 function StepRail({ p, active, isMobile }) {
