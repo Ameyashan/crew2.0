@@ -11,6 +11,7 @@ import {
   type FindEmailResult,
   type EmailGuess,
 } from "@/lib/apollo";
+import { lookupEmployer } from "@/lib/employer";
 import { findEmailHunter as findEmail } from "@/lib/hunter";
 import { supabaseAdmin } from "@/lib/supabase";
 import { currentUserId } from "@/lib/user-context";
@@ -91,13 +92,34 @@ export async function* runReachOutStream(
           intent_image: input.intent_image,
         };
     const ctx = await research(researchInput);
-    yield { type: "step", id: "research", status: "done", data: ctx };
 
+    // Disambiguation gate first — no point resolving an employer for a person we
+    // couldn't even identify.
     if (!ctx.name && ctx.candidates && ctx.candidates.length > 0) {
+      yield { type: "step", id: "research", status: "done", data: ctx };
       yield { type: "needs_disambiguation", data: ctx.candidates };
       yield { type: "complete" };
       return;
     }
+
+    // Employer-of-record. The research model derives `company`/`role` from web
+    // search, which can rank a PAST employer as current. A structured people-data
+    // provider (Apollo → PeopleDataLabs → Proxycurl, keyed on the LinkedIn URL)
+    // returns the person's CURRENT organization as a structured field — trust it
+    // over the synthesized company, and take its primary domain as the
+    // authoritative one for the email lookup below. Degrades to the research
+    // company when no provider is configured / nobody matches.
+    const linkedinForLookup = ctx.links?.linkedin ?? input.picked?.linkedin ?? null;
+    const employer = await lookupEmployer({
+      name: ctx.name ?? input.picked?.name,
+      company: ctx.company ?? input.picked?.company,
+      linkedin_url: linkedinForLookup,
+    }).catch(() => null);
+    if (employer?.company) ctx.company = employer.company;
+    if (employer?.title) ctx.role = employer.title;
+    const employerDomain = employer?.domain ?? null;
+
+    yield { type: "step", id: "research", status: "done", data: ctx };
 
     // Email lookup — skip when the user already has the email, OR when they
     // deselected Email Wallah in the crew checklist.
@@ -143,6 +165,9 @@ export async function* runReachOutStream(
           name: lookupName,
           company: ctx.company ?? undefined,
           linkedin_url: ctx.links?.linkedin,
+          // Apollo's verified org domain when we have it — beats guessing a
+          // domain from the company name (e.g. anthropic.com, not a name-mangle).
+          domain: employerDomain,
         }),
         findPublicEmail({
           name: lookupName,
@@ -154,9 +179,9 @@ export async function* runReachOutStream(
       enrichment = mergeEmailSources(hunter, pub, ctx.company, ctx.links);
 
       // Always guarantee guesses + domain so the UI has a fallback even when
-      // neither provider returns usable data.
+      // neither provider returns usable data. The authoritative org domain wins.
       const finalDomain =
-        enrichment.domain ?? inferDomain({ company: ctx.company, links: ctx.links });
+        employerDomain ?? enrichment.domain ?? inferDomain({ company: ctx.company, links: ctx.links });
       const finalGuesses =
         enrichment.guesses && enrichment.guesses.length
           ? enrichment.guesses

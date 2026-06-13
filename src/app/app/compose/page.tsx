@@ -234,11 +234,14 @@ function RunCard({ p, run, go }) {
 
       {/* working / done → the agent row */}
       {(run.stage === 'working' || run.stage === 'done') && (
-        <AgentRowV3 p={p} kind={run.kind} stage={run.stage} progress={run.progress} selectedAgents={run.selectedAgents}/>
+        <AgentRowV3 p={p} kind={run.kind} stage={run.stage} progress={run.progress}
+          enrichment={run.enrichment} selectedAgents={run.selectedAgents}/>
       )}
 
-      {/* done → the finished package */}
-      {run.stage === 'done' && (
+      {/* done — or mid-run as soon as any agent has produced a deliverable → the
+          package, filling in section-by-section so the user isn't blocked on the
+          slowest agent. */}
+      {(run.stage === 'done' || (run.stage === 'working' && hasPartialResult(run))) && (
         <PackageV3 p={p} kind={run.kind} parsed={run.parsed} intent={run.intent}
           drafts={run.drafts} enrichment={run.enrichment} person={run.person} run={run}
           onReset={() => dismissRun(run.id)} go={go}/>
@@ -910,7 +913,7 @@ const AGENTS_DATA = {
     { k: 'person',   nameEn: 'Person Khoji',   nameHi: 'खोजी',       glyph: '◆', color: 'leaf',     desc: 'finds the right human',
       steps: ['scraping their profile…', 'cross-checking LinkedIn…', 'ranking by signal…', 'locking in target…', 'identified ✓'] },
     { k: 'email',    nameEn: 'Email Wallah',   nameHi: 'ईमेल वाला',  glyph: '✉', color: 'stamp',    desc: 'verifies a working address',
-      steps: ['querying Apollo…', 'checking Hunter…', 'verifying MX…', 'cross-validating…', '96% verified'] },
+      steps: ['querying Apollo…', 'checking Hunter…', 'verifying MX…', 'cross-validating…', 'address checked'] },
     { k: 'outreach', nameEn: 'Outreach Bhai',  nameHi: 'आउटरीच भाई', glyph: '↗', color: 'marigold', desc: 'drafts email, LinkedIn & X DMs',
       steps: ['reading their threads…', 'finding a real hook…', 'matching your voice…', 'drafting 3 channels…', 'drafts ready'] },
   ],
@@ -920,7 +923,7 @@ const AGENTS_DATA = {
     { k: 'person',   nameEn: 'Person Khoji',   nameHi: 'खोजी',       glyph: '◆', color: 'leaf',     desc: 'finds the hiring manager',
       steps: ['scraping the team…', 'ranking by fit…', 'cross-checking LinkedIn…', 'shortlisting…', 'hiring manager picked'] },
     { k: 'email',    nameEn: 'Email Wallah',   nameHi: 'ईमेल वाला',  glyph: '✉', color: 'stamp',    desc: 'verifies a working address',
-      steps: ['querying Apollo…', 'checking Hunter…', 'verifying MX…', 'cross-validating…', '96% verified'] },
+      steps: ['querying Apollo…', 'checking Hunter…', 'verifying MX…', 'cross-validating…', 'address checked'] },
     { k: 'outreach', nameEn: 'Outreach Bhai',  nameHi: 'आउटरीच भाई', glyph: '↗', color: 'tea',      desc: 'drafts the cold email + followup',
       steps: ['reading her threads…', 'finding a hook…', 'matching voice…', 'drafting + queueing followup…', 'cold email ready'] },
   ],
@@ -942,7 +945,45 @@ function colorOf(p, name) {
   return ({ marigold: p.marigold, stamp: p.stamp, leaf: p.leaf, tea: p.tea }[name]) || p.ink;
 }
 
-function AgentRowV3({ p, kind, stage, progress, selectedAgents }) {
+// True once at least one agent has streamed back a real deliverable, so the
+// package can start rendering mid-run instead of waiting for the whole crew.
+// Each sub-section of the package already shows an honest "appears once the X
+// agent finishes" placeholder for the pieces that haven't landed yet.
+function hasPartialResult(run) {
+  if (!run) return false;
+  const c = run.contacts;
+  const dualHasData = !!(c && (
+    c.poster?.person || c.poster?.enrichment || c.poster?.drafts?.length ||
+    c.hiring_manager?.person || c.hiring_manager?.enrichment || c.hiring_manager?.drafts?.length
+  ));
+  return !!(
+    (Array.isArray(run.drafts) && run.drafts.length) ||
+    run.enrichment ||
+    run.person ||
+    run.parsed?.resume ||
+    dualHasData
+  );
+}
+
+// The Email Wallah card's final line should report the REAL deliverability
+// signal Hunter returned, not a cosmetic number. enrichment.confidence is 0-1
+// (Hunter's score/100) and enrichment.source says whether the address was
+// actually verified vs. a format guess. Returns null until the lookup lands so
+// the card keeps showing its scripted progress steps in the meantime.
+function emailVerdict(enrichment) {
+  if (!enrichment) return null;
+  const conf = typeof enrichment.confidence === 'number' ? enrichment.confidence : null;
+  const pct = conf != null ? Math.round(conf * 100) : null;
+  if (enrichment.email) {
+    const tier = emailTier(enrichment.source, enrichment.confidence);
+    const word = tier === 'high' ? 'verified' : 'plausible';
+    return pct != null ? `${pct}% ${word}` : word;
+  }
+  if (Array.isArray(enrichment.guesses) && enrichment.guesses.length > 0) return 'format guess';
+  return 'no address found';
+}
+
+function AgentRowV3({ p, kind, stage, progress, enrichment, selectedAgents }) {
   const isMobile = useIsMobile();
   const all = AGENTS_DATA[kind] || AGENTS_DATA.person;
   // Filter to the user's frozen selection. If the run pre-dates the selector or
@@ -962,6 +1003,12 @@ function AgentRowV3({ p, kind, stage, progress, selectedAgents }) {
         const done = pct >= 100;
         const stepI = Math.min(a.steps.length - 1, Math.floor((pct / 100) * a.steps.length));
         const ac = colorOf(p, a.color);
+        // Email Wallah's done state shows Hunter's actual verdict; everyone else
+        // (and the in-progress steps) uses the scripted step labels.
+        const realVerdict = a.k === 'email' && done ? emailVerdict(enrichment) : null;
+        const stepLabel = pct === 0 && stage === 'working'
+          ? 'queued…'
+          : (realVerdict || a.steps[stepI]);
         return (
           <div key={a.k} style={{
             background: p.card, color: p.ink,
@@ -1009,7 +1056,7 @@ function AgentRowV3({ p, kind, stage, progress, selectedAgents }) {
                 opacity: pct === 0 ? .3 : 1, flexShrink: 0,
               }}/>
               <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.ink, lineHeight: 1.3 }}>
-                {pct === 0 && stage === 'working' ? 'queued…' : a.steps[stepI]}
+                {stepLabel}
               </span>
             </div>
           </div>
@@ -2180,6 +2227,7 @@ function EmailOptions({ p, candidates, subject, body, header }) {
                 background: p.paper, border: `1px solid ${p.ink}24`, cursor: 'pointer',
               }}>
               <span style={{
+                flex: 1, minWidth: 0,
                 fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.ink,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>{c.email}</span>
@@ -2204,7 +2252,9 @@ function withHttps(url) {
 function KV({ p, k, v, chip, chipColor, href }) {
   const cc = chipColor || p.stamp;
   const valueStyle = {
-    flex: 1, fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.ink,
+    // minWidth:0 lets this flex child shrink below its content width so a long
+    // email truncates with an ellipsis instead of overflowing the card.
+    flex: 1, minWidth: 0, fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.ink,
     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
   };
   return (

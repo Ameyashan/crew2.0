@@ -823,13 +823,37 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
               if (k === "email" && evt.data) patchContact(evt.slot, { enrichment: evt.data });
               if (k === "outreach" && evt.status === "done" && evt.data) pushContactDraft(evt.slot, evt.data);
             } else {
+              // Single-target run: patch each agent's payload into the store the
+              // moment its event lands so the package streams in section-by-section
+              // instead of the user waiting on the slowest agent. The final patch
+              // below stays as a consolidation + the stage:"done" flip.
               if (k === "resume" && evt.status === "done" && evt.data) {
                 bundle = { ...bundle, ...evt.data };
+                patch(id, (r) => ({
+                  parsed: {
+                    ...(r.parsed || {}),
+                    ...bundle,
+                    unparsed: false,
+                    role: bundle.target_role || r.parsed?.role,
+                    company: bundle.target_company || r.parsed?.company,
+                    team: bundle.team ?? r.parsed?.team,
+                    ats_score: bundle.ats_score ?? r.parsed?.ats_score,
+                    ats_score_before: bundle.ats_score_before ?? r.parsed?.ats_score_before,
+                    resume: bundle.resume ?? r.parsed?.resume,
+                  },
+                }));
               }
-              if (k === "person" && evt.status === "done" && evt.data) collectedPerson = evt.data;
-              if (k === "email" && evt.data) collectedEnrichment = evt.data;
+              if (k === "person" && evt.status === "done" && evt.data) {
+                collectedPerson = evt.data;
+                patch(id, () => ({ person: evt.data }));
+              }
+              if (k === "email" && evt.data) {
+                collectedEnrichment = evt.data;
+                patch(id, () => ({ enrichment: evt.data }));
+              }
               if (k === "outreach" && evt.status === "done" && evt.data) {
                 collectedDrafts.push(evt.data);
+                patch(id, () => ({ drafts: [...collectedDrafts] }));
               }
             }
           } else if (evt.type === "candidates") {
@@ -946,10 +970,19 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           // The research step carries the REAL researched person (name, role,
           // company, links, context_lines) — surface it so the package card
           // shows the actual human, not the prototype stub.
-          if (evt.id === "research" && evt.status === "done" && evt.data) collectedPerson = evt.data;
-          if (evt.id === "email_lookup" && evt.data) collectedEnrichment = evt.data;
+          // Stream each piece into the run as it lands so the package fills in
+          // per-agent rather than all at once on the final "complete" event.
+          if (evt.id === "research" && evt.status === "done" && evt.data) {
+            collectedPerson = evt.data;
+            patch(id, () => ({ person: evt.data }));
+          }
+          if (evt.id === "email_lookup" && evt.data) {
+            collectedEnrichment = evt.data;
+            patch(id, () => ({ enrichment: evt.data }));
+          }
           if (evt.id === "draft" && evt.status === "done" && evt.data) {
             collectedDrafts.push(evt.data);
+            patch(id, () => ({ drafts: [...collectedDrafts] }));
           }
         } else if (evt.type === "needs_disambiguation") {
           patch(id, () => ({

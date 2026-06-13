@@ -26,10 +26,11 @@ export async function findEmailHunter(input: FindEmailInput): Promise<FindEmailR
     const [first, ...rest] = (input.name || "").trim().split(/\s+/);
     const last = rest.join(" ");
 
-    // Hunter needs a domain. Try the explicit company hint, then fall back to
-    // a domain inference from the LinkedIn host or the company name.
+    // Hunter needs a domain. Prefer an authoritative domain passed in (e.g. from
+    // Apollo's organization record), then fall back to inferring one from the
+    // company name.
     let domain: string | null =
-      inferDomain({ company: input.company ?? null, links: null }) ?? null;
+      input.domain ?? inferDomain({ company: input.company ?? null, links: null }) ?? null;
     if (input.linkedin_url && !domain) {
       // not common but cheap to try
       domain = inferDomain({ company: input.company ?? null, links: null });

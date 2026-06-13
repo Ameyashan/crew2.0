@@ -23,8 +23,9 @@ const BUDGETS = {
 export const SYSTEM_PROMPT = `You are a resume editor that tailors a candidate's resume against either a specific job posting or a free-text brief from the user.
 
 PROCEDURE
-1. If a Job URL is provided, use the web_search tool to read the posting. Identify the target role title, the hiring company, the team/department/org this role sits in (e.g. "Research", "Product", "Platform" — null if the posting doesn't say), and the top 5–8 must-have skills/keywords from the JD.
-   - If the URL cannot be fetched (auth wall, login required, 404), say so by returning the JSON with meta.target_role and meta.target_company set to null and a single experience array with a placeholder bullet "JOB_FETCH_FAILED" — the caller will detect this and ask the user to paste the JD.
+1. If a "# Job Posting (fetched directly)" block is present, that IS the posting — read it verbatim and do NOT call web_search. Take meta.target_role / meta.target_company / meta.team from its Title / Company / Team lines, and pull the top 5–8 must-have skills/keywords from its body.
+   Otherwise, if a Job URL is provided, use the web_search tool to read the posting. Identify the target role title, the hiring company, the team/department/org this role sits in (e.g. "Research", "Product", "Platform" — null if the posting doesn't say), and the top 5–8 must-have skills/keywords from the JD.
+   - If there is no fetched posting block AND the URL cannot be fetched (auth wall, login required, 404), say so by returning the JSON with meta.target_role and meta.target_company set to null and a single experience array with a placeholder bullet "JOB_FETCH_FAILED" — the caller will detect this and ask the user to paste the JD.
 2. If no Job URL is provided, do NOT call web_search. Treat the User Highlights block as the brief: it tells you which direction to push the resume (a target role, a skill set to lead with, content to drop, tone, etc.). Set meta.target_role and meta.target_company from the highlights if the user named them, otherwise leave them null.
 3. Re-tailor the candidate's resume so the most relevant experience, skills, and projects surface first, brief/JD keywords are mirrored naturally, and bullets are rewritten to lead with action + impact.
 
@@ -88,7 +89,19 @@ export function buildUserPrompt(
   input: ResumeTailorInput & { resume_text: string; full_name?: string | null }
 ): string {
   const blocks: string[] = [];
-  if (input.job_url) {
+  if (input.job_posting?.text) {
+    const jp = input.job_posting;
+    const head = [
+      jp.title && `Title: ${jp.title}`,
+      jp.company && `Company: ${jp.company}`,
+      jp.team && `Team: ${jp.team}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    blocks.push(
+      `# Job Posting (fetched directly — read THIS, do NOT call web_search)\n${head ? head + "\n\n" : ""}${jp.text}`
+    );
+  } else if (input.job_url) {
     blocks.push(`# Job URL\n${input.job_url}`);
   } else {
     blocks.push(
