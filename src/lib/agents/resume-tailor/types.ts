@@ -69,6 +69,16 @@ export interface ResumeTailorInput {
   highlights?: string;
   page_count: 1 | 2;
   regenerate_notes?: string;
+  // A job posting read directly from an ATS (Greenhouse/Lever) rather than via
+  // web_search. When present the tailor reads THIS exact posting — it never
+  // guesses which opening the URL points to. Auto-populated from job_url inside
+  // runResumeTailorStream when the URL is a known ATS board.
+  job_posting?: {
+    title?: string | null;
+    company?: string | null;
+    team?: string | null;
+    text: string;
+  } | null;
 }
 
 export type ResumeTailorStepEvent =

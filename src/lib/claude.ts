@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { logAgentRun } from "@/lib/agent-runs";
+import { fetchAtsPosting } from "@/lib/job-fetch";
 import { loadVoiceSamples, type VoiceSample } from "@/lib/voice";
 import {
   antiAiWritingGuide,
@@ -606,6 +607,14 @@ Output strict JSON only, no prose, no markdown fences:
 { "role": string|null, "company": string|null, "team": string|null }`;
 
 export async function parseJobMeta(job_url: string): Promise<JobMeta> {
+  // Known ATS board? Read the exact posting from its public API instead of
+  // asking the model to web_search the URL (which can resolve to the wrong
+  // opening at the same company). Falls through to web_search on any failure.
+  const fetched = await fetchAtsPosting(job_url).catch(() => null);
+  if (fetched?.title && fetched.company) {
+    return { role: fetched.title, company: fetched.company, team: fetched.team ?? null };
+  }
+
   const started = Date.now();
   let text = "";
   let inTokens = 0;

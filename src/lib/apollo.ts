@@ -192,11 +192,19 @@ export function inferDomain(args: {
   return guessDomain(args.company);
 }
 
-// Last-resort domain guess from a company name. Only used when Apollo gave us
-// no organization data. Doesn't try to be clever — just lowercase + strip.
+// Last-resort domain guess from a company name. Only used when Apollo/Hunter
+// gave us no organization data. The name often carries a qualifier the domain
+// doesn't — "Clay (previously Anthropic)", "Stripe, Inc.", "Acme — Payments" —
+// so take only the primary name before any parenthetical or separator, THEN
+// lowercase + strip. ("Clay (previously Anthropic)" → clay.com, not the old
+// claypreviouslyanthropic.com.)
 export function guessDomain(company: string | null | undefined): string | null {
   if (!company) return null;
-  const cleaned = company
+  const primary = company
+    .replace(/\([^)]*\)/g, " ") // drop "(previously …)" / "(formerly …)" qualifiers
+    .split(/\s[-–—|/]\s|[,/|]/)[0] // cut at the first separator (comma, slash, dash, pipe)
+    .trim();
+  const cleaned = (primary || company)
     .toLowerCase()
     .replace(/\b(inc|llc|ltd|corp|co|the)\b/g, "")
     .replace(/[^a-z0-9]/g, "");

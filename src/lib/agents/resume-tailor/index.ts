@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "@/lib/claude";
+import { fetchAtsPosting } from "@/lib/job-fetch";
 import { logAgentRun } from "@/lib/agent-runs";
 import { getProfile } from "@/lib/profile";
 import { lintAntiAi, describeViolations, antiAiWritingGuide } from "@/lib/writing/anti-ai";
@@ -56,8 +57,26 @@ export async function* runResumeTailorStream(
 
     yield { type: "step", id: "research", status: "start" };
 
+    // Known ATS board (Greenhouse/Lever)? Read the exact posting from its public
+    // API and feed it straight into the prompt, so the tailor reads the right
+    // job instead of web_searching the URL and risking the wrong opening. Any
+    // failure leaves posting null and the model falls back to web_search.
+    let posting = input.job_posting ?? null;
+    if (!posting && input.job_url) {
+      const fetched = await fetchAtsPosting(input.job_url).catch(() => null);
+      if (fetched) {
+        posting = {
+          title: fetched.title,
+          company: fetched.company,
+          team: fetched.team,
+          text: fetched.text,
+        };
+      }
+    }
+
     const userPrompt = buildUserPrompt({
       ...input,
+      job_posting: posting,
       resume_text: profile.resume_text,
       full_name: profile.full_name,
     });
@@ -218,6 +237,14 @@ export async function* runResumeTailorStream(
     }
 
     const parsed = parseTailored(text, input);
+
+    // We read the posting directly, so trust its fields over whatever the model
+    // echoed back: backfill any role/company/team the model left blank.
+    if (posting) {
+      parsed.meta.target_role = parsed.meta.target_role || posting.title || undefined;
+      parsed.meta.target_company = parsed.meta.target_company || posting.company || undefined;
+      if (parsed.meta.team == null) parsed.meta.team = posting.team ?? null;
+    }
 
     if (parsed.experience?.[0]?.bullets?.[0] === "JOB_FETCH_FAILED") {
       yield {

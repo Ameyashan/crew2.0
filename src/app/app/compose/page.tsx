@@ -2227,6 +2227,7 @@ function EmailOptions({ p, candidates, subject, body, header }) {
                 background: p.paper, border: `1px solid ${p.ink}24`, cursor: 'pointer',
               }}>
               <span style={{
+                flex: 1, minWidth: 0,
                 fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.ink,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>{c.email}</span>
@@ -2251,7 +2252,9 @@ function withHttps(url) {
 function KV({ p, k, v, chip, chipColor, href }) {
   const cc = chipColor || p.stamp;
   const valueStyle = {
-    flex: 1, fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.ink,
+    // minWidth:0 lets this flex child shrink below its content width so a long
+    // email truncates with an ellipsis instead of overflowing the card.
+    flex: 1, minWidth: 0, fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.ink,
     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
   };
   return (
