@@ -591,14 +591,17 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
             marginTop: 10, padding: '14px 18px', background: p.card,
             border: `1.5px solid ${p.ink}30`,
           }}>
-            <input
+            <textarea
               value={intent}
               onChange={(e) => setIntent(e.target.value)}
               placeholder="What do you want to convey? (optional, e.g. 'PM at Wayfair, exploring AI roles')"
+              rows={3}
               style={{
                 width: '100%', background: 'transparent', border: 'none', outline: 'none',
                 fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
                 fontSize: 16, color: p.ink, padding: '4px 0',
+                resize: 'vertical', minHeight: 60, lineHeight: 1.5,
+                whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
               }}
             />
           </div>
