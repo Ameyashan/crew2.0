@@ -1472,7 +1472,7 @@ function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
                 ))}
               </div>
             )}
-            <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
+            <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 6 }}>
               {emailPrimary && (
                 <KV p={p} k="email" v={emailPrimary.email}
                   chip={tierMeta(p, emailPrimary.tier).label}
@@ -1863,7 +1863,7 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
                 ))}
               </div>
             )}
-            <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
+            <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 6 }}>
               {emailPrimary && (
                 <KV p={p} k="email" v={emailPrimary.email}
                   chip={tierMeta(p, emailPrimary.tier).label}
