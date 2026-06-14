@@ -8,7 +8,7 @@ import {
   describeViolations,
   type AntiAiViolation,
 } from "@/lib/writing/anti-ai";
-import { coldEmailGuide } from "@/lib/writing/cold-email";
+import { coldOutreachGuide } from "@/lib/writing/cold-outreach";
 
 const MODEL = "claude-sonnet-4-6";
 
@@ -987,15 +987,15 @@ SUBJECT LINE (cold email — the subject decides whether it gets opened):
 - No spam/clickbait words: "opportunity", "quick question", "urgent", "free", "amazing", "exciting".
 - The subject must be about the company/role this email is actually for — never a different company.`
       : "";
-  // Cold-email craft is its own skill; only the email channel gets it (DMs have
-  // different norms, handled by the length budgets + outreach rules below).
-  const coldEmail = channel === "email" ? `\n\n${coldEmailGuide()}` : "";
+  // Cold-outreach craft is its own skill, channel-tailored (the subject-line
+  // rule only fires for email; DMs get the rest). Applied on every channel.
+  const coldOutreach = `\n\n${coldOutreachGuide(channel)}`;
   return `You write outreach messages in the user's voice. The user is a thoughtful operator who hates AI-sounding email.
 
 Channel: ${channel}.
 Length: ${LENGTH_BUDGETS[channel]}
 
-${antiAiWritingGuide("prose")}${coldEmail}
+${antiAiWritingGuide("prose")}${coldOutreach}
 
 Outreach specifics:
 - Reference exactly ONE specific thing the recipient did, said, or shipped (from the research). Name the thing.
@@ -1257,9 +1257,9 @@ function redraftSystem(
     channel === "email"
       ? `\n- Subject: 3–6 words, specific and concrete. No clickbait, no emoji, never begin with "Re:" or "Fwd:". You may keep the existing subject if it still fits.`
       : "";
-  // Keep a redraft honest to cold-email craft so an "Another angle" pass can't
-  // drift into a generic, all-about-the-sender email.
-  const coldEmail = channel === "email" ? `\n\n${coldEmailGuide()}` : "";
+  // Keep a redraft honest to cold-outreach craft so an "Another angle" pass
+  // can't drift into a generic, all-about-the-sender message.
+  const coldOutreach = `\n\n${coldOutreachGuide(channel)}`;
   return `You revise an outreach ${channel} the sender already drafted, applying ONE specific change while keeping it unmistakably in their voice.
 
 The change to apply: ${directive}
@@ -1268,7 +1268,7 @@ Rules:
 - Apply the change above. Keep every concrete fact, name, and the single ask — do not invent new claims or references.
 - Stay within the channel's natural length: ${LENGTH_BUDGETS[channel]}
 
-${antiAiWritingGuide("prose")}${coldEmail}
+${antiAiWritingGuide("prose")}${coldOutreach}
 
 - ${signOffInstruction(channel, signOffName, signOffLinkedin)}${subjectRules}
 
