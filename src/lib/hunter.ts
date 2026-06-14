@@ -27,14 +27,13 @@ export async function findEmailHunter(input: FindEmailInput): Promise<FindEmailR
     const last = rest.join(" ");
 
     // Hunter needs a domain. Prefer an authoritative domain passed in (e.g. from
-    // Apollo's organization record), then fall back to inferring one from the
-    // company name.
-    let domain: string | null =
-      input.domain ?? inferDomain({ company: input.company ?? null, links: null }) ?? null;
-    if (input.linkedin_url && !domain) {
-      // not common but cheap to try
-      domain = inferDomain({ company: input.company ?? null, links: null });
-    }
+    // Apollo's organization record), then infer from the research links — which
+    // carry the company's REAL website (decagon.ai), so we don't fall through to
+    // the name-mangled `.com` guess (decagon.com) when the company isn't a .com.
+    const domain: string | null =
+      input.domain ??
+      inferDomain({ company: input.company ?? null, links: input.links ?? null }) ??
+      null;
 
     if (!first || !last || !domain) {
       // Hunter cannot run without (first, last, domain). Return a clean miss

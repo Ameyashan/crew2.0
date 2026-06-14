@@ -5,11 +5,16 @@
 // headlines — imports from here so the rules can't drift apart again.
 //
 // The guidance below is curated from the recurring "AI tells" people actually
-// flag in 2025/2026: the tropes.fyi catalog (negative parallelism, tricolon
-// abuse, participle endings, em-dash addiction, "serves as" hedging), the
-// ChatGPT over-used vocabulary lists (delve / leverage / robust / tapestry …),
-// and cold-email humanization advice (vary sentence length, one concrete
-// reference, one ask, no corporate jargon). Sources noted in the PR.
+// flag in 2025/2026. The primary reference is Wikipedia's "Signs of AI writing"
+// (WikiProject AI Cleanup) — the most thorough catalog of language-model tells:
+// puffery/editorializing, "it is important to note" hedging, stacked transitions
+// (moreover / furthermore), negative parallelism, the rule of three, em-dash and
+// title-case overuse, participle add-ons, vague attributions, and section
+// summaries. See https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing.
+// Cross-referenced with the tropes.fyi catalog (tricolon abuse, "serves as"
+// hedging), the ChatGPT over-used vocabulary lists (delve / leverage / robust /
+// tapestry …), and cold-email humanization advice (vary sentence length, one
+// concrete reference, one ask, no corporate jargon).
 //
 // Two layers live here:
 //   1. ANTI_AI_WRITING_GUIDE  — prose injected into system prompts (generation).
@@ -43,6 +48,10 @@ export const FORBIDDEN_PHRASES: string[] = [
   // AI filler transitions / framing
   "it's worth noting",
   "it is worth noting",
+  "it's important to note",
+  "it is important to note",
+  "important to note that",
+  "it is important to remember",
   "it bears mentioning",
   "needless to say",
   "at the end of the day",
@@ -60,6 +69,21 @@ export const FORBIDDEN_PHRASES: string[] = [
   "plays a crucial role",
   "plays a vital role",
   "plays a key role",
+  // encyclopedic puffery / editorializing (Wikipedia "Signs of AI writing")
+  "rich tapestry",
+  "rich cultural heritage",
+  "rich history",
+  "stands as a testament",
+  "serves as a testament",
+  "left an indelible mark",
+  "leaving a lasting impact",
+  "leaves a lasting impact",
+  "watershed moment",
+  "deeply rooted in",
+  // vague hand-waving attributions
+  "industry experts",
+  "studies have shown",
+  "it is widely regarded",
   // stock metaphors / idioms
   "game changer",
   "game-changer",
@@ -106,6 +130,9 @@ export const FORBIDDEN_WORDS: string[] = [
   "spearheaded",
   "passionate",
   "passionately",
+  // stacked AI transitions (Wikipedia "Signs of AI writing")
+  "moreover",
+  "furthermore",
 ];
 
 // Present participles that AI tacks onto a sentence to fake analysis
@@ -230,6 +257,9 @@ Avoid these AI tells:
 - Participle add-ons that fake analysis ("…, highlighting its importance", "…, reflecting a broader trend"). End on the fact.
 - Rhetorical self-questions ("The result? A faster pipeline.") and signposted conclusions ("In conclusion", "To sum up").
 - Hedging verbs like "serves as", "stands as" — just use "is".
+- Puffery and editorializing ("rich tapestry", "stands as a testament", "left an indelible mark", "watershed moment"). State the plain fact, not its significance.
+- "It is important to note" and stacked transitions ("Moreover", "Furthermore", "Additionally") — delete them and let the sentences stand on their own.
+- Vague attributions ("industry experts say", "studies have shown", "it is widely regarded"). Name the specific source or cut the claim.
 
 Do this instead:
 - Vary sentence length. Mix short, punchy lines with longer ones. Uniform sentence length is the loudest AI tell.
