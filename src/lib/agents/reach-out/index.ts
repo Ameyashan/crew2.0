@@ -178,6 +178,10 @@ export async function* runReachOutStream(
           // Apollo's verified org domain when we have it — beats guessing a
           // domain from the company name (e.g. anthropic.com, not a name-mangle).
           domain: employerDomain,
+          // Research's links carry the company's real website. When no
+          // authoritative org domain came back, Hunter uses this to find the
+          // true domain (decagon.ai) instead of guessing decagon.com.
+          links: ctx.links,
         }),
         findPublicEmail({
           name: lookupName,
