@@ -118,6 +118,84 @@ export function useRuns(): Run[] {
   );
 }
 
+/* ─────────────────────── pending-run registry ─────────────────────── */
+// The server inserts compose_runs up front and keeps running after the client
+// disconnects (phone locked / tab backgrounded), persisting the result. The
+// in-memory `runs` array, however, is wiped on a full page reload — which is
+// exactly what iOS does when it reclaims a backgrounded tab. So we mirror the
+// id of every in-flight run into localStorage. On the next load we replay the
+// list and poll each survivor to completion, instead of losing the run to the
+// "Lost the connection" dead-end. Entries are removed in streamRun's `finally`
+// once the run settles; if the page is killed mid-flight `finally` never runs,
+// so the entry correctly survives for recovery.
+
+const PENDING_KEY = "jugaadu.pendingRuns.v1";
+const PENDING_MAX_AGE_MS = 30 * 60 * 1000; // don't resurrect ancient runs
+const PENDING_MAX = 20;
+
+type PendingRun = {
+  composeRunId: string;
+  kind: "person" | "job";
+  input: string;
+  intent: string | null;
+  createdAt: number;
+};
+
+function loadPending(): PendingRun[] {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(PENDING_KEY);
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    if (!Array.isArray(list)) return [];
+    const cutoff = Date.now() - PENDING_MAX_AGE_MS;
+    return list.filter(
+      (e) => e && typeof e.composeRunId === "string" && Number(e.createdAt) >= cutoff,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function savePending(list: PendingRun[]) {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(PENDING_KEY, JSON.stringify(list.slice(0, PENDING_MAX)));
+  } catch {
+    // private mode / quota — degrade to in-memory-only recovery
+  }
+}
+
+function rememberPending(entry: PendingRun) {
+  const list = loadPending().filter((e) => e.composeRunId !== entry.composeRunId);
+  list.unshift(entry);
+  savePending(list);
+}
+
+function forgetPending(composeRunId?: string | null) {
+  if (!composeRunId) return;
+  savePending(loadPending().filter((e) => e.composeRunId !== composeRunId));
+}
+
+// Patch the live run with the server-reported compose_runs id AND register it
+// for cross-reload recovery. Called the moment the stream emits compose_run.
+function setComposeRunId(localId: string, composeRunId: string, run: Run) {
+  patch(localId, () => ({ composeRunId }));
+  rememberPending({
+    composeRunId,
+    kind: run.kind,
+    input: run.input,
+    intent: run.intent ?? null,
+    createdAt: run.createdAt,
+  });
+}
+
+// Drop the pending entry for whichever compose run a local run is bound to.
+function clearPending(localId: string) {
+  const r = runs.find((x) => x.id === localId);
+  if (r?.composeRunId) forgetPending(r.composeRunId);
+}
+
 /* ─────────────────────── actions ─────────────────────── */
 
 export function startRun(
@@ -296,6 +374,54 @@ export function retryRun(id: string, picked?: unknown) {
   if (!run) return;
   controllers.get(id)?.abort();
   controllers.delete(id);
+
+  // The common "Retry" case is a connection that dropped while the server kept
+  // working — the run already finished and persisted. Re-running the whole crew
+  // would be slow and wasteful, so when we know the compose_runs id (and this
+  // isn't a candidate re-pick), check the persisted row first and recover its
+  // result. Only fall back to a full re-run if it didn't actually complete.
+  if (run.composeRunId && picked === undefined) {
+    const composeRunId = run.composeRunId;
+    patch(id, () => ({ stage: "working", error: null, reconnecting: true }));
+    const controller = new AbortController();
+    controllers.set(id, controller);
+    void (async () => {
+      try {
+        const res = await fetch(`/api/compose/history/${composeRunId}`, { signal: controller.signal });
+        if (res.ok) {
+          const json = await res.json().catch(() => null);
+          const persisted = json?.run;
+          // complete or needs_disambiguation are real results worth recovering;
+          // only a hard `error` (or still in_flight) warrants re-running.
+          if (
+            persisted &&
+            persisted.outcome &&
+            persisted.outcome !== "in_flight" &&
+            persisted.outcome !== "error"
+          ) {
+            applyPersisted(id, persisted);
+            forgetPending(composeRunId);
+            controllers.delete(id);
+            return;
+          }
+        }
+      } catch {
+        // fall through to a full re-run
+      }
+      if (controller.signal.aborted) return; // superseded by another action
+      controllers.delete(id);
+      relaunchRun(id, picked);
+    })();
+    return;
+  }
+
+  relaunchRun(id, picked);
+}
+
+// Reset a run to a clean working state and stream it from scratch.
+function relaunchRun(id: string, picked?: unknown) {
+  const run = runs.find((r) => r.id === id);
+  forgetPending(run?.composeRunId);
   patch(id, () => ({
     stage: "working",
     progress: {},
@@ -305,6 +431,8 @@ export function retryRun(id: string, picked?: unknown) {
     contacts: null,
     error: null,
     reconnecting: false,
+    // Drop the stale id so the fresh stream registers its own.
+    composeRunId: null,
   }));
   launch(id, picked);
 }
@@ -809,7 +937,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
             continue;
           }
           if (evt.type === "compose_run" && typeof evt.id === "string") {
-            patch(id, () => ({ composeRunId: evt.id }));
+            setComposeRunId(id, evt.id, run);
             continue;
           }
           if (evt.type === "step") {
@@ -957,7 +1085,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           continue;
         }
         if (evt.type === "compose_run" && typeof evt.id === "string") {
-          patch(id, () => ({ composeRunId: evt.id }));
+          setComposeRunId(id, evt.id, run);
           continue;
         }
         if (evt.type === "step") {
@@ -1032,6 +1160,11 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
     }
   } finally {
     controllers.delete(id);
+    // Reaching here means the run settled (done / terminal error / recovery
+    // exhausted) within a live session — drop its cross-reload recovery entry.
+    // If the page is killed mid-flight this never runs, so the entry survives
+    // for resumePendingRuns() to pick up on the next load.
+    clearPending(id);
   }
 }
 
@@ -1047,23 +1180,52 @@ async function recoverFromDrop(id: string, signal: AbortSignal): Promise<boolean
 
   patch(id, () => ({ reconnecting: true, error: null, stage: "working" }));
 
-  const deadline = Date.now() + 4 * 60 * 1000; // give the server up to ~4 min
+  const settled = await pollPersistedUntilSettled(id, composeRunId, signal);
+  if (!settled) {
+    patch(id, () => ({
+      reconnecting: false,
+      stage: "error",
+      error: DROP_MESSAGE,
+    }));
+  }
+  return true;
+}
+
+const DROP_MESSAGE =
+  "Lost the connection (the app was backgrounded) before the run finished. Tap Retry — your work so far is saved in History.";
+
+// Poll the persisted compose_runs row until it leaves `in_flight`, then patch
+// the result into the live run. Shared by the mid-stream drop recovery and the
+// cross-reload resume path.
+//
+// The budget is counted in FOREGROUND time, not wall-clock: a poll is only
+// spent after the tab is visible again (background timers are frozen anyway, and
+// the server can't run past its own maxDuration). So locking the phone for ten
+// minutes no longer burns the recovery window. Returns true once it applied a
+// terminal result, false if the budget ran out with the run still in flight.
+async function pollPersistedUntilSettled(
+  localId: string,
+  composeRunId: string,
+  signal: AbortSignal,
+  budgetMs = 4 * 60 * 1000,
+): Promise<boolean> {
+  let spent = 0;
   let delay = 2500;
-  while (Date.now() < deadline) {
+  while (spent < budgetMs) {
     if (signal.aborted) return true;
     await sleep(delay, signal);
     if (signal.aborted) return true;
-    // While backgrounded (locked) timers are frozen anyway — wait until we're
-    // foreground again before spending a poll.
+    // Don't spend the budget (or a poll) while backgrounded — wait for foreground.
     await waitForVisible(signal);
     if (signal.aborted) return true;
+    spent += delay;
     try {
       const res = await fetch(`/api/compose/history/${composeRunId}`, { signal });
       if (res.ok) {
         const json = await res.json().catch(() => null);
         const persisted = json?.run;
         if (persisted && persisted.outcome && persisted.outcome !== "in_flight") {
-          applyPersisted(id, persisted);
+          applyPersisted(localId, persisted);
           return true;
         }
       }
@@ -1073,13 +1235,69 @@ async function recoverFromDrop(id: string, signal: AbortSignal): Promise<boolean
     }
     delay = Math.min(Math.round(delay * 1.4), 9000);
   }
+  return false;
+}
 
-  patch(id, () => ({
-    reconnecting: false,
-    stage: "error",
-    error: "Lost the connection (the app was backgrounded) before the run finished. Tap Retry — your work so far is saved in History.",
-  }));
-  return true;
+// Replay any in-flight runs left behind by a previous session (typically a
+// mobile tab the OS reclaimed while the run was still streaming). For each
+// survivor not already in the store, drop in a "reconnecting" placeholder and
+// poll its persisted row to completion. Idempotent and safe to call on every
+// mount — finished/duplicate entries are skipped. Call from a client effect so
+// it never runs during SSR (which would also desync hydration).
+export function resumePendingRuns() {
+  if (typeof window === "undefined") return;
+  const pending = loadPending();
+  if (!pending.length) return;
+  // Prune any entries we already trimmed by age back to storage.
+  savePending(pending);
+
+  for (const entry of pending) {
+    if (runs.some((r) => r.composeRunId === entry.composeRunId)) continue;
+
+    const localId =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `run_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+    const run: Run = {
+      id: localId,
+      input: entry.input,
+      intent: entry.intent ?? undefined,
+      providedEmail: false,
+      kind: entry.kind,
+      stage: "working",
+      parsed: null,
+      progress: {},
+      drafts: null,
+      enrichment: null,
+      person: null,
+      candidates: null,
+      error: null,
+      createdAt: entry.createdAt || Date.now(),
+      reconnecting: true,
+      composeRunId: entry.composeRunId,
+    };
+    runs = [run, ...runs];
+    emit();
+
+    const controller = new AbortController();
+    controllers.set(localId, controller);
+    void (async () => {
+      try {
+        const settled = await pollPersistedUntilSettled(
+          localId,
+          entry.composeRunId,
+          controller.signal,
+        );
+        if (!settled && !controller.signal.aborted) {
+          patch(localId, () => ({ reconnecting: false, stage: "error", error: DROP_MESSAGE }));
+        }
+      } finally {
+        forgetPending(entry.composeRunId);
+        controllers.delete(localId);
+      }
+    })();
+  }
 }
 
 // Patch a live run in place from its persisted compose_runs row (same field
