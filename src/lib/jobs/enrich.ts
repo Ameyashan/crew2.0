@@ -8,7 +8,7 @@
 //   visa:         lightweight LLM JD text-parse -> 'likely_sponsors' | 'unclear'.
 
 import { supabaseAdmin } from "@/lib/supabase";
-import { htmlToText, mapPool } from "@/lib/jobs/util";
+import { jdText, mapPool } from "@/lib/jobs/util";
 import { getYcSizeMap } from "@/lib/jobs/enrich/yc";
 import { inferVisa } from "@/lib/jobs/enrich/visa";
 import type { SizeBucket } from "@/lib/jobs/types";
@@ -28,14 +28,6 @@ export interface EnrichResult {
   enriched: number;
   sized: number;
   visaLikely: number;
-}
-
-function jdFromRaw(ats: string, raw: Record<string, unknown>): string {
-  const get = (k: string) => (typeof raw?.[k] === "string" ? (raw[k] as string) : "");
-  if (ats === "greenhouse") return htmlToText(get("content"));
-  if (ats === "lever") return get("descriptionPlain") || htmlToText(get("description"));
-  if (ats === "ashby") return get("descriptionPlain") || htmlToText(get("descriptionHtml"));
-  return "";
 }
 
 export async function enrichJobs(opts?: { limit?: number }): Promise<EnrichResult> {
@@ -78,7 +70,7 @@ export async function enrichJobs(opts?: { limit?: number }): Promise<EnrichResul
     const norm = (job.company_id && normByCompanyId.get(job.company_id)) || job.company.toLowerCase().trim();
     const size: SizeBucket | null = curated ?? ycMap.get(norm) ?? null;
 
-    const visa = await inferVisa(jdFromRaw(job.ats, job.raw_json));
+    const visa = await inferVisa(jdText(job.ats, job.raw_json));
 
     const { error: upErr } = await sb
       .from("jobs")

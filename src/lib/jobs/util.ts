@@ -75,6 +75,22 @@ export function slugToName(slug: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// Extract plain-text JD body from a stored raw_json blob, per ATS. Greenhouse
+// stores escaped HTML in `content`; Lever has descriptionPlain (+ html
+// fallback); Ashby has descriptionPlain (+ html fallback). Shared by the
+// enrichment pass (visa inference) and the scorer (JD snippets).
+export function jdText(
+  ats: string,
+  raw: Record<string, unknown> | null | undefined,
+  maxChars: number = DEFAULT_MAX_JD_CHARS,
+): string {
+  const get = (k: string) => (raw && typeof raw[k] === "string" ? (raw[k] as string) : "");
+  if (ats === "greenhouse") return htmlToText(get("content"), maxChars);
+  if (ats === "lever") return (get("descriptionPlain") || htmlToText(get("description"), maxChars)).slice(0, maxChars);
+  if (ats === "ashby") return (get("descriptionPlain") || htmlToText(get("descriptionHtml"), maxChars)).slice(0, maxChars);
+  return "";
+}
+
 // Run `fn` over `items` with a bounded concurrency pool. Keeps public ATS calls
 // polite and preserves per-item error isolation (fn is expected to catch its own
 // errors and return a result object).
