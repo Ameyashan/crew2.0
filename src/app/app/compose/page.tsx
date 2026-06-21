@@ -21,6 +21,7 @@ import {
   dismissRun,
   clearAllRuns,
   retryRun,
+  resumePendingRuns,
   pickCandidate,
   regenerateResume,
   regenerateDraft,
@@ -92,6 +93,14 @@ function ComposeV3({ p, go }) {
   const [selectedAgents, setSelectedAgents] = useState(() => defaultSelectionFor('person', false));
   const runs = useRuns();
   const isMobile = useIsMobile();
+
+  // Recover any runs that were still streaming when a previous session ended
+  // (e.g. the OS reclaimed a backgrounded mobile tab). The server kept working
+  // and persisted the result; this polls those rows back into the store rather
+  // than stranding them behind a "Lost the connection" error.
+  useEffect(() => {
+    resumePendingRuns();
+  }, []);
 
   function onGo() {
     const hasText = input.trim().length > 0;
