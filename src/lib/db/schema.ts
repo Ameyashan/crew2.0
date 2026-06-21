@@ -129,3 +129,77 @@ export interface DailyDigest {
   pending_reviews: number;
   snapshot: Record<string, unknown>;
 }
+
+// ── Daily Job-Discovery Feed (mirrors 0010_jobs_feed.sql) ────────────────────
+
+export type Ats = "greenhouse" | "lever" | "ashby";
+export type RemoteType = "remote" | "hybrid" | "onsite" | "unknown";
+export type SizeBucket = "large" | "medium" | "startup";
+export type VisaConfidence = "likely_sponsors" | "unclear";
+export type CompanySource = "seed" | "llm_resolved";
+export type PostedWithin = "24h" | "1wk" | "1mo" | "any";
+export type MatchStatus = "new" | "seen" | "dismissed" | "outreach_started";
+
+export interface Company {
+  id: string;
+  name: string;
+  normalized: string;
+  ats: Ats;
+  slug: string;
+  sectors: string[];
+  size_bucket: SizeBucket | null;
+  source: CompanySource;
+  added_by: string | null;
+  verified_at: string | null;
+  active: boolean;
+  created_at: string;
+}
+
+export interface Job {
+  id: string;
+  company_id: string | null;
+  ats: Ats;
+  external_job_id: string;
+  title: string;
+  company: string;
+  location_raw: string | null;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  remote_type: RemoteType;
+  compensation: string | null;
+  posted_date: string | null;
+  posted_date_approx: boolean;
+  url: string;
+  source: string;
+  raw_json: Record<string, unknown>;
+  visa_confidence: VisaConfidence | null;
+  company_size: SizeBucket | null;
+  enriched_at: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JobPreferences {
+  user_id: string;
+  interests: string[];
+  posted_within: PostedWithin;
+  company_sizes: SizeBucket[];
+  locations: string[];
+  visa_required: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JobMatch {
+  id: string;
+  user_id: string;
+  job_id: string;
+  score: number;
+  reasons: string | null;
+  status: MatchStatus;
+  scored_at: string;
+}

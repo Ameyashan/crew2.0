@@ -1,0 +1,113 @@
+// Shared contracts for the Daily Job-Discovery Feed (Module 0).
+//
+// This file is the seam between modules: the fetch layer (M1), catalog resolver
+// (M2), enrichment (M3), scoring (M4), API routes (M5), and frontend (M6) import
+// from here instead of reading each other's internals. DB row types live in
+// src/lib/db/schema.ts; this file holds the in-flight lib shapes + API DTOs.
+
+import type {
+  Ats,
+  RemoteType,
+  SizeBucket,
+  VisaConfidence,
+  PostedWithin,
+  MatchStatus,
+} from "@/lib/db/schema";
+
+export type { Ats, RemoteType, SizeBucket, VisaConfidence, PostedWithin, MatchStatus };
+
+// ── Fetch layer (M1) ─────────────────────────────────────────────────────────
+
+// One listing normalized from any ATS into a single shape, ready to upsert into
+// `jobs`. Enrichment columns (visa/company_size) are NOT set here — that's M3.
+export interface NormalizedJob {
+  ats: Ats;
+  external_job_id: string;
+  title: string;
+  company: string;
+  location_raw: string | null;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  remote_type: RemoteType;
+  compensation: string | null;
+  posted_date: string | null; // ISO string or null
+  posted_date_approx: boolean;
+  url: string;
+  raw_json: Record<string, unknown>;
+}
+
+// A company the orchestrator should fetch: the catalog row reduced to what an
+// adapter needs.
+export interface BoardTarget {
+  company_id: string;
+  name: string;
+  ats: Ats;
+  slug: string;
+}
+
+export interface FetchResult {
+  inserted: number;
+  updated: number;
+  newJobIds: string[];
+  errors: Array<{ company: string; ats: Ats; slug: string; error: string }>;
+}
+
+// ── Catalog resolution (M2) ──────────────────────────────────────────────────
+
+// An LLM-proposed company the resolver will validate before inserting. `slug` is
+// a guess; validation against the live board decides if it's real.
+export interface CatalogCandidate {
+  company: string;
+  ats: Ats;
+  slug: string;
+}
+
+// ── Scoring (M4) ─────────────────────────────────────────────────────────────
+
+export interface ScoreResult {
+  job_id: string;
+  score: number; // 0..100
+  reasons: string; // one line
+}
+
+// ── API DTOs (M5 -> M6) ──────────────────────────────────────────────────────
+
+// One row in the ranked feed: the match joined onto its job.
+export interface FeedItem {
+  match_id: string;
+  job_id: string;
+  title: string;
+  company: string;
+  location: string | null;
+  remote_type: RemoteType;
+  compensation: string | null;
+  posted_date: string | null;
+  posted_date_approx: boolean;
+  url: string;
+  score: number;
+  reasons: string | null;
+  visa_confidence: VisaConfidence | null;
+  company_size: SizeBucket | null;
+  status: MatchStatus;
+  is_new: boolean; // first_seen since the user's last visit / status === 'new'
+}
+
+// Full detail for one job + the viewer's match.
+export interface JobDetail extends FeedItem {
+  description: string | null; // JD text pulled from raw_json
+  city: string | null;
+  region: string | null;
+  country: string | null;
+}
+
+// GET/PUT /api/jobs/preferences body. Mirrors the job_preferences row minus
+// server-managed columns. Pins are read from the profile, surfaced read-only.
+export interface PreferencesDTO {
+  interests: string[];
+  posted_within: PostedWithin;
+  company_sizes: SizeBucket[];
+  locations: string[];
+  visa_required: boolean;
+  pins?: string[]; // user_profile.context_structured.target_companies (read-only echo)
+}
