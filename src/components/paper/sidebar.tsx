@@ -9,6 +9,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 
 const APP_NAV = [
   { id: "compose", label: "Compose", glyph: "✎" },
+  { id: "jobs", label: "Jobs", glyph: "✸" },
   { id: "today", label: "Today", glyph: "◐" },
   { id: "resume", label: "Resume", glyph: "§" },
   { id: "people", label: "People", glyph: "◆" },

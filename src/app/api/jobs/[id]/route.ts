@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { withUser } from "@/lib/auth";
 import { jobDetail } from "@/lib/jobs/serialize";
-import type { Job, JobMatch } from "@/lib/db/schema";
+import type { Job, JobMatch, MatchStatus } from "@/lib/db/schema";
 
 export const runtime = "nodejs";
 
@@ -39,5 +39,31 @@ export async function GET(
     }
 
     return Response.json({ job: jobDetail(job as Job, (match as JobMatch | null) ?? null) });
+  });
+}
+
+const PATCHABLE: MatchStatus[] = ["seen", "dismissed"];
+
+// PATCH /api/jobs/[id] { status } — lifecycle update from the detail view
+// (currently "dismiss", which hides the job from the feed).
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  return withUser(async (userId) => {
+    const { id } = await params;
+    const body = await req.json().catch(() => ({}));
+    const status = body?.status as MatchStatus;
+    if (!PATCHABLE.includes(status)) {
+      return Response.json({ error: "invalid status" }, { status: 400 });
+    }
+    const sb = supabaseAdmin();
+    const { error } = await sb
+      .from("job_matches")
+      .update({ status })
+      .eq("user_id", userId)
+      .eq("job_id", id);
+    if (error) return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ ok: true });
   });
 }
