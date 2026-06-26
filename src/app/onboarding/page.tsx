@@ -7,6 +7,7 @@ import { PAPER_FONTS } from "@/components/paper/fonts";
 import { usePaperTheme } from "@/components/paper/use-paper-theme";
 import { Eyebrow, InkButton, Marginalia } from "@/components/paper/primitives";
 import { useIsMobile } from "@/lib/use-is-mobile";
+import { SECTORS } from "@/lib/jobs/catalog/sectors";
 
 const GOALS_PROMPT = `I'm using a tool that drafts outreach messages on my behalf. Help me write a self-summary it can use as context. Cover:
 - My current role, background, and what I'm working on
@@ -29,6 +30,7 @@ function OnboardingV3({ p, onDone, onBack }) {
   const [linkedin, setLinkedin] = useState('');
   const [samples, setSamples]   = useState([]);
   const [goals, setGoals]       = useState('');
+  const [interests, setInterests] = useState([]);
   const [followup, setFollowup] = useState('3d');
   const [copied, setCopied]     = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -52,6 +54,15 @@ function OnboardingV3({ p, onDone, onBack }) {
         }),
       });
       if (!res.ok) throw new Error(`profile save failed: ${res.status}`);
+      // Save job-feed interests so the first daily feed has something to show.
+      // Non-blocking — onboarding shouldn't fail if catalog growth hiccups.
+      try {
+        await fetch('/api/jobs/preferences', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ interests }),
+        });
+      } catch { /* non-blocking */ }
       // soft signal the middleware reads to skip the landing for returning users
       document.cookie = 'crew_onboarded=1; path=/; max-age=31536000; samesite=lax';
       onDone();
@@ -65,7 +76,8 @@ function OnboardingV3({ p, onDone, onBack }) {
     (resume ? 1 : 0) +
     (linkedin.trim() ? 1 : 0) +
     (samples.length > 0 ? 1 : 0) +
-    (goals.trim() ? 1 : 0);
+    (goals.trim() ? 1 : 0) +
+    (interests.length > 0 ? 1 : 0);
 
   function copyPrompt() {
     navigator.clipboard?.writeText(GOALS_PROMPT).catch(() => {});
@@ -131,6 +143,7 @@ function OnboardingV3({ p, onDone, onBack }) {
               <PreviewChip p={p} on={!!linkedin.trim()}    label={linkedin.trim() ? `LinkedIn · ${linkedin}` : 'LinkedIn'}/>
               <PreviewChip p={p} on={samples.length > 0}   label={samples.length ? `Voice samples · ${samples.length} learned` : 'Voice samples'}/>
               <PreviewChip p={p} on={!!goals.trim()}       label={goals.trim() ? `Goals & context · ${Math.round(goals.length/5)} words` : 'Goals & context'}/>
+              <PreviewChip p={p} on={interests.length > 0} label={interests.length ? `Interests · ${interests.length} sector${interests.length === 1 ? '' : 's'}` : 'Job interests'}/>
               <PreviewChip p={p} on required label={`Followup default · after ${followup}`}/>
             </div>
           </div>
@@ -142,10 +155,10 @@ function OnboardingV3({ p, onDone, onBack }) {
           display: 'flex', alignItems: 'center', gap: 14,
           fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.08em',
         }}>
-          <span>{completed}/4 OPTIONAL</span>
+          <span>{completed}/5 OPTIONAL</span>
           <div style={{ flex: 1, height: 4, background: p.ink + '20', overflow: 'hidden' }}>
             <div style={{
-              height: '100%', width: `${(completed / 4) * 100}%`,
+              height: '100%', width: `${(completed / 5) * 100}%`,
               background: p.stamp, transition: 'width .4s ease',
             }}/>
           </div>
@@ -241,7 +254,33 @@ function OnboardingV3({ p, onDone, onBack }) {
           )}
         </OnbCardV3>
 
-        <OnbCardV3 p={p} num={5} done required
+        <OnbCardV3 p={p} num={5} done={interests.length > 0} optional
+          title="What jobs interest you?"
+          sub="Pick the sectors you want roles from. This powers your daily Jobs feed — we scan companies in these spaces and rank openings by fit."
+          color={p.stamp}
+        >
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {SECTORS.map((s) => {
+              const active = interests.includes(s.id);
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setInterests(active ? interests.filter((x) => x !== s.id) : [...interests, s.id])}
+                  style={{
+                    padding: '8px 14px', fontFamily: PAPER_FONTS.mono, fontSize: 13,
+                    background: active ? p.stamp : 'transparent', color: active ? p.paper : p.ink,
+                    border: `1.5px solid ${p.ink}`, boxShadow: active ? `2px 2px 0 ${p.ink}` : 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+        </OnbCardV3>
+
+        <OnbCardV3 p={p} num={6} done required
           title="Followup cadence"
           sub="When someone doesn't reply, when should Jugaadu nudge?"
           color={p.stamp}

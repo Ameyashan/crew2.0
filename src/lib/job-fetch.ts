@@ -9,6 +9,8 @@
 // Everything here is best-effort: any failure returns null and the callers fall
 // back to the existing web_search path, so this can only improve accuracy.
 
+import { getJson, str, htmlToText, slugToName } from "@/lib/jobs/util";
+
 export interface FetchedJob {
   title: string | null; // the role title exactly as posted
   company: string | null; // hiring company (slug-derived when the API omits it)
@@ -18,9 +20,6 @@ export interface FetchedJob {
   source: "greenhouse" | "lever";
   url: string;
 }
-
-const FETCH_TIMEOUT_MS = 8000;
-const MAX_JD_CHARS = 12000;
 
 export async function fetchAtsPosting(url: string): Promise<FetchedJob | null> {
   let u: URL;
@@ -100,61 +99,4 @@ async function fetchLever(u: URL): Promise<FetchedJob | null> {
     source: "lever",
     url: u.toString(),
   };
-}
-
-async function getJson<T>(url: string): Promise<T | null> {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { headers: { Accept: "application/json" }, signal: ctrl.signal });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-// Narrow an unknown JSON field to a trimmed non-empty string, else null.
-function str(v: unknown): string | null {
-  return typeof v === "string" && v.trim() ? v : null;
-}
-
-// Greenhouse returns the JD as entity-escaped HTML (&lt;p&gt;…&lt;/p&gt;); Lever
-// returns real HTML. Decode the structural entities first so the tag stripper
-// sees actual markup, then flatten to readable plain text.
-function htmlToText(raw: string): string {
-  if (!raw) return "";
-  let s = raw
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&amp;/gi, "&");
-  s = s
-    .replace(/<\s*(script|style)[\s\S]*?<\/\s*\1\s*>/gi, " ")
-    .replace(/<\s*br\s*\/?\s*>/gi, "\n")
-    .replace(/<\/\s*(p|div|li|h[1-6]|tr|ul|ol)\s*>/gi, "\n")
-    .replace(/<[^>]+>/g, " ");
-  s = s
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&#39;|&rsquo;|&lsquo;/gi, "'")
-    .replace(/&quot;|&ldquo;|&rdquo;/gi, '"')
-    .replace(/&mdash;/gi, "—")
-    .replace(/&ndash;/gi, "–")
-    .replace(/&[a-z]+;/gi, " ");
-  return s
-    .replace(/[ \t]+/g, " ")
-    .replace(/ *\n */g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
-    .slice(0, MAX_JD_CHARS);
-}
-
-// "anthropic" → "Anthropic". A last-resort company name when the API doesn't
-// carry a display name; the board/site slug is the company in practice.
-function slugToName(slug: string): string {
-  return slug
-    .replace(/[-_]+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
