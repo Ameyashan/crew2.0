@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PAPER_FONTS } from "@/components/paper/fonts";
 import { usePaperTheme } from "@/components/paper/use-paper-theme";
@@ -137,20 +137,29 @@ export default function JobsFeedPage() {
   const [jobs, setJobs] = useState<FeedItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [onlyNew, setOnlyNew] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  const fetchFeed = useCallback(
+    (filterNew: boolean) => fetch(`/api/jobs/feed${filterNew ? "?filter=new" : ""}`).then((r) => r.json()),
+    [],
+  );
+
+  const applyFeed = useCallback((j: { error?: string; jobs?: FeedItem[] }) => {
+    if (j.error) {
+      setError(j.error);
+      setJobs([]);
+    } else {
+      setError(null);
+      setJobs(Array.isArray(j.jobs) ? j.jobs : []);
+    }
+  }, []);
 
   useEffect(() => {
     let alive = true;
-    fetch(`/api/jobs/feed${onlyNew ? "?filter=new" : ""}`)
-      .then((r) => r.json())
+    fetchFeed(onlyNew)
       .then((j) => {
-        if (!alive) return;
-        if (j.error) {
-          setError(j.error);
-          setJobs([]);
-        } else {
-          setError(null);
-          setJobs(Array.isArray(j.jobs) ? j.jobs : []);
-        }
+        if (alive) applyFeed(j);
       })
       .catch((e) => {
         if (alive) setError(String(e?.message || e));
@@ -158,7 +167,37 @@ export default function JobsFeedPage() {
     return () => {
       alive = false;
     };
-  }, [onlyNew]);
+  }, [onlyNew, fetchFeed, applyFeed]);
+
+  // Re-run the discovery pipeline against the user's saved preferences, then
+  // pull the freshly-scored feed. Saving preferences only grows the catalog;
+  // this is what actually fills (or refills) the matches.
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    setNote(null);
+    try {
+      const r = await fetch("/api/jobs/refresh", { method: "POST" });
+      const j = await r.json();
+      if (j.error) {
+        setError(j.error);
+      } else {
+        applyFeed(await fetchFeed(onlyNew));
+        if (j.reason === "no_preferences") {
+          setNote("Set your interests first, then refresh to fill your feed.");
+        } else if (j.candidates === 0) {
+          setNote("No roles on the boards match your preferences right now — try broadening them.");
+        } else if (j.scored === 0) {
+          setNote("Your feed is already up to date — no new matches this time.");
+        } else {
+          setNote(`Added ${j.scored} new match${j.scored === 1 ? "" : "es"} to your feed.`);
+        }
+      }
+    } catch (e) {
+      setError(String((e as Error)?.message || e));
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchFeed, applyFeed, onlyNew]);
 
   const total = jobs?.length ?? 0;
   const newCount = jobs?.filter((j) => j.is_new).length ?? 0;
@@ -181,11 +220,32 @@ export default function JobsFeedPage() {
         italic="picked for you."
         sub={summary}
         right={
-          <InkButton p={p} kind="outline" size="sm" onClick={() => router.push("/app/jobs/preferences")}>
-            Edit preferences
-          </InkButton>
+          <div style={{ display: "flex", gap: 8 }}>
+            <InkButton p={p} color={p.marigold} size="sm" onClick={refresh} disabled={refreshing}>
+              {refreshing ? "Refreshing…" : "Refresh"}
+            </InkButton>
+            <InkButton p={p} kind="outline" size="sm" onClick={() => router.push("/app/jobs/preferences")}>
+              Edit preferences
+            </InkButton>
+          </div>
         }
       />
+
+      {note && (
+        <div
+          style={{
+            fontFamily: PAPER_FONTS.mono,
+            fontSize: 12,
+            color: p.ink,
+            border: `1px solid ${p.ink}`,
+            background: `${p.marigold}33`,
+            padding: "8px 12px",
+            marginBottom: 16,
+          }}
+        >
+          {note}
+        </div>
+      )}
 
       {/* New-today toggle */}
       {jobs !== null && total > 0 && (
@@ -244,9 +304,14 @@ export default function JobsFeedPage() {
               See all matches
             </InkButton>
           ) : (
-            <InkButton p={p} color={p.stamp} onClick={() => router.push("/app/jobs/preferences")}>
-              Set your interests
-            </InkButton>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+              <InkButton p={p} color={p.marigold} onClick={refresh} disabled={refreshing}>
+                {refreshing ? "Refreshing…" : "Refresh feed"}
+              </InkButton>
+              <InkButton p={p} kind="outline" onClick={() => router.push("/app/jobs/preferences")}>
+                Set your interests
+              </InkButton>
+            </div>
           )}
         </PaperEmpty>
       ) : (
