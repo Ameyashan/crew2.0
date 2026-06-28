@@ -38,14 +38,20 @@ export async function fetchBoard(
   }
 }
 
-export async function fetchAllListings(): Promise<FetchResult> {
+// `companyIds` scopes the fetch to a subset of the catalog (used by the on-demand
+// per-user refresh); omit it for the full daily scan. An empty array is a no-op.
+export async function fetchAllListings(opts?: { companyIds?: string[] }): Promise<FetchResult> {
   const sb = supabaseAdmin();
   const runTs = new Date().toISOString();
 
-  const { data: companies, error } = await sb
-    .from("companies")
-    .select("id, name, ats, slug")
-    .eq("active", true);
+  const scope = opts?.companyIds;
+  if (scope && scope.length === 0) {
+    return { inserted: 0, updated: 0, newJobIds: [], errors: [] };
+  }
+
+  let companiesQ = sb.from("companies").select("id, name, ats, slug").eq("active", true);
+  if (scope) companiesQ = companiesQ.in("id", scope);
+  const { data: companies, error } = await companiesQ;
   if (error) throw new Error(`load companies failed: ${error.message}`);
 
   const targets: BoardTarget[] = (companies ?? []).map((c) => ({
