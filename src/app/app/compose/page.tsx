@@ -28,6 +28,7 @@ import {
   steerAllChannels,
   jobHost,
 } from "@/lib/runs-store";
+import { classifyKind } from "@/lib/kind-detect";
 
 // Hit the existing PDF/DOCX endpoints (they take the tailored-resume JSON) and
 // trigger a browser download. Shared by the ↓ PDF / ↓ Word buttons.
@@ -50,21 +51,6 @@ async function downloadResumeBlob(resume, fmt) {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-}
-
-// Three-way read of the paste box → drives the "Looks like…" banner and the
-// high-level flow we preview before the user hits Go. Job postings and profile
-// links resolve to a concrete target; everything else is treated as a fuzzy
-// "describe a person" search.
-function classifyKind(s) {
-  const lo = (s || '').toLowerCase().trim();
-  if (!lo) return 'person';
-  if (/\b(jobs?|careers?|hiring|posting|positions?)\b/.test(lo)) return 'job';
-  if (/(greenhouse|lever|ashbyhq|workable|wellfound|builtin|workday)\.(io|com)/.test(lo)) return 'job';
-  if (lo.includes('/jobs/') || lo.includes('/careers/') || lo.includes('careers.')) return 'job';
-  if (/(linkedin\.com\/in\/|x\.com\/|twitter\.com\/|github\.com\/)/.test(lo)) return 'person';
-  if (/^https?:\/\//.test(lo) || lo.includes('.com/') || lo.includes('.io/')) return 'person';
-  return 'fuzzy';
 }
 
 // Label + the high-level flow each kind kicks off, surfaced in the banner so

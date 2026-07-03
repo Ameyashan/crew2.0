@@ -2,6 +2,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { detectKind } from "@/lib/kind-detect";
 
 /* ─────────────────────── types ─────────────────────── */
 
@@ -1348,13 +1349,7 @@ function waitForVisible(signal?: AbortSignal): Promise<void> {
   });
 }
 
-export function detectKind(s: string): "person" | "job" {
-  const lo = (s || "").toLowerCase();
-  if (/\b(jobs?|careers?|hiring|posting|positions?)\b/.test(lo)) return "job";
-  if (/(greenhouse|lever|ashbyhq|workable|wellfound|builtin|workday)\.io|com/.test(lo)) return "job";
-  if (lo.includes("/jobs/") || lo.includes("/careers/") || lo.includes("careers.")) return "job";
-  return "person";
-}
+export { detectKind } from "@/lib/kind-detect";
 
 function inferPersonV3(input: string) {
   const lo = (input || "").toLowerCase();
