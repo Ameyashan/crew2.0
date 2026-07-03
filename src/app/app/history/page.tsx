@@ -138,7 +138,9 @@ function HistoryV3({ p }) {
   function resumeTitle(r: any): { eyebrow: string; title: string } {
     return {
       eyebrow: r.target_company || "—",
-      title: r.target_role || "Tailored resume",
+      title:
+        r.target_role ||
+        (r.status === "in_flight" ? "Tailoring…" : "Tailored resume"),
     };
   }
 
@@ -256,7 +258,11 @@ function HistoryV3({ p }) {
           const chip =
             it.agent === "compose"
               ? outcomeChip(r.outcome)
-              : { label: r.ats_score != null ? `ATS ${r.ats_score}` : "tailored", color: p.leaf };
+              : r.status === "in_flight"
+                ? { label: "in progress…", color: p.stamp }
+                : r.status === "error"
+                  ? { label: "error", color: p.stamp }
+                  : { label: r.ats_score != null ? `ATS ${r.ats_score}` : "tailored", color: p.leaf };
           const kindBadge =
             it.agent === "compose"
               ? r.kind === "job"

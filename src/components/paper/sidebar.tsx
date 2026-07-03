@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { PAPER_FONTS } from "./fonts";
 import type { Palette } from "./palette";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { useRuns } from "@/lib/runs-store";
 
 const APP_NAV = [
   { id: "compose", label: "Compose", glyph: "✎" },
@@ -47,6 +48,20 @@ export function SidebarV3({
   const pathname = usePathname();
   const router = useRouter();
   const current = APP_NAV.find((n) => pathname?.startsWith(`/app/${n.id}`))?.id ?? "compose";
+
+  // Live agent runs (compose + resume share the module store), so "what's
+  // still working" is visible from every screen — not just the launching page.
+  const runs = useRuns();
+  const activeRuns = runs.filter((r) => r.stage === "working" || r.stage === "parsing");
+  const attentionRuns = runs.filter((r) => r.stage === "error");
+  // Where a click should land: follow the runs that need eyes (active first,
+  // else the errored ones). Any compose run wins — that page shows the richest
+  // progress; only-resume runs land on the resume page's live cards.
+  const runsFocus = activeRuns.length ? activeRuns : attentionRuns;
+  const runsTarget =
+    runsFocus.length && runsFocus.every((r) => r.kind === "resume")
+      ? "/app/resume"
+      : "/app/compose";
 
   const [name, setName] = useState<string | null>(null);
 
@@ -224,6 +239,62 @@ export function SidebarV3({
           );
         })}
       </nav>
+
+      {/* Live-runs strip: pulses while any agent is working, from any screen. */}
+      {(activeRuns.length > 0 || attentionRuns.length > 0) && (
+        <button
+          onClick={() => {
+            router.push(runsTarget);
+            onNavigate?.();
+          }}
+          style={{
+            marginTop: 10,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 10px",
+            background: p.card,
+            border: `1.5px solid ${p.ink}`,
+            boxShadow: `3px 3px 0 ${activeRuns.length ? p.stamp : p.marigoldDeep}`,
+            cursor: "pointer",
+            textAlign: "left",
+            color: p.ink,
+          }}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: 999,
+              flexShrink: 0,
+              background: activeRuns.length ? p.stamp : p.marigoldDeep,
+              animation: activeRuns.length ? "pulseDot 1.1s ease-in-out infinite" : "none",
+            }}
+          />
+          <span
+            style={{
+              fontFamily: PAPER_FONTS.mono,
+              fontSize: 10.5,
+              letterSpacing: ".12em",
+              textTransform: "uppercase",
+            }}
+          >
+            {activeRuns.length
+              ? `${activeRuns.length} running`
+              : `${attentionRuns.length} needs attention`}
+          </span>
+          <span
+            style={{
+              marginLeft: "auto",
+              fontFamily: PAPER_FONTS.mono,
+              fontSize: 11,
+              color: p.inkMute,
+            }}
+          >
+            →
+          </span>
+        </button>
+      )}
 
       <div style={{ height: 18 }} />
 
