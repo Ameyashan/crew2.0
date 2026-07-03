@@ -138,7 +138,7 @@ function PeopleV3({ p, go, PEOPLE_V3 = [], onDeleted }) {
             letterSpacing: '.04em', cursor: 'pointer',
           }}>← All people</button>
         )}
-        <PersonDetailV3 p={p} person={person} go={go} onDeleted={(id) => {
+        <PersonDetailV3 key={person.id} p={p} person={person} go={go} onDeleted={(id) => {
           // Return to the list; the parent drops the row and the desktop
           // fallback (person = filtered[0]) selects the next contact.
           setSelected(null);
@@ -159,16 +159,15 @@ function PersonDetailV3({ p, person, go, onDeleted }) {
   const router = useRouter();
   const [detail, setDetail] = useState(null);
   const [opening, setOpening] = useState(null);
+  // The dossier is keyed by person.id at the call site, so selecting someone
+  // else remounts it — delete-confirm state and the stale previous dossier
+  // reset for free.
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
   useEffect(() => {
     if (!person?.id) return;
     let cancelled = false;
-    // Selecting someone else resets any half-finished delete confirmation.
-    setConfirmDelete(false);
-    setDeleting(false);
-    setDeleteError(null);
     fetch(`/api/people/${person.id}`).then((r) => r.json()).then((j) => {
       if (!cancelled) setDetail(j);
     }).catch(() => {});
