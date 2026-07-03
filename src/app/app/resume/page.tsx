@@ -72,7 +72,6 @@ function ResumeV3({ p, go }) {
         });
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed off store emits
   }, [resumeRuns]);
 
   const avgAts = (() => {

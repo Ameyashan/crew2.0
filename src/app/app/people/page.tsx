@@ -248,7 +248,12 @@ function PersonDetailV3({ p, person, go, onDeleted }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
-          <InkButton p={p} color={p.stamp} onClick={() => go('compose', { input: person.email })}>Reach out again →</InkButton>
+          <InkButton p={p} color={p.stamp} onClick={() => go('compose', {
+            // Seed with the email when we have one (compose flips its
+            // "I already have their email" shortcut); otherwise a name+company
+            // query so the button still works for email-less contacts.
+            input: person.email || [person.name, person.co].filter(Boolean).join(' at '),
+          })}>Reach out again →</InkButton>
           {!confirmDelete && (
             <InkButton p={p} kind="outline" onClick={() => setConfirmDelete(true)}>Delete</InkButton>
           )}

@@ -89,6 +89,20 @@ function ComposeV3({ p, go }) {
     resumePendingRuns();
   }, []);
 
+  // Honor ?seed= (People's "Reach out again →"): prefill the paste box, and
+  // when the seed is the person's email address, flip the "I already have
+  // their email" shortcut too. Read from location instead of useSearchParams
+  // so the one-shot semantics are explicit; strip the param so a refresh
+  // doesn't re-seed over whatever the user typed since.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const seed = new URLSearchParams(window.location.search).get('seed');
+    if (!seed) return;
+    setInput(seed);
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(seed.trim())) setHaveEmail(true);
+    window.history.replaceState(null, '', window.location.pathname);
+  }, []);
+
   function onGo() {
     const hasText = input.trim().length > 0;
     const file = screenshot?.file;
