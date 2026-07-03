@@ -22,7 +22,7 @@ export type Run = {
   input: string;
   intent?: string;
   providedEmail?: boolean;
-  kind: "person" | "job";
+  kind: "person" | "job" | "resume";
   stage: RunStage;
   parsed: unknown;
   progress: Record<string, number>;
@@ -80,6 +80,19 @@ export type Run = {
   // Frozen at startRun() time; the progress row filters to these. Phase 1 is
   // display-only — the backend still runs every agent.
   selectedAgents?: string[];
+  // Resume-tailor runs (kind "resume"): the resume_generations row id (from the
+  // stream's resume_run event; used for recovery and history dedupe), the live
+  // "chars/bullets written" caption, and the original request so Retry can
+  // re-tailor with the same inputs.
+  resumeGenerationId?: string | null;
+  tailor?: { chars: number; bullets: number } | null;
+  resumeRequest?: { jobUrl?: string; highlights?: string; pageCount?: 1 | 2 } | null;
+  // Per-agent non-fatal errors (e.g. the résumé branch failed but the rest of
+  // the crew finished). Keyed like `progress` (resume | person | email | outreach).
+  stepErrors?: Record<string, string>;
+  // Set when the person flow couldn't identify anyone AND the input looks like
+  // a job posting — the error card offers a one-click "run as job" switch.
+  suggestedKind?: "job" | null;
 };
 
 /* ─────────────────────── module store ─────────────────────── */
@@ -135,8 +148,11 @@ const PENDING_MAX_AGE_MS = 30 * 60 * 1000; // don't resurrect ancient runs
 const PENDING_MAX = 20;
 
 type PendingRun = {
+  // For person/job runs this is the compose_runs row id; for resume runs it
+  // holds the resume_generations row id. The field name is kept for
+  // compatibility with entries already stored under the v1 key.
   composeRunId: string;
-  kind: "person" | "job";
+  kind: "person" | "job" | "resume";
   input: string;
   intent: string | null;
   createdAt: number;
@@ -191,10 +207,11 @@ function setComposeRunId(localId: string, composeRunId: string, run: Run) {
   });
 }
 
-// Drop the pending entry for whichever compose run a local run is bound to.
+// Drop the pending entry for whichever server row a local run is bound to
+// (compose_runs for person/job runs, resume_generations for resume runs).
 function clearPending(localId: string) {
   const r = runs.find((x) => x.id === localId);
-  if (r?.composeRunId) forgetPending(r.composeRunId);
+  forgetPending(r?.composeRunId ?? r?.resumeGenerationId);
 }
 
 /* ─────────────────────── actions ─────────────────────── */
@@ -356,6 +373,77 @@ export function startImageRun(
   return id;
 }
 
+// Kick off a resume-tailor run that survives navigation, exactly like compose
+// runs: the streaming loop lives in this module, the resume_generations row id
+// is registered for cross-reload recovery, and the resume page just renders
+// store state. Returns the local run id (null when there's nothing to run).
+export function startResumeRun(opts: {
+  jobUrl?: string;
+  highlights?: string;
+  pageCount?: 1 | 2;
+}): string | null {
+  const jobUrl = (opts?.jobUrl || "").trim();
+  const highlights = (opts?.highlights || "").trim();
+  if (!jobUrl && !highlights) return null;
+
+  const id =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `run_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  const run: Run = {
+    id,
+    input: jobUrl || (highlights.length > 80 ? `${highlights.slice(0, 77)}…` : highlights),
+    providedEmail: false,
+    kind: "resume",
+    stage: "working",
+    parsed: null,
+    progress: { tailor: 5 },
+    drafts: null,
+    enrichment: null,
+    person: null,
+    candidates: null,
+    error: null,
+    createdAt: Date.now(),
+    tailor: null,
+    resumeRequest: {
+      jobUrl: jobUrl || undefined,
+      highlights: highlights || undefined,
+      pageCount: opts?.pageCount === 2 ? 2 : 1,
+    },
+  };
+
+  runs = [run, ...runs];
+  emit();
+
+  const controller = new AbortController();
+  controllers.set(id, controller);
+  ensureProgressTicker();
+  void streamResumeRun(run, controller.signal);
+  return id;
+}
+
+// Reset a resume run and stream a fresh tailor (which opens a new server row).
+function relaunchResumeRun(id: string) {
+  const run = runs.find((r) => r.id === id);
+  if (!run) return;
+  forgetPending(run.resumeGenerationId);
+  patch(id, () => ({
+    stage: "working",
+    progress: { tailor: 5 },
+    tailor: null,
+    error: null,
+    reconnecting: false,
+    resumeGenerationId: null,
+  }));
+  const fresh = runs.find((r) => r.id === id);
+  if (!fresh) return;
+  const controller = new AbortController();
+  controllers.set(id, controller);
+  ensureProgressTicker();
+  void streamResumeRun(fresh, controller.signal);
+}
+
 export function dismissRun(id: string) {
   controllers.get(id)?.abort();
   controllers.delete(id);
@@ -375,6 +463,41 @@ export function retryRun(id: string, picked?: unknown) {
   if (!run) return;
   controllers.get(id)?.abort();
   controllers.delete(id);
+
+  if (run.kind === "resume") {
+    // Same recover-first strategy as compose: if the server finished and
+    // persisted while we were disconnected, adopt that result instead of
+    // burning another tailor run.
+    if (run.resumeGenerationId && picked === undefined) {
+      const generationId = run.resumeGenerationId;
+      patch(id, () => ({ stage: "working", error: null, reconnecting: true }));
+      const controller = new AbortController();
+      controllers.set(id, controller);
+      void (async () => {
+        try {
+          const res = await fetch(`/api/resume/history/${generationId}`, { signal: controller.signal });
+          if (res.ok) {
+            const json = await res.json().catch(() => null);
+            const gen = json?.generation;
+            if (gen && gen.status === "complete") {
+              applyPersistedResume(id, gen);
+              forgetPending(generationId);
+              controllers.delete(id);
+              return;
+            }
+          }
+        } catch {
+          // fall through to a fresh tailor
+        }
+        if (controller.signal.aborted) return; // superseded by another action
+        controllers.delete(id);
+        relaunchResumeRun(id);
+      })();
+      return;
+    }
+    relaunchResumeRun(id);
+    return;
+  }
 
   // The common "Retry" case is a connection that dropped while the server kept
   // working — the run already finished and persisted. Re-running the whole crew
@@ -431,11 +554,41 @@ function relaunchRun(id: string, picked?: unknown) {
     person: null,
     contacts: null,
     error: null,
+    stepErrors: {},
+    suggestedKind: null,
     reconnecting: false,
     // Drop the stale id so the fresh stream registers its own.
     composeRunId: null,
   }));
   launch(id, picked);
+}
+
+// The person flow was handed a job posting (see suggestedKind) — flip the run
+// onto the job path and stream it from scratch. The abandoned person attempt
+// stays in History as needs_disambiguation; this opens a fresh compose row.
+export function switchRunToJob(id: string) {
+  const run = runs.find((r) => r.id === id);
+  if (!run || run.kind === "job") return;
+  controllers.get(id)?.abort();
+  controllers.delete(id);
+  forgetPending(run.composeRunId);
+  patch(id, () => ({
+    kind: "job",
+    stage: "working",
+    parsed: inferJobV3(run.input),
+    progress: {},
+    drafts: null,
+    enrichment: null,
+    person: null,
+    candidates: null,
+    contacts: null,
+    error: null,
+    stepErrors: {},
+    suggestedKind: null,
+    reconnecting: false,
+    composeRunId: null,
+  }));
+  launch(id);
 }
 
 export function updateRun(id: string, partial: Partial<Run>) {
@@ -860,6 +1013,45 @@ function upsertDraft(
   return arr;
 }
 
+/* ─────────────────────── progress easing ─────────────────────── */
+// Step events only land at start (10) and done (100), so between them the bars
+// used to sit frozen at 10% — reading as "stuck" (the exact complaint from
+// user testing). While any run is working, ease its bars toward an 88%
+// ceiling; real events still snap past it to 100.
+
+const PROGRESS_EASE_CEILING = 88;
+let progressTicker: ReturnType<typeof setInterval> | null = null;
+
+function ensureProgressTicker() {
+  if (progressTicker || typeof window === "undefined") return;
+  progressTicker = setInterval(tickProgress, 1200);
+}
+
+function tickProgress() {
+  let touched = false;
+  runs = runs.map((r) => {
+    if (r.stage !== "working" || r.reconnecting) return r;
+    let changed = false;
+    const next: Record<string, number> = { ...r.progress };
+    for (const k of Object.keys(next)) {
+      const v = next[k];
+      if (v >= 5 && v < PROGRESS_EASE_CEILING) {
+        next[k] = Math.min(PROGRESS_EASE_CEILING, v + 2);
+        changed = true;
+      }
+    }
+    if (!changed) return r;
+    touched = true;
+    return { ...r, progress: next };
+  });
+  if (touched) emit();
+  // Nothing left to animate — stop until the next launch.
+  if (!runs.some((r) => r.stage === "working" && !r.reconnecting)) {
+    if (progressTicker) clearInterval(progressTicker);
+    progressTicker = null;
+  }
+}
+
 /* ─────────────────────── streaming ─────────────────────── */
 
 function launch(id: string, picked?: unknown) {
@@ -867,6 +1059,7 @@ function launch(id: string, picked?: unknown) {
   if (!run) return;
   const controller = new AbortController();
   controllers.set(id, controller);
+  ensureProgressTicker();
   void streamRun(run, controller.signal, picked);
 }
 
@@ -941,11 +1134,36 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
             setComposeRunId(id, evt.id, run);
             continue;
           }
+          if (evt.type === "progress" && evt.id === "resume") {
+            // Fine-grained tailoring signal (~chars of resume JSON written so
+            // far). Map onto the resume bar so it moves with real work instead
+            // of parking at 10% until done.
+            const chars = Number(evt.chars) || 0;
+            const bullets = Number(evt.bullets) || 0;
+            patch(id, (r) => ({
+              tailor: { chars, bullets },
+              progress: {
+                ...r.progress,
+                resume: Math.max(
+                  r.progress?.resume || 0,
+                  Math.min(PROGRESS_EASE_CEILING, 10 + Math.round((chars / 9000) * 78)),
+                ),
+              },
+            }));
+            continue;
+          }
           if (evt.type === "step") {
             const k = evt.id; // resume | person | email | outreach
             if (evt.status === "start") patch(id, (r) => ({ progress: { ...r.progress, [k]: Math.max(r.progress?.[k] || 0, 10) } }));
             else if (evt.status === "done" || evt.status === "skipped")
               patch(id, (r) => ({ progress: { ...r.progress, [k]: 100 } }));
+            else if (evt.status === "error")
+              // Non-fatal: this agent failed but the rest of the crew keeps
+              // going. Close its bar and surface the message on its row.
+              patch(id, (r) => ({
+                progress: { ...r.progress, [k]: 100 },
+                stepErrors: { ...(r.stepErrors || {}), [k]: evt.message || "failed" },
+              }));
             if (evt.slot) {
               // Dual-contact run: route person/email/outreach into the slot.
               if (k === "person" && evt.status === "done" && evt.data) patchContact(evt.slot, { person: evt.data });
@@ -1095,6 +1313,11 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
             if (evt.status === "start") patch(id, (r) => ({ progress: { ...r.progress, [key]: 10 } }));
             else if (evt.status === "done" || evt.status === "skipped")
               patch(id, (r) => ({ progress: { ...r.progress, [key]: 100 } }));
+            else if (evt.status === "error")
+              patch(id, (r) => ({
+                progress: { ...r.progress, [key]: 100 },
+                stepErrors: { ...(r.stepErrors || {}), [key]: evt.message || "failed" },
+              }));
           }
           // The research step carries the REAL researched person (name, role,
           // company, links, context_lines) — surface it so the package card
@@ -1113,11 +1336,25 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
             collectedDrafts.push(evt.data);
             patch(id, () => ({ drafts: [...collectedDrafts] }));
           }
+        } else if (evt.type === "kind_suggestion") {
+          // Server noticed the input is a job-board URL running down the person
+          // path — remember it so an eventual dead-end offers the job switch.
+          if (evt.suggest === "job") patch(id, () => ({ suggestedKind: "job" }));
         } else if (evt.type === "needs_disambiguation") {
-          patch(id, () => ({
+          // Only claim there's a list to pick from when there actually is one.
+          // An empty list on a job-looking input means the person flow was
+          // handed a posting — offer the switch instead of a dead end.
+          const candidates = Array.isArray(evt.data) ? evt.data : [];
+          const suggestJob = candidates.length === 0 && detectKind(run.input) === "job";
+          patch(id, (r) => ({
             stage: "error",
-            error: "Multiple people matched — pick the right one below.",
-            candidates: Array.isArray(evt.data) ? evt.data : null,
+            candidates: candidates.length ? candidates : null,
+            suggestedKind: suggestJob ? "job" : (r.suggestedKind ?? null),
+            error: candidates.length
+              ? "Multiple people matched — pick the right one below."
+              : (suggestJob || r.suggestedKind === "job")
+                ? "This looks like a job posting, not a person."
+                : "Couldn't identify a specific person from that input. Try a full name plus their company, or paste their LinkedIn/X profile link, then retry.",
           }));
           return;
         } else if (evt.type === "complete") {
@@ -1169,6 +1406,132 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
   }
 }
 
+// Patch the live run with the server-reported resume_generations id AND
+// register it for cross-reload recovery — the resume twin of setComposeRunId.
+function setResumeGenerationId(localId: string, generationId: string, run: Run) {
+  patch(localId, () => ({ resumeGenerationId: generationId }));
+  rememberPending({
+    composeRunId: generationId,
+    kind: "resume",
+    input: run.input,
+    intent: null,
+    createdAt: run.createdAt,
+  });
+}
+
+// Stream /api/resume/tailor for a kind:"resume" run. Same drop-recovery
+// contract as streamRun: server-reported errors surface immediately; a network
+// drop polls the persisted generation row instead of giving up.
+async function streamResumeRun(run: Run, signal: AbortSignal) {
+  const id = run.id;
+  const req = run.resumeRequest || {};
+
+  try {
+    const res = await fetch("/api/resume/tailor", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "text/event-stream" },
+      body: JSON.stringify({
+        job_url: req.jobUrl || undefined,
+        highlights: req.highlights || undefined,
+        page_count: req.pageCount === 2 ? 2 : 1,
+      }),
+      signal,
+    });
+    if (!res.ok || !res.body) {
+      // Non-stream failures (400/401) carry a JSON error worth showing as-is.
+      let message = `tailor failed: ${res.status}`;
+      try {
+        const j = await res.json();
+        if (j?.error) message = j.error;
+      } catch {
+        // no JSON body — keep the status message
+      }
+      throw Object.assign(new Error(message), { serverReported: true });
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let sawResume = false;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split("\n\n");
+      buf = parts.pop() || "";
+      for (const raw of parts) {
+        const line = raw.split("\n").find((l) => l.startsWith("data: "));
+        if (!line) continue;
+        let evt;
+        try {
+          evt = JSON.parse(line.slice(6));
+        } catch {
+          continue;
+        }
+        if (evt.type === "resume_run" && typeof evt.id === "string") {
+          setResumeGenerationId(id, evt.id, run);
+        } else if (evt.type === "progress") {
+          // ~chars of resume JSON written so far → ease the bar with real work.
+          const chars = Number(evt.chars) || 0;
+          const bullets = Number(evt.bullets) || 0;
+          patch(id, (r) => ({
+            tailor: { chars, bullets },
+            progress: {
+              ...r.progress,
+              tailor: Math.max(
+                r.progress?.tailor || 0,
+                Math.min(PROGRESS_EASE_CEILING, 10 + Math.round((chars / 9000) * 78)),
+              ),
+            },
+          }));
+        } else if (evt.type === "step" && evt.id === "tailor" && evt.status === "done" && evt.data?.resume) {
+          sawResume = true;
+          const resume = evt.data.resume;
+          patch(id, (r) => ({
+            parsed: {
+              ...(r.parsed || {}),
+              resume,
+              ats_score: resume?.meta?.ats_score ?? r.parsed?.ats_score,
+              ats_score_before: resume?.meta?.ats_score_before ?? r.parsed?.ats_score_before,
+              role: resume?.meta?.target_role ?? r.parsed?.role,
+              company: resume?.meta?.target_company ?? r.parsed?.company,
+            },
+          }));
+        } else if (evt.type === "saved" && typeof evt.id === "string") {
+          patch(id, () => ({ resumeGenerationId: evt.id }));
+        } else if (evt.type === "error") {
+          throw Object.assign(new Error(evt.message || "tailor error"), { serverReported: true });
+        }
+      }
+    }
+    if (!sawResume) {
+      throw Object.assign(new Error("The run ended before a resume was produced."), {
+        serverReported: true,
+      });
+    }
+    patch(id, (r) => ({
+      progress: { ...r.progress, tailor: 100 },
+      stage: "done",
+      error: null,
+      reconnecting: false,
+    }));
+  } catch (e) {
+    if (signal.aborted) return; // dismissed/cleared — not an error
+    if (e?.serverReported) {
+      patch(id, () => ({ stage: "error", error: String(e?.message || e), reconnecting: false }));
+      return;
+    }
+    // Network drop — the server keeps tailoring and finalizes the row; poll it.
+    const recovered = await recoverResumeFromDrop(id, signal);
+    if (!recovered) {
+      patch(id, () => ({ stage: "error", error: String(e?.message || e), reconnecting: false }));
+    }
+  } finally {
+    controllers.delete(id);
+    clearPending(id);
+  }
+}
+
 // The connection died mid-stream but the server-side run lives on. If we already
 // learned the compose_runs id, keep the working UI and poll the persisted run
 // until it finishes (or we give up), then patch the result in. Returns true when
@@ -1192,22 +1555,41 @@ async function recoverFromDrop(id: string, signal: AbortSignal): Promise<boolean
   return true;
 }
 
+// The resume twin of recoverFromDrop: poll the persisted resume_generations
+// row until the server-side tailor settles it, then adopt that result.
+async function recoverResumeFromDrop(id: string, signal: AbortSignal): Promise<boolean> {
+  const run = runs.find((r) => r.id === id);
+  const generationId = run?.resumeGenerationId;
+  if (!generationId) return false; // dropped before we knew the row — can't recover
+
+  patch(id, () => ({ reconnecting: true, error: null, stage: "working" }));
+
+  const settled = await pollResumeUntilSettled(id, generationId, signal);
+  if (!settled) {
+    patch(id, () => ({
+      reconnecting: false,
+      stage: "error",
+      error: DROP_MESSAGE,
+    }));
+  }
+  return true;
+}
+
 const DROP_MESSAGE =
   "Lost the connection (the app was backgrounded) before the run finished. Tap Retry — your work so far is saved in History.";
 
-// Poll the persisted compose_runs row until it leaves `in_flight`, then patch
-// the result into the live run. Shared by the mid-stream drop recovery and the
-// cross-reload resume path.
+// Poll a persisted row until it leaves `in_flight`, then patch the result into
+// the live run. Shared by the mid-stream drop recovery and the cross-reload
+// resume path; `checkOnce` fetches + applies and returns true once terminal.
 //
 // The budget is counted in FOREGROUND time, not wall-clock: a poll is only
 // spent after the tab is visible again (background timers are frozen anyway, and
 // the server can't run past its own maxDuration). So locking the phone for ten
 // minutes no longer burns the recovery window. Returns true once it applied a
 // terminal result, false if the budget ran out with the run still in flight.
-async function pollPersistedUntilSettled(
-  localId: string,
-  composeRunId: string,
+async function pollUntilSettled(
   signal: AbortSignal,
+  checkOnce: () => Promise<boolean>,
   budgetMs = 4 * 60 * 1000,
 ): Promise<boolean> {
   let spent = 0;
@@ -1221,15 +1603,7 @@ async function pollPersistedUntilSettled(
     if (signal.aborted) return true;
     spent += delay;
     try {
-      const res = await fetch(`/api/compose/history/${composeRunId}`, { signal });
-      if (res.ok) {
-        const json = await res.json().catch(() => null);
-        const persisted = json?.run;
-        if (persisted && persisted.outcome && persisted.outcome !== "in_flight") {
-          applyPersisted(localId, persisted);
-          return true;
-        }
-      }
+      if (await checkOnce()) return true;
     } catch {
       if (signal.aborted) return true;
       // transient — keep polling
@@ -1237,6 +1611,52 @@ async function pollPersistedUntilSettled(
     delay = Math.min(Math.round(delay * 1.4), 9000);
   }
   return false;
+}
+
+function pollPersistedUntilSettled(
+  localId: string,
+  composeRunId: string,
+  signal: AbortSignal,
+  budgetMs?: number,
+): Promise<boolean> {
+  return pollUntilSettled(
+    signal,
+    async () => {
+      const res = await fetch(`/api/compose/history/${composeRunId}`, { signal });
+      if (!res.ok) return false;
+      const json = await res.json().catch(() => null);
+      const persisted = json?.run;
+      if (persisted && persisted.outcome && persisted.outcome !== "in_flight") {
+        applyPersisted(localId, persisted);
+        return true;
+      }
+      return false;
+    },
+    budgetMs,
+  );
+}
+
+function pollResumeUntilSettled(
+  localId: string,
+  generationId: string,
+  signal: AbortSignal,
+  budgetMs?: number,
+): Promise<boolean> {
+  return pollUntilSettled(
+    signal,
+    async () => {
+      const res = await fetch(`/api/resume/history/${generationId}`, { signal });
+      if (!res.ok) return false;
+      const json = await res.json().catch(() => null);
+      const gen = json?.generation;
+      if (gen && gen.status && gen.status !== "in_flight") {
+        applyPersistedResume(localId, gen);
+        return true;
+      }
+      return false;
+    },
+    budgetMs,
+  );
 }
 
 // Replay any in-flight runs left behind by a previous session (typically a
@@ -1253,7 +1673,13 @@ export function resumePendingRuns() {
   savePending(pending);
 
   for (const entry of pending) {
-    if (runs.some((r) => r.composeRunId === entry.composeRunId)) continue;
+    // For resume entries the stored id is a resume_generations row id — dedupe
+    // against the matching field.
+    const isResume = entry.kind === "resume";
+    const already = isResume
+      ? runs.some((r) => r.resumeGenerationId === entry.composeRunId)
+      : runs.some((r) => r.composeRunId === entry.composeRunId);
+    if (already) continue;
 
     const localId =
       typeof crypto !== "undefined" && crypto.randomUUID
@@ -1268,7 +1694,7 @@ export function resumePendingRuns() {
       kind: entry.kind,
       stage: "working",
       parsed: null,
-      progress: {},
+      progress: isResume ? { tailor: 10 } : {},
       drafts: null,
       enrichment: null,
       person: null,
@@ -1276,7 +1702,8 @@ export function resumePendingRuns() {
       error: null,
       createdAt: entry.createdAt || Date.now(),
       reconnecting: true,
-      composeRunId: entry.composeRunId,
+      composeRunId: isResume ? null : entry.composeRunId,
+      resumeGenerationId: isResume ? entry.composeRunId : undefined,
     };
     runs = [run, ...runs];
     emit();
@@ -1285,11 +1712,9 @@ export function resumePendingRuns() {
     controllers.set(localId, controller);
     void (async () => {
       try {
-        const settled = await pollPersistedUntilSettled(
-          localId,
-          entry.composeRunId,
-          controller.signal,
-        );
+        const settled = isResume
+          ? await pollResumeUntilSettled(localId, entry.composeRunId, controller.signal)
+          : await pollPersistedUntilSettled(localId, entry.composeRunId, controller.signal);
         if (!settled && !controller.signal.aborted) {
           patch(localId, () => ({ reconnecting: false, stage: "error", error: DROP_MESSAGE }));
         }
@@ -1323,6 +1748,50 @@ function applyPersisted(id: string, persisted: PersistedComposeRun) {
     error: persisted.outcome === "complete" ? null : (persisted.error ?? r.error),
     reconnecting: false,
     stage,
+  }));
+}
+
+// The resume twin of applyPersisted: patch a live resume run in place from its
+// persisted resume_generations row. Also rebuilds the original request off the
+// row so Retry can re-tailor even when the run was revived after a reload.
+function applyPersistedResume(
+  id: string,
+  gen: {
+    id: string;
+    status?: string | null;
+    error?: string | null;
+    resume?: unknown;
+    ats_score?: number | null;
+    target_role?: string | null;
+    target_company?: string | null;
+    job_url?: string | null;
+    highlights?: string | null;
+    page_count?: number | null;
+  },
+) {
+  const resume = gen.resume ?? null;
+  const complete = gen.status === "complete" && !!resume;
+  patch(id, (r) => ({
+    resumeGenerationId: gen.id,
+    resumeRequest: r.resumeRequest ?? {
+      jobUrl: gen.job_url || undefined,
+      highlights: gen.highlights || undefined,
+      pageCount: gen.page_count === 2 ? 2 : 1,
+    },
+    parsed: complete
+      ? {
+          ...(r.parsed || {}),
+          resume,
+          ats_score: gen.ats_score ?? resume?.meta?.ats_score ?? r.parsed?.ats_score,
+          ats_score_before: resume?.meta?.ats_score_before ?? r.parsed?.ats_score_before,
+          role: gen.target_role ?? r.parsed?.role,
+          company: gen.target_company ?? r.parsed?.company,
+        }
+      : r.parsed,
+    progress: { ...r.progress, tailor: 100 },
+    stage: complete ? "done" : "error",
+    error: complete ? null : (gen.error || "Resume tailoring failed."),
+    reconnecting: false,
   }));
 }
 

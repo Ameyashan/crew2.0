@@ -4,6 +4,7 @@ import { resolveUserId } from "@/lib/auth";
 import { runWithUser } from "@/lib/user-context";
 import { supabaseAdmin } from "@/lib/supabase";
 import { parseAgents } from "@/lib/agent-selection";
+import { isJobBoardUrl } from "@/lib/kind-detect";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -180,6 +181,11 @@ export async function POST(req: NextRequest) {
             // Send the run id back so the client can stash it (used later when
             // the user reopens the run from /app/history).
             send({ type: "compose_run", id: composeRunId });
+          }
+          if (isJobBoardUrl(input.text) && !input.picked) {
+            // The person flow was handed a job-board URL — tip the client off
+            // so a research dead-end can offer the job path instead.
+            send({ type: "kind_suggestion", suggest: "job" });
           }
           for await (const evt of runReachOutStream({
             ...input,
