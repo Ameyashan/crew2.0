@@ -21,6 +21,7 @@ import {
   dismissRun,
   clearAllRuns,
   retryRun,
+  switchRunToJob,
   resumePendingRuns,
   pickCandidate,
   regenerateResume,
@@ -124,7 +125,7 @@ function ComposeV3({ p, go }) {
     }}>
       <PageHead p={p}
         title="Who are you reaching out to?"
-        italic="Fire off as many as you like."
+        sub="You can run multiple jobs at once — each one keeps working even if you switch screens."
         right={runs.length > 0 && (
           <InkButton p={p} kind="outline" size="sm" onClick={clearAllRuns}>↺ Clear all</InkButton>
         )}
@@ -141,9 +142,9 @@ function ComposeV3({ p, go }) {
         onGo={onGo}
       />
 
-      {/* ─── one card per run, newest on top ─── */}
+      {/* ─── one card per run, newest on top (resume runs render on /app/resume) ─── */}
       <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {runs.map((run) => (
+        {runs.filter((run) => run.kind !== 'resume').map((run) => (
           <RunCard key={run.id} p={p} run={run} go={go}/>
         ))}
       </div>
@@ -162,26 +163,46 @@ function RunCard({ p, run, go }) {
   const agentsLabel = activeCount === 1
     ? 'one agent on it'
     : `${numberWord[activeCount] || activeCount} agents on it`;
-  const stageLabel = {
-    parsing: 'reading…',
-    working: run.reconnecting ? 'reconnecting…' : agentsLabel,
-    done:    'package ready',
-    error:   'needs attention',
+  // The unmissable working/done signal (user testing: the old small caption
+  // made it hard to tell whether the crew was still going or finished).
+  const badge = {
+    parsing: { label: 'reading',                                     color: p.tea,          pulse: true  },
+    working: { label: run.reconnecting ? 'reconnecting' : 'working', color: p.marigoldDeep, pulse: true  },
+    done:    { label: 'ready ✓',                                     color: p.leaf,         pulse: false },
+    error:   { label: 'needs attention',                             color: p.stamp,        pulse: false },
   }[run.stage];
+  // Secondary caption next to the badge — only while agents are actually going.
+  const stageDetail = run.stage === 'working' && !run.reconnecting ? agentsLabel : '';
 
   return (
     <div style={{
       border: `1.5px solid ${p.ink}24`, background: p.paper, padding: '16px 18px',
     }}>
-      {/* card header: kind · stage · echoed input · dismiss */}
+      {/* card header: status badge · detail · echoed input · dismiss */}
       <div style={{
         display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12,
       }}>
         <div style={{ minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <span style={{
-            fontFamily: PAPER_FONTS.mono, fontSize: 10, letterSpacing: '.16em',
-            textTransform: 'uppercase', color: p.stamp,
-          }}>{stageLabel}</span>
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px',
+            border: `1.5px solid ${badge.color}`, background: `${badge.color}14`, color: badge.color,
+            fontFamily: PAPER_FONTS.mono, fontSize: 10, letterSpacing: '.14em',
+            textTransform: 'uppercase', flexShrink: 0, alignSelf: 'center',
+          }}>
+            {badge.pulse && (
+              <span style={{
+                width: 6, height: 6, borderRadius: 999, background: badge.color,
+                animation: 'pulseDot 1.1s ease-in-out infinite',
+              }}/>
+            )}
+            {badge.label}
+          </span>
+          {stageDetail && (
+            <span style={{
+              fontFamily: PAPER_FONTS.mono, fontSize: 10, letterSpacing: '.16em',
+              textTransform: 'uppercase', color: p.stamp,
+            }}>{stageDetail}</span>
+          )}
           <span style={{
             fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 460,
@@ -230,7 +251,8 @@ function RunCard({ p, run, go }) {
       {/* working / done → the agent row */}
       {(run.stage === 'working' || run.stage === 'done') && (
         <AgentRowV3 p={p} kind={run.kind} stage={run.stage} progress={run.progress}
-          enrichment={run.enrichment} selectedAgents={run.selectedAgents}/>
+          enrichment={run.enrichment} selectedAgents={run.selectedAgents}
+          stepErrors={run.stepErrors}/>
       )}
 
       {/* done — or mid-run as soon as any agent has produced a deliverable → the
@@ -275,7 +297,12 @@ function RunCard({ p, run, go }) {
               ))}
             </div>
           )}
-          <div style={{ marginTop: 10 }}>
+          <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {run.suggestedKind === 'job' && !(Array.isArray(run.candidates) && run.candidates.length > 0) && (
+              <InkButton p={p} color={p.stamp} size="sm" onClick={() => switchRunToJob(run.id)}>
+                Run as a job application →
+              </InkButton>
+            )}
             <InkButton p={p} kind="outline" size="sm" onClick={() => retryRun(run.id)}>↻ Retry</InkButton>
           </div>
         </>
@@ -288,17 +315,9 @@ function RunCard({ p, run, go }) {
 
 function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHaveEmail, screenshot, setScreenshot, kindOverride, setKindOverride, selectedAgents, setSelectedAgents, onGo }) {
   const fileRef = useRef(null);
-  const [showContext, setShowContext] = useState(false);
   const [attachError, setAttachError] = useState(null);
   // Transient "→ Person Khoji turned on, needed for Email" note. Fades after ~2s.
   const [autoEnabledNote, setAutoEnabledNote] = useState(null);
-  // The three things you can hand us. Clicking a pill drops in a representative
-  // example so the banner below can show the flow it kicks off.
-  const samples = [
-    { kind: 'job',    label: 'job link',     text: 'https://job-boards.greenhouse.io/thinkingmachines/jobs/5014120008' },
-    { kind: 'person', label: 'person',       text: 'linkedin.com/in/maya-ramaswamy' },
-    { kind: 'fuzzy',  label: 'fuzzy search', text: 'Product managers at Perplexity' },
-  ];
   const hasInput = input.trim().length > 0;
   const hasScreenshot = !!screenshot;
   // Go is live when there's either typed input OR an attached screenshot the
@@ -423,8 +442,8 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
           value={input}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') onGo(); }}
-          placeholder='x.com/maya  ·  linkedin.com/in/…  ·  "the woman who runs ops at Ramp"'
-          rows={2}
+          placeholder={'Paste anything, e.g. —\na job link:  job-boards.greenhouse.io/acme/jobs/4012\na person:  linkedin.com/in/maya-ramaswamy\na description:  "the woman who runs ops at Ramp"'}
+          rows={4}
           style={{
             width: '100%', resize: 'vertical', minHeight: 80,
             padding: '14px 16px', background: p.paper,
@@ -541,21 +560,8 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
         <div style={{
           marginTop: 14, paddingTop: 14, borderTop: `1.5px solid ${p.ink}18`,
           display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
+          justifyContent: 'flex-end', flexWrap: 'wrap', gap: 10,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{
-              fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.16em',
-              color: p.inkMute, textTransform: 'uppercase',
-            }}>Try:</span>
-            {samples.map(s => (
-              <button key={s.label} onClick={() => setText(s.text)} style={{
-                padding: '5px 11px', background: 'transparent', border: `1.5px solid ${p.ink}30`,
-                fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.ink,
-                letterSpacing: '.02em', cursor: 'pointer',
-              }}>{s.label}</button>
-            ))}
-          </div>
           <InkButton p={p} color={p.stamp} onClick={onGo} disabled={!canGo}>
             <span>Go</span>
             <kbd style={{
@@ -566,21 +572,18 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
         </div>
       </PaperCard>
 
-      {/* ─── Add context — optional (collapsed by default) ─── */}
+      {/* ─── Add context — optional (always visible) ─── */}
       <div style={{ marginTop: 12 }}>
-        <button onClick={() => setShowContext(!showContext)} style={{
-          background: 'transparent', border: 'none', cursor: 'pointer',
+        <span style={{
           fontFamily: PAPER_FONTS.mono, fontSize: 13, color: p.inkMute,
           letterSpacing: '.04em', padding: '4px 0',
           display: 'inline-flex', alignItems: 'center', gap: 8,
         }}>
-          <span style={{ display: 'inline-block', transform: showContext ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>›</span>
           Add context <span style={{ color: p.ink + '66' }}>— optional</span>
-        </button>
+        </span>
       </div>
 
-      {showContext && (
-        <>
+      <>
           {/* what do you want to convey */}
           <div style={{
             marginTop: 10, padding: '14px 18px', background: p.card,
@@ -643,8 +646,7 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
               marginTop: 6, fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.stamp,
             }}>{attachError}</div>
           )}
-        </>
-      )}
+      </>
 
     </>
   );
@@ -981,7 +983,7 @@ function emailVerdict(enrichment) {
   return 'no address found';
 }
 
-function AgentRowV3({ p, kind, stage, progress, enrichment, selectedAgents }) {
+function AgentRowV3({ p, kind, stage, progress, enrichment, selectedAgents, stepErrors }) {
   const isMobile = useIsMobile();
   const all = AGENTS_DATA[kind] || AGENTS_DATA.person;
   // Filter to the user's frozen selection. If the run pre-dates the selector or
@@ -1001,12 +1003,17 @@ function AgentRowV3({ p, kind, stage, progress, enrichment, selectedAgents }) {
         const done = pct >= 100;
         const stepI = Math.min(a.steps.length - 1, Math.floor((pct / 100) * a.steps.length));
         const ac = colorOf(p, a.color);
+        // A non-fatal failure on this agent (e.g. the résumé branch erroring
+        // while the rest of the crew finished) trumps the scripted captions.
+        const stepError = stepErrors?.[a.k] || null;
         // Email Wallah's done state shows Hunter's actual verdict; everyone else
         // (and the in-progress steps) uses the scripted step labels.
         const realVerdict = a.k === 'email' && done ? emailVerdict(enrichment) : null;
-        const stepLabel = pct === 0 && stage === 'working'
-          ? 'queued…'
-          : (realVerdict || a.steps[stepI]);
+        const stepLabel = stepError
+          ? stepError
+          : pct === 0 && stage === 'working'
+            ? 'queued…'
+            : (realVerdict || a.steps[stepI]);
         return (
           <div key={a.k} style={{
             background: p.card, color: p.ink,
@@ -1045,15 +1052,15 @@ function AgentRowV3({ p, kind, stage, progress, enrichment, selectedAgents }) {
             <div style={{
               marginTop: 'auto', padding: '8px 10px',
               background: done ? p.paper : 'transparent',
-              border: `1px solid ${done ? ac + '60' : p.ink + '20'}`,
+              border: `1px solid ${stepError ? p.stamp + '60' : done ? ac + '60' : p.ink + '20'}`,
               display: 'flex', alignItems: 'center', gap: 8, minHeight: 36,
             }}>
               <span style={{
-                width: 7, height: 7, borderRadius: 999, background: ac,
+                width: 7, height: 7, borderRadius: 999, background: stepError ? p.stamp : ac,
                 animation: working ? 'pulseDot 1.1s ease-in-out infinite' : 'none',
                 opacity: pct === 0 ? .3 : 1, flexShrink: 0,
               }}/>
-              <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.ink, lineHeight: 1.3 }}>
+              <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: stepError ? p.stamp : p.ink, lineHeight: 1.3 }}>
                 {stepLabel}
               </span>
             </div>
