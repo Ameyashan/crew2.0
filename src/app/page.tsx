@@ -5,7 +5,7 @@ import { Fragment, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PAPER_FONTS } from "@/components/paper/fonts";
 import { usePaperTheme } from "@/components/paper/use-paper-theme";
-import { signInWithGoogle } from "@/lib/supabase-browser";
+import { signInWithGoogle, supabaseBrowser } from "@/lib/supabase-browser";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { CrewRunWindow } from "@/components/landing/HowItWorks";
 
@@ -38,11 +38,38 @@ function JugaaduMark({ p, size = 46 }) {
 
 async function startGoogleSignIn() {
   try {
+    // Already signed in (e.g. came back to /home via the app logo)? Go straight
+    // to the workspace — re-running OAuth here was how users got asked to "log
+    // in again" every time they touched a landing CTA mid-session.
+    const { data } = await supabaseBrowser().auth.getSession();
+    if (data?.session) {
+      window.location.assign("/app/compose");
+      return;
+    }
     await signInWithGoogle("/app/compose");
   } catch (e) {
     console.error("Google sign-in failed", e);
     alert("Sign-in is not configured yet. See README for setup.");
   }
+}
+
+// Lightweight signed-in probe so CTAs can say "Open the workspace →" instead
+// of "Get a crew →" for people who already have an account.
+function useSignedIn() {
+  const [signedIn, setSignedIn] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    supabaseBrowser()
+      .auth.getSession()
+      .then(({ data }) => {
+        if (!cancelled) setSignedIn(!!data?.session);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return signedIn;
 }
 
 // eslint-disable @typescript-eslint/no-explicit-any
@@ -232,6 +259,7 @@ function TweaksV3() { return null; }
 /* ─────────────────────── shared masthead + footer ─────────────────────── */
 
 function Masthead3({ p }) {
+  const signedIn = useSignedIn();
   const router = useRouter();
   const isMobile = useIsMobile();
   return (
@@ -262,7 +290,7 @@ function Masthead3({ p }) {
             background: p.ink, color: p.paper, padding: '10px 18px',
             border: `2px solid ${p.ink}`, fontFamily: PAPER_FONTS.display,
             fontSize: 15, cursor: 'pointer', boxShadow: `4px 4px 0 ${p.marigold}`,
-          }}>Get a crew →</button>
+          }}>{signedIn ? 'Open the workspace →' : 'Get a crew →'}</button>
         </nav>
       </div>
       <div style={{ height: 14 }}/>

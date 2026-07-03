@@ -117,7 +117,7 @@ export function SidebarV3({
       {/* Masthead-y logo */}
       <div style={{ padding: "2px 8px 16px", borderBottom: `1px solid ${p.ink}40`, marginBottom: 14 }}>
         <Link
-          href="/home"
+          href="/app/compose"
           onClick={onNavigate}
           style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "inherit" }}
         >
