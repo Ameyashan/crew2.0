@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { runResumeTailorStream } from "@/lib/agents/resume-tailor";
+import { runResumeTailorStreamPersisted } from "@/lib/agents/resume-tailor/persisted";
 import { runReachOutStream } from "@/lib/agents/reach-out";
 import { sourceHiringManagers, parseJobMeta, findJobOpening, type JobMeta } from "@/lib/claude";
 import { authWalledJobHost } from "@/lib/job-url";
@@ -283,7 +283,7 @@ export async function POST(req: NextRequest) {
                 };
             let resume: TailoredResume | null = null;
             try {
-              for await (const evt of runResumeTailorStream(tailorInput)) {
+              for await (const evt of runResumeTailorStreamPersisted(tailorInput)) {
                 if (evt.type === "step" && evt.id === "tailor" && evt.status === "done") resume = evt.data.resume;
                 if (evt.type === "saved") resumeGenerationId = evt.id;
                 if (evt.type === "error") {
@@ -454,7 +454,7 @@ export async function POST(req: NextRequest) {
           send({ type: "step", id: "resume", status: "start" });
           let resume: TailoredResume | null = null;
           try {
-            for await (const evt of runResumeTailorStream({ job_url, page_count: 2 })) {
+            for await (const evt of runResumeTailorStreamPersisted({ job_url, page_count: 2 })) {
               if (evt.type === "step" && evt.id === "tailor" && evt.status === "done") {
                 resume = evt.data.resume;
               }

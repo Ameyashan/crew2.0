@@ -1,7 +1,5 @@
 import { NextRequest } from "next/server";
-import { runResumeTailorStream } from "@/lib/agents/resume-tailor";
-import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
-import { supabaseAdmin } from "@/lib/supabase";
+import { runResumeTailorStreamPersisted } from "@/lib/agents/resume-tailor/persisted";
 import { resolveUserId } from "@/lib/auth";
 import { runWithUser } from "@/lib/user-context";
 
@@ -31,43 +29,18 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "job_url must be http(s)" }, { status: 400 });
   }
 
-  // Insert the row up front (status in_flight) so a run that dies mid-stream —
-  // navigation, tab reclaim, serverless timeout — is still visible in History,
-  // and the client can poll it back to life. Finalized after the stream.
-  const sb = supabaseAdmin();
-  let generationId: string | null = null;
-  try {
-    const { data, error } = await sb
-      .from("resume_generations")
-      .insert({
-        user_id: userId,
-        job_url: job_url || null,
-        highlights: highlights?.trim() || null,
-        regenerate_notes: regenerate_notes?.trim() || null,
-        page_count,
-        status: "in_flight",
-      })
-      .select("id")
-      .single();
-    if (error) throw error;
-    generationId = data?.id ?? null;
-  } catch (e) {
-    // Non-fatal: a failed insert shouldn't block the live stream — it just
-    // means this run won't appear in /app/history. Log and keep going.
-    console.error("[resume_generations] insert failed", e);
-  }
-
+  // The persisted stream owns the resume_generations lifecycle: it inserts an
+  // in_flight row up front (yielded as `resume_run` for client recovery),
+  // finalizes it even if this connection dies, and emits `saved` only after
+  // the row has settled — so a post-run history fetch always sees the result.
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
       await runWithUser(userId, async () => {
-        let finalResume: TailoredResume | null = null;
-        let errorMessage: string | null = null;
-
         // Guarded enqueue: once the client disconnects (navigated away, locked
         // phone) enqueue throws. Swallow it so the tailor keeps running to
-        // completion and we still persist the result — the client recovers by
-        // polling the generation row.
+        // completion and still persists — the client recovers by polling the
+        // generation row.
         const send = (obj: unknown) => {
           try {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
@@ -77,64 +50,18 @@ export async function POST(req: NextRequest) {
         };
 
         try {
-          if (generationId) {
-            // Send the row id back so the client can stash it for recovery and
-            // for reopening the run from /app/history.
-            send({ type: "resume_run", id: generationId });
-          }
-          for await (const evt of runResumeTailorStream({
+          for await (const evt of runResumeTailorStreamPersisted({
             job_url: job_url || undefined,
             highlights,
             page_count,
             regenerate_notes,
           })) {
-            if (
-              evt.type === "step" &&
-              evt.id === "tailor" &&
-              evt.status === "done"
-            ) {
-              finalResume = evt.data.resume;
-            } else if (evt.type === "error") {
-              // The agent yields errors as events (no resume on file, unreadable
-              // posting) rather than throwing — capture them for the row.
-              errorMessage = evt.message;
-            }
             send(evt);
           }
-          if (!finalResume && !errorMessage) {
-            errorMessage = "The run ended before a resume was produced.";
-          }
         } catch (e) {
-          errorMessage = String(e instanceof Error ? e.message : e);
-          send({ type: "error", message: errorMessage });
+          send({ type: "error", message: String(e instanceof Error ? e.message : e) });
         }
 
-        // Finalize the row BEFORE emitting `saved`/closing so the client's
-        // follow-up history fetch is guaranteed to see the settled status.
-        if (generationId) {
-          try {
-            await sb
-              .from("resume_generations")
-              .update({
-                target_role: finalResume?.meta.target_role ?? null,
-                target_company: finalResume?.meta.target_company ?? null,
-                model: finalResume?.meta.model ?? null,
-                resume: finalResume,
-                ats_score: finalResume?.meta.ats_score ?? null,
-                status: finalResume ? "complete" : "error",
-                error: finalResume ? null : errorMessage,
-                completed_at: new Date().toISOString(),
-              })
-              .eq("id", generationId)
-              .eq("user_id", userId);
-          } catch (e) {
-            console.error("[resume_generations] update failed", e);
-          }
-        }
-
-        if (finalResume && generationId) {
-          send({ type: "saved", id: generationId });
-        }
         // Guard against a double/late close throwing on a disconnected stream.
         try {
           controller.close();
