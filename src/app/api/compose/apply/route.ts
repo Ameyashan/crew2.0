@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { runResumeTailorStream } from "@/lib/agents/resume-tailor";
+import { runResumeTailorStreamPersisted } from "@/lib/agents/resume-tailor/persisted";
 import { runReachOutStream } from "@/lib/agents/reach-out";
 import { sourceHiringManagers, parseJobMeta, findJobOpening, type JobMeta } from "@/lib/claude";
 import { authWalledJobHost } from "@/lib/job-url";
@@ -283,7 +283,7 @@ export async function POST(req: NextRequest) {
                 };
             let resume: TailoredResume | null = null;
             try {
-              for await (const evt of runResumeTailorStream(tailorInput)) {
+              for await (const evt of runResumeTailorStreamPersisted(tailorInput)) {
                 if (evt.type === "step" && evt.id === "tailor" && evt.status === "done") resume = evt.data.resume;
                 if (evt.type === "saved") resumeGenerationId = evt.id;
                 if (evt.type === "error") {
@@ -454,20 +454,26 @@ export async function POST(req: NextRequest) {
           send({ type: "step", id: "resume", status: "start" });
           let resume: TailoredResume | null = null;
           try {
-            for await (const evt of runResumeTailorStream({ job_url, page_count: 2 })) {
+            for await (const evt of runResumeTailorStreamPersisted({ job_url, page_count: 2 })) {
               if (evt.type === "step" && evt.id === "tailor" && evt.status === "done") {
                 resume = evt.data.resume;
               }
               if (evt.type === "saved") resumeGenerationId = evt.id;
               if (evt.type === "error") {
+                // Non-fatal, matching the screenshot path: the résumé card shows
+                // the error while Person/Email/Outreach keep going — a missing
+                // base résumé shouldn't read as the whole run failing.
                 send({ type: "step", id: "resume", status: "error", message: evt.message });
-                send({ type: "error", message: evt.message });
                 return null;
               }
               // Pass progress through so the UI can render byte counts if we ever
               // want to surface them.
               if (evt.type === "progress") send({ type: "progress", id: "resume", chars: evt.chars, bullets: evt.bullets });
             }
+          } catch (e) {
+            console.error("[apply] résumé tailoring failed", e);
+            send({ type: "step", id: "resume", status: "error", message: "Résumé tailoring failed." });
+            return null;
           } finally {
             // Hand the resume's own metadata to the people branch as a fallback,
             // and never leave it awaiting a resolution that won't arrive.

@@ -14,7 +14,7 @@ import {
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { hydrateRun } from "@/lib/runs-store";
 
-function PeopleV3({ p, go, PEOPLE_V3 = [] }) {
+function PeopleV3({ p, go, PEOPLE_V3 = [], onDeleted }) {
   const isMobile = useIsMobile();
   const [q, setQ] = useState('');
   const [selectedId, setSelected] = useState(null);
@@ -138,7 +138,13 @@ function PeopleV3({ p, go, PEOPLE_V3 = [] }) {
             letterSpacing: '.04em', cursor: 'pointer',
           }}>← All people</button>
         )}
-        <PersonDetailV3 p={p} person={person} go={go}/>
+        <PersonDetailV3 key={person.id} p={p} person={person} go={go} onDeleted={(id) => {
+          // Return to the list; the parent drops the row and the desktop
+          // fallback (person = filtered[0]) selects the next contact.
+          setSelected(null);
+          setMobileView('list');
+          onDeleted?.(id);
+        }}/>
       </div>
       )}
     </div>
@@ -149,10 +155,16 @@ function warmthColor(p, w) {
   return ({ warm: p.leaf, cool: p.tea, cold: p.inkMute, new: p.stamp }[w]) || p.inkMute;
 }
 
-function PersonDetailV3({ p, person, go }) {
+function PersonDetailV3({ p, person, go, onDeleted }) {
   const router = useRouter();
   const [detail, setDetail] = useState(null);
   const [opening, setOpening] = useState(null);
+  // The dossier is keyed by person.id at the call site, so selecting someone
+  // else remounts it — delete-confirm state and the stale previous dossier
+  // reset for free.
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
   useEffect(() => {
     if (!person?.id) return;
     let cancelled = false;
@@ -161,6 +173,23 @@ function PersonDetailV3({ p, person, go }) {
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [person?.id]);
+
+  async function doDelete() {
+    if (deleting) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/people/${person.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error || `delete failed: ${res.status}`);
+      }
+      onDeleted?.(person.id);
+    } catch (e) {
+      setDeleteError(String(e?.message || e));
+      setDeleting(false);
+    }
+  }
 
   const workflows = detail?.workflows || [];
   const nextFollowup = detail?.nextFollowup || null;
@@ -219,9 +248,46 @@ function PersonDetailV3({ p, person, go }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
-          <InkButton p={p} color={p.stamp} onClick={() => go('compose', { input: person.email })}>Reach out again →</InkButton>
+          <InkButton p={p} color={p.stamp} onClick={() => go('compose', {
+            // Seed with the email when we have one (compose flips its
+            // "I already have their email" shortcut); otherwise a name+company
+            // query so the button still works for email-less contacts.
+            input: person.email || [person.name, person.co].filter(Boolean).join(' at '),
+          })}>Reach out again →</InkButton>
+          {!confirmDelete && (
+            <InkButton p={p} kind="outline" onClick={() => setConfirmDelete(true)}>Delete</InkButton>
+          )}
         </div>
       </div>
+
+      {/* delete confirmation strip */}
+      {confirmDelete && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24,
+          padding: '12px 16px', background: p.card,
+          border: `1.5px solid ${p.stamp}`, boxShadow: `3px 3px 0 ${p.stamp}`,
+          flexWrap: 'wrap',
+        }}>
+          <span style={{
+            fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 15, color: p.ink,
+          }}>
+            Really delete {person.name}? This removes their drafts, timeline, and follow-ups. Past compose runs stay in History.
+          </span>
+          <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+            <InkButton p={p} color={p.stamp} size="sm" onClick={doDelete} disabled={deleting}>
+              {deleting ? 'deleting…' : 'Yes, delete'}
+            </InkButton>
+            <InkButton p={p} kind="outline" size="sm" onClick={() => { setConfirmDelete(false); setDeleteError(null); }} disabled={deleting}>
+              Keep
+            </InkButton>
+          </div>
+          {deleteError && (
+            <span style={{ flexBasis: '100%', fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.stamp }}>
+              {deleteError}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* facts strip */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 28 }}>
@@ -369,6 +435,7 @@ export default function PeoplePage() {
     <PeopleV3
       p={p}
       PEOPLE_V3={people}
+      onDeleted={(id) => setPeople((prev) => prev.filter((x) => x.id !== id))}
       go={(r, seed) => {
         if (seed?.input) router.push(`/app/compose?seed=${encodeURIComponent(seed.input)}`);
         else router.push(`/app/${r}`);

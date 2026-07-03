@@ -37,6 +37,21 @@ button {
   font-family: inherit;
 }
 
+/* Shared animations referenced inline across compose / resume / onboarding /
+   landing. Defined once here — inline `animation:` styles can't declare their
+   own keyframes, so without these the "pulsing" status dots sit static. */
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.72); }
+}
+@keyframes shimmer {
+  to { background-position: -200% 0; }
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
 .scroll {
   scrollbar-width: thin;
   scrollbar-color: rgba(19, 17, 12, 0.2) transparent;

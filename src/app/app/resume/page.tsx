@@ -15,18 +15,30 @@ import {
 } from "@/components/paper/primitives";
 import { ChangeList } from "@/components/resume/ChangeList";
 import { useIsMobile } from "@/lib/use-is-mobile";
+import {
+  useRuns,
+  startResumeRun,
+  retryRun,
+  dismissRun,
+  resumePendingRuns,
+} from "@/lib/runs-store";
 
 function ResumeV3({ p, go }) {
   const isMobile = useIsMobile();
   const [jobUrl, setJobUrl]   = useState('');
   const [emphasis, setEmphasis] = useState('');
   const [length, setLength]   = useState('1');
-  const [running, setRunning] = useState(false);
   const [open, setOpen]       = useState(null);
   const [profile, setProfile] = useState(null);
   const [history, setHistory] = useState([]);
   const [tailorError, setTailorError] = useState(null);
-  const [tailorProgress, setTailorProgress] = useState(null);
+  // Tailoring lives in the module runs store (like compose), so it keeps
+  // going when this page unmounts and re-renders here when the user is back.
+  const runs = useRuns();
+  const resumeRuns = runs.filter((r) => r.kind === 'resume');
+  const running = resumeRuns.some((r) => r.stage === 'working' || r.stage === 'parsing');
+  // Runs whose result was already folded into the history list below.
+  const handledRef = useRef(new Set());
 
   const canTailor = jobUrl.trim().length > 0 || emphasis.trim().length > 0;
 
@@ -42,7 +54,25 @@ function ResumeV3({ p, go }) {
   useEffect(() => {
     fetch('/api/profile').then((r) => r.json()).then((j) => setProfile(j?.profile ?? null)).catch(() => {});
     refreshHistory();
+    // Revive any tailor run left streaming when a previous session ended.
+    resumePendingRuns();
   }, []);
+
+  // When a live run finishes, the persisted history row becomes the canonical
+  // UI: refresh the list, pop the fresh row open, drop the transient card.
+  useEffect(() => {
+    for (const r of resumeRuns) {
+      if (r.stage === 'done' && r.resumeGenerationId && !handledRef.current.has(r.id)) {
+        handledRef.current.add(r.id);
+        const genId = r.resumeGenerationId;
+        const localId = r.id;
+        refreshHistory().then(() => {
+          setOpen(genId);
+          dismissRun(localId);
+        });
+      }
+    }
+  }, [resumeRuns]);
 
   const avgAts = (() => {
     const scored = history.slice(0, 10).map((h) => h.ats_score).filter((s) => typeof s === 'number');
@@ -50,51 +80,18 @@ function ResumeV3({ p, go }) {
     return Math.round(scored.reduce((a, b) => a + b, 0) / scored.length);
   })();
 
-  async function tailor() {
-    if (!canTailor) return;
-    setRunning(true);
+  function tailor() {
+    if (!canTailor || running) return;
     setTailorError(null);
-    setTailorProgress({ chars: 0, bullets: 0 });
-    let newId = null;
-    try {
-      const res = await fetch('/api/resume/tailor', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
-        body: JSON.stringify({
-          job_url: jobUrl.trim() ? (jobUrl.trim().match(/^https?:\/\//) ? jobUrl.trim() : `https://${jobUrl.trim()}`) : undefined,
-          highlights: emphasis.trim() || undefined,
-          page_count: length === '2' ? 2 : 1,
-        }),
-      });
-      if (!res.ok || !res.body) throw new Error(`tailor failed: ${res.status}`);
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = '';
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const parts = buf.split('\n\n');
-        buf = parts.pop() || '';
-        for (const raw of parts) {
-          const line = raw.split('\n').find((l) => l.startsWith('data: '));
-          if (!line) continue;
-          let evt;
-          try { evt = JSON.parse(line.slice(6)); } catch { continue; }
-          if (evt.type === 'progress') setTailorProgress({ chars: evt.chars, bullets: evt.bullets });
-          if (evt.type === 'saved') newId = evt.id;
-          if (evt.type === 'error') throw new Error(evt.message);
-        }
-      }
-      setJobUrl(''); setEmphasis('');
-      await refreshHistory();
-      if (newId) setOpen(newId);
-    } catch (e) {
-      setTailorError(String(e?.message || e));
-    } finally {
-      setRunning(false);
-      setTailorProgress(null);
-    }
+    const url = jobUrl.trim()
+      ? (jobUrl.trim().match(/^https?:\/\//) ? jobUrl.trim() : `https://${jobUrl.trim()}`)
+      : undefined;
+    const id = startResumeRun({
+      jobUrl: url,
+      highlights: emphasis.trim() || undefined,
+      pageCount: length === '2' ? 2 : 1,
+    });
+    if (id) { setJobUrl(''); setEmphasis(''); }
   }
 
   return (
@@ -266,6 +263,78 @@ function ResumeV3({ p, go }) {
         </PaperCard>
       </div>
 
+      {/* Live tailoring runs — module-store backed, so they keep going when
+          you switch screens and are still here (or finished) when you return. */}
+      {resumeRuns.length > 0 && (
+        <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {resumeRuns.map((run) => {
+            const failed = run.stage === 'error';
+            const pct = Math.round(run.progress?.tailor || 0);
+            const caption = failed
+              ? 'needs attention'
+              : run.reconnecting
+                ? 'reconnecting…'
+                : run.tailor
+                  ? `tailoring… ${run.tailor.chars.toLocaleString()} chars · ${run.tailor.bullets} bullet${run.tailor.bullets === 1 ? '' : 's'} in`
+                  : 'tailoring… reading the posting';
+            return (
+              <div key={run.id} style={{
+                position: 'relative', overflow: 'hidden',
+                background: p.card, border: `1.5px solid ${failed ? p.stamp : p.ink}`,
+                boxShadow: `4px 4px 0 ${failed ? p.stamp : p.marigold}`,
+                padding: '16px 18px 14px',
+              }}>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: p.ink + '14' }}>
+                  <div style={{
+                    height: '100%', width: `${failed ? 100 : pct}%`,
+                    background: failed ? p.stamp : p.leaf, transition: 'width .4s',
+                  }}/>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{
+                    width: 7, height: 7, borderRadius: 999, flexShrink: 0,
+                    background: failed ? p.stamp : p.leaf,
+                    animation: failed ? 'none' : 'pulseDot 1.1s ease-in-out infinite',
+                  }}/>
+                  <span style={{
+                    fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.14em',
+                    textTransform: 'uppercase', color: failed ? p.stamp : p.leaf,
+                  }}>{caption}</span>
+                  <span style={{
+                    fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute, minWidth: 0,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>{run.input}</span>
+                  <button onClick={() => dismissRun(run.id)} title="dismiss" style={{
+                    marginLeft: 'auto', background: 'transparent', border: 'none', color: p.inkMute,
+                    fontFamily: PAPER_FONTS.mono, fontSize: 16, lineHeight: 1, cursor: 'pointer', flexShrink: 0,
+                  }}>×</button>
+                </div>
+                {!failed && (
+                  <p style={{
+                    margin: '10px 0 0', fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
+                    fontSize: 13.5, color: p.inkSoft,
+                  }}>
+                    Feel free to move around the app — this keeps running and lands in the history below.
+                  </p>
+                )}
+                {failed && (
+                  <>
+                    <div style={{
+                      marginTop: 10, padding: '10px 14px', background: p.paper,
+                      border: `1.5px solid ${p.stamp}`, color: p.stamp,
+                      fontFamily: PAPER_FONTS.mono, fontSize: 12,
+                    }}>{run.error}</div>
+                    <div style={{ marginTop: 8 }}>
+                      <InkButton p={p} kind="outline" size="sm" onClick={() => retryRun(run.id)}>↻ Retry</InkButton>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* History */}
       <div style={{ marginTop: 28 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -290,14 +359,20 @@ function ResumeV3({ p, go }) {
               No tailored versions yet. Drop in a job posting URL above.
             </div>
           )}
-          {history.map((row, i) => {
+          {history
+            // Rows still streaming in the live cards above shouldn't render twice.
+            .filter((row) => !resumeRuns.some((r) => r.resumeGenerationId === row.id))
+            .map((row, i) => {
             const isOpen = open === row.id;
+            const status = row.status || 'complete';
             const adapted = {
               id: row.id,
               co: row.target_company || '—',
-              role: row.target_role || 'Tailored resume',
+              role: row.target_role || (status === 'in_flight' ? 'Tailoring…' : 'Tailored resume'),
               when: formatWhen(row.created_at),
               ats: row.ats_score ?? null,
+              status,
+              error: row.error || null,
               jobUrl: row.job_url || '(no URL · highlights only)',
               changes: extractChanges(row),
               notes: row.regenerate_notes || '',
@@ -383,14 +458,15 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
   const [loadErr, setLoadErr] = useState(null);
 
   useEffect(() => {
-    if (!isOpen || gen) return;
+    // Interrupted/errored rows have no blob to pull.
+    if (!isOpen || gen || row.status !== 'complete') return;
     let alive = true;
     fetch(`/api/resume/history/${row.id}`)
       .then((r) => { if (!r.ok) throw new Error(`load failed: ${r.status}`); return r.json(); })
       .then((j) => { if (alive) setGen(j?.generation ?? null); })
       .catch((e) => { if (alive) setLoadErr(String(e?.message || e)); });
     return () => { alive = false; };
-  }, [isOpen, gen, row.id]);
+  }, [isOpen, gen, row.id, row.status]);
 
   const resume = gen?.resume || null;
   const realChanges = Array.isArray(resume?.changes) ? resume.changes : [];
@@ -415,10 +491,22 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
           <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 19, color: p.ink, lineHeight: 1.05 }}>{row.role}</div>
         </div>
         {fresh && <Stamp color={p.stamp} rotate={-6}>just made</Stamp>}
-        <span style={{
-          padding: '3px 10px', background: p.leaf + '14', color: p.leaf,
-          fontFamily: PAPER_FONTS.mono, fontSize: 11, letterSpacing: '.04em',
-        }}>ATS {row.ats ?? '—'}</span>
+        {row.status === 'in_flight' ? (
+          <span style={{
+            padding: '3px 10px', background: p.stamp + '14', color: p.stamp,
+            fontFamily: PAPER_FONTS.mono, fontSize: 11, letterSpacing: '.04em',
+          }}>in progress…</span>
+        ) : row.status === 'error' ? (
+          <span style={{
+            padding: '3px 10px', background: p.stamp + '14', color: p.stamp,
+            fontFamily: PAPER_FONTS.mono, fontSize: 11, letterSpacing: '.04em',
+          }}>error</span>
+        ) : (
+          <span style={{
+            padding: '3px 10px', background: p.leaf + '14', color: p.leaf,
+            fontFamily: PAPER_FONTS.mono, fontSize: 11, letterSpacing: '.04em',
+          }}>ATS {row.ats ?? '—'}</span>
+        )}
         <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{row.when}</span>
         <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 14, color: p.inkMute }}>{isOpen ? '−' : '+'}</span>
       </button>
@@ -476,6 +564,26 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
               </div>
             </div>
           </div>
+          {row.status !== 'complete' ? (
+            <div>
+              <div style={{
+                padding: '14px 16px', background: p.paper,
+                border: `1.5px solid ${p.stamp}`, color: p.stamp,
+                fontFamily: PAPER_FONTS.mono, fontSize: 12, lineHeight: 1.5,
+              }}>
+                {row.status === 'in_flight'
+                  ? 'Still tailoring — check back in a moment.'
+                  : (row.error || 'This run failed before a resume was produced.')}
+              </div>
+              <p style={{
+                margin: '10px 0 0', fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
+                fontSize: 13.5, color: p.inkSoft,
+              }}>
+                Nothing was saved for this version, so there's no PDF/Word to download.
+                Run the brief again from above.
+              </p>
+            </div>
+          ) : (
           <div>
             <div style={{
               background: p.paper, border: `1.5px solid ${p.ink}30`,
@@ -530,6 +638,7 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
               <InkButton p={p} kind="outline" size="sm" style={{ flex: 1 }} onClick={() => window.open(`/api/resume/history/${row.id}`, '_blank')}>View ↗</InkButton>
             </div>
           </div>
+          )}
         </div>
       )}
     </div>

@@ -24,7 +24,7 @@ What I'm looking for: senior product roles at AI-native fintechs (Series B+) or 
 
 How I communicate: warm but direct. Hate corporate filler ("hope this finds you well", "circling back"). Will use lowercase if it feels right. Prefer ending on a real question, not a CTA.`;
 
-function OnboardingV3({ p, onDone, onBack }) {
+function OnboardingV3({ p, onDone }) {
   const isMobile = useIsMobile();
   const [resume, setResume]     = useState(null);
   const [linkedin, setLinkedin] = useState('');
@@ -72,6 +72,30 @@ function OnboardingV3({ p, onDone, onBack }) {
     }
   }
 
+  // The escape hatch. It still marks the profile onboarded — the /app layout
+  // gate redirects un-onboarded users back here, so a skip that doesn't set
+  // onboarded_at would trap people in a loop. (This replaces the old
+  // "← landing" link, which silently teleported signed-in users into the app
+  // via the proxy without ever finishing setup.)
+  async function handleSkip() {
+    if (submitting) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ onboarded: true }),
+      });
+      if (!res.ok) throw new Error(`profile save failed: ${res.status}`);
+      document.cookie = 'crew_onboarded=1; path=/; max-age=31536000; samesite=lax';
+      onDone();
+    } catch (e) {
+      setSubmitError(String(e?.message || e));
+      setSubmitting(false);
+    }
+  }
+
   const completed =
     (resume ? 1 : 0) +
     (linkedin.trim() ? 1 : 0) +
@@ -108,11 +132,11 @@ function OnboardingV3({ p, onDone, onBack }) {
 
         <div style={{ position: 'relative' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 22 }}>
-            <button onClick={onBack} style={{
+            <button onClick={handleSkip} disabled={submitting} style={{
               background: 'transparent', border: 'none', color: p.inkMute,
               fontFamily: PAPER_FONTS.mono, fontSize: 11, letterSpacing: '.1em',
               textTransform: 'uppercase', cursor: 'pointer', padding: 0,
-            }}>← landing</button>
+            }}>skip setup — add all this later in Settings →</button>
           </div>
           <Eyebrow p={p} en="Jugaadu · let's get you set up"/>
           <h1 style={{
@@ -120,13 +144,13 @@ function OnboardingV3({ p, onDone, onBack }) {
             fontSize: 'clamp(40px, 4.4vw, 60px)', lineHeight: .95, letterSpacing: '-.025em',
             color: p.ink, maxWidth: 500,
           }}>
-            Tell Jugaadu about you. <span style={{ fontStyle: 'italic', color: p.stamp }}>All of it is optional.</span>
+            Tell Jugaadu about you. <span style={{ fontStyle: 'italic', color: p.stamp }}>Start with your resume.</span>
           </h1>
           <p style={{
             margin: '18px 0 0', fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
             fontSize: 18, lineHeight: 1.45, color: p.inkSoft, maxWidth: 500,
           }}>
-            More context means sharper drafts. You can skip every step except the followup default and still ship your first message in under a minute.
+            The resume is what Resume Darzi tailors and what drafts lean on — without one, half the crew sits idle. Everything else here is optional polish.
           </p>
 
           {/* Live preview */}
@@ -155,7 +179,7 @@ function OnboardingV3({ p, onDone, onBack }) {
           display: 'flex', alignItems: 'center', gap: 14,
           fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.08em',
         }}>
-          <span>{completed}/5 OPTIONAL</span>
+          <span>{completed}/5 ADDED</span>
           <div style={{ flex: 1, height: 4, background: p.ink + '20', overflow: 'hidden' }}>
             <div style={{
               height: '100%', width: `${(completed / 5) * 100}%`,
@@ -170,9 +194,9 @@ function OnboardingV3({ p, onDone, onBack }) {
         overflow: isMobile ? 'visible' : 'auto', padding: isMobile ? '28px 20px 64px' : '60px 56px 80px',
         display: 'flex', flexDirection: 'column', gap: 14,
       }}>
-        <OnbCardV3 p={p} num={1} done={!!resume} optional
+        <OnbCardV3 p={p} num={1} done={!!resume} required
           title="Drop your resume"
-          sub="PDF or DOCX. Helps Jugaadu describe you in your own words."
+          sub="PDF or DOCX. Resume Darzi tailors this per job, and drafts borrow your background from it."
           color={p.marigold}
         >
           <ResumeDropV3 p={p} resume={resume} setResume={setResume}/>
@@ -303,13 +327,15 @@ function OnboardingV3({ p, onDone, onBack }) {
         <div style={{
           display: 'flex', alignItems: 'center', gap: 14, marginTop: 18,
         }}>
-          <InkButton p={p} size="lg" color={p.stamp} disabled={submitting} onClick={handleDone}>
+          <InkButton p={p} size="lg" color={p.stamp} disabled={submitting || !resume} onClick={handleDone}>
             {submitting ? 'Saving…' : 'Take me to Jugaadu'}  <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 17 }}>→</span>
           </InkButton>
           {submitError && (
             <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.stamp }}>{submitError}</span>
           )}
-          <Marginalia p={p} rotate={-2}>or skip everything · ⌘↵</Marginalia>
+          <Marginalia p={p} rotate={-2}>
+            {resume ? 'everything else is optional' : 'drop your resume first — or skip setup, top left'}
+          </Marginalia>
         </div>
       </div>
     </div>
@@ -549,7 +575,6 @@ export default function OnboardingPage() {
     <OnboardingV3
       p={p}
       onDone={() => router.push("/app/compose")}
-      onBack={() => router.push("/")}
     />
   );
 }

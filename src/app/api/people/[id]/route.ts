@@ -59,3 +59,25 @@ export async function GET(
     });
   });
 }
+
+// DELETE /api/people/:id → hard-delete the person. The schema does the rest:
+// drafts / interactions / followups cascade (0001), compose_runs.person_id and
+// replies.person_id null out (0009/0006), so History keeps its rows.
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  return withUser(async (userId) => {
+    const { id } = await params;
+    const { data, error } = await supabaseAdmin()
+      .from("people")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId)
+      .select("id")
+      .maybeSingle();
+    if (error) return Response.json({ error: error.message }, { status: 500 });
+    if (!data) return Response.json({ error: "not found" }, { status: 404 });
+    return Response.json({ ok: true });
+  });
+}

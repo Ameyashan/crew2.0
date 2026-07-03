@@ -1,7 +1,5 @@
 import { NextRequest } from "next/server";
-import { runResumeTailorStream } from "@/lib/agents/resume-tailor";
-import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
-import { supabaseAdmin } from "@/lib/supabase";
+import { runResumeTailorStreamPersisted } from "@/lib/agents/resume-tailor/persisted";
 import { resolveUserId } from "@/lib/auth";
 import { runWithUser } from "@/lib/user-context";
 
@@ -31,65 +29,45 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "job_url must be http(s)" }, { status: 400 });
   }
 
+  // The persisted stream owns the resume_generations lifecycle: it inserts an
+  // in_flight row up front (yielded as `resume_run` for client recovery),
+  // finalizes it even if this connection dies, and emits `saved` only after
+  // the row has settled — so a post-run history fetch always sees the result.
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
       await runWithUser(userId, async () => {
-      let finalResume: TailoredResume | null = null;
-      try {
-        for await (const evt of runResumeTailorStream({
-          job_url: job_url || undefined,
-          highlights,
-          page_count,
-          regenerate_notes,
-        })) {
-          if (
-            evt.type === "step" &&
-            evt.id === "tailor" &&
-            evt.status === "done"
-          ) {
-            finalResume = evt.data.resume;
+        // Guarded enqueue: once the client disconnects (navigated away, locked
+        // phone) enqueue throws. Swallow it so the tailor keeps running to
+        // completion and still persists — the client recovers by polling the
+        // generation row.
+        const send = (obj: unknown) => {
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+          } catch {
+            // stream already closed/cancelled — drop the event, keep working
           }
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(evt)}\n\n`));
+        };
+
+        try {
+          for await (const evt of runResumeTailorStreamPersisted({
+            job_url: job_url || undefined,
+            highlights,
+            page_count,
+            regenerate_notes,
+          })) {
+            send(evt);
+          }
+        } catch (e) {
+          send({ type: "error", message: String(e instanceof Error ? e.message : e) });
         }
 
-        if (finalResume) {
-          try {
-            const { data, error } = await supabaseAdmin()
-              .from("resume_generations")
-              .insert({
-                user_id: userId,
-                job_url: job_url || null,
-                highlights: highlights?.trim() || null,
-                regenerate_notes: regenerate_notes?.trim() || null,
-                page_count,
-                target_role: finalResume.meta.target_role ?? null,
-                target_company: finalResume.meta.target_company ?? null,
-                model: finalResume.meta.model ?? null,
-                resume: finalResume,
-                ats_score: finalResume.meta.ats_score ?? null,
-              })
-              .select("id")
-              .single();
-            if (error) throw error;
-            if (data?.id) {
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({ type: "saved", id: data.id })}\n\n`
-                )
-              );
-            }
-          } catch (e) {
-            console.error("[resume_generations] insert failed", e);
-          }
+        // Guard against a double/late close throwing on a disconnected stream.
+        try {
+          controller.close();
+        } catch {
+          // already closed
         }
-      } catch (e) {
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ type: "error", message: String(e) })}\n\n`)
-        );
-      } finally {
-        controller.close();
-      }
       });
     },
   });
