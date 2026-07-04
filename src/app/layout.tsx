@@ -6,6 +6,7 @@ import {
   DM_Serif_Display,
   Geist,
   Geist_Mono,
+  IBM_Plex_Mono,
   Instrument_Serif,
   JetBrains_Mono,
   Newsreader,
@@ -49,6 +50,14 @@ const jetbrains = JetBrains_Mono({
   subsets: ["latin"],
   display: "swap",
 });
+// IBM Plex Mono powers the new "paper" reskin's uppercase mono labels/chips.
+// Added alongside the existing fonts (nothing removed) per the reskin plan.
+const ibmPlexMono = IBM_Plex_Mono({
+  variable: "--font-ibm-plex-mono",
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["400", "500"],
+});
 const notoDevan = Noto_Sans_Devanagari({
   variable: "--font-noto-devan",
   subsets: ["devanagari", "latin"],
@@ -70,6 +79,7 @@ const fontVars = [
   geistSans.variable,
   geistMono.variable,
   jetbrains.variable,
+  ibmPlexMono.variable,
   notoDevan.variable,
   caveat.variable,
 ].join(" ");

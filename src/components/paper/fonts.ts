@@ -13,3 +13,16 @@ export const PAPER_FONTS = {
 } as const;
 
 export type PaperFontKey = keyof typeof PAPER_FONTS;
+
+// Font stacks for the new "paper" reskin (see design_handoff_jugaadu_reskin).
+// Kept separate from PAPER_FONTS so migrated files opt in without disturbing the
+// pages still on the legacy stacks above. IBM Plex Mono is wired up in
+// src/app/layout.tsx via next/font (--font-ibm-plex-mono).
+export const PAPER_FONTS_V2 = {
+  serif: 'var(--font-newsreader), Georgia, serif',
+  sans: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  mono: 'var(--font-ibm-plex-mono), ui-monospace, "SFMono-Regular", monospace',
+  devan: 'var(--font-noto-devan), serif',
+} as const;
+
+export type PaperFontV2Key = keyof typeof PAPER_FONTS_V2;
