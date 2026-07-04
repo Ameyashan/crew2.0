@@ -3,16 +3,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PAPER_FONTS } from "@/components/paper/fonts";
-import { usePaperTheme } from "@/components/paper/use-paper-theme";
-import {
-  Eyebrow,
-  InkButton,
-  PageHead,
-  PaperCard,
-  Stamp,
-  Marginalia,
-} from "@/components/paper/primitives";
+import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
+import { TOKENS, RADII, SHADOWS } from "@/components/paper/tokens";
 import { ChangeList } from "@/components/resume/ChangeList";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import {
@@ -23,7 +15,29 @@ import {
   resumePendingRuns,
 } from "@/lib/runs-store";
 
-function ResumeV3({ p, go }) {
+// ChangeList is a shared component still on the legacy palette shape; feed it a
+// small token-backed shim mapping the keys it reads to the new token system.
+const CHANGE_PALETTE = {
+  ink: TOKENS.ink,
+  inkSoft: TOKENS.inkSoft,
+  inkMute: TOKENS.muted,
+  stamp: TOKENS.red,
+  leaf: TOKENS.green,
+  tea: TOKENS.muted2,
+  marigoldDeep: TOKENS.amber,
+};
+
+// Inline eyebrow — uppercase IBM Plex Mono section label.
+function Eyebrow({ en, color }) {
+  return (
+    <span style={{
+      fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5,
+      color: color || TOKENS.muted, letterSpacing: '.1em', textTransform: 'uppercase',
+    }}>{en}</span>
+  );
+}
+
+function ResumeV3({ go }) {
   const isMobile = useIsMobile();
   const [jobUrl, setJobUrl]   = useState('');
   const [emphasis, setEmphasis] = useState('');
@@ -96,60 +110,84 @@ function ResumeV3({ p, go }) {
 
   return (
     <div className="scroll" style={{
-      flex: 1, overflow: 'auto', padding: isMobile ? '24px 16px 64px' : '40px 56px 80px', background: p.paper, color: p.ink,
+      flex: 1, overflow: 'auto', padding: isMobile ? '24px 16px 64px' : '40px 56px 80px', background: TOKENS.paper, color: TOKENS.ink,
     }}>
-      <PageHead p={p}
-        eyebrow="Resume · agent"
-        title="Tailor your resume "
-        italic="to one job."
-        sub="Jugaadu reads the job posting, rewrites the bullets that matter, and previews a fresh draft. You approve the PDF or take the Word version to finish by hand."
-        right={
+      {/* Page head */}
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+        gap: 24, flexWrap: 'wrap', marginBottom: 24,
+      }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{
+            fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, color: TOKENS.muted,
+            letterSpacing: '.14em', textTransform: 'uppercase', marginBottom: 8,
+          }}>Resume · agent</div>
+          <h1 style={{
+            margin: 0, fontFamily: PAPER_FONTS_V2.serif, fontWeight: 400,
+            fontSize: 'clamp(40px, 4.8vw, 64px)', lineHeight: 0.95, letterSpacing: '-.02em',
+            color: TOKENS.ink, textWrap: 'balance',
+          }}>
+            Tailor your resume{' '}
+            <span style={{ fontStyle: 'italic', color: TOKENS.red }}>to one job.</span>
+          </h1>
+          <p style={{
+            margin: '14px 0 0', fontFamily: PAPER_FONTS_V2.serif, fontStyle: 'italic',
+            fontSize: 18, lineHeight: 1.45, color: TOKENS.inkSoft, maxWidth: 720,
+          }}>
+            Jugaadu reads the job posting, rewrites the bullets that matter, and previews a fresh draft. You approve the PDF or take the Word version to finish by hand.
+          </p>
+        </div>
+        <div style={{ flexShrink: 0 }}>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute, letterSpacing: '.14em', textTransform: 'uppercase' }}>
+            <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, color: TOKENS.muted, letterSpacing: '.14em', textTransform: 'uppercase' }}>
               Avg. ATS · last 10
             </div>
-            <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 38, lineHeight: 1, color: p.stamp, marginTop: 2 }}>{avgAts ?? '—'}<span style={{ fontSize: 18, color: p.inkMute, fontFamily: PAPER_FONTS.mono }}>/100</span></div>
+            <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 38, lineHeight: 1, color: TOKENS.red, marginTop: 2 }}>{avgAts ?? '—'}<span style={{ fontSize: 18, color: TOKENS.muted, fontFamily: PAPER_FONTS_V2.mono }}>/100</span></div>
           </div>
-        }
-      />
+        </div>
+      </div>
 
       {/* On file */}
-      <PaperCard p={p} color={p.marigold} hardShadow style={{ padding: '20px 24px' }}>
+      <div style={{
+        background: TOKENS.card, color: TOKENS.ink,
+        border: `1px solid ${TOKENS.lineSoft}`, borderRadius: RADII.card,
+        boxShadow: SHADOWS.card, padding: '20px 24px',
+      }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 14,
             }}>
               <div style={{
-                width: 44, height: 56, background: p.paper, color: p.marigoldDeep,
-                border: `1.5px solid ${p.marigold}`, display: 'grid', placeItems: 'center',
-                fontFamily: PAPER_FONTS.mono, fontSize: 11, fontWeight: 700, letterSpacing: '.06em',
+                width: 44, height: 56, background: TOKENS.amberWash, color: TOKENS.amber,
+                border: `1px solid ${TOKENS.amberLine}`, borderRadius: RADII.buttonTight, display: 'grid', placeItems: 'center',
+                fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, fontWeight: 700, letterSpacing: '.06em',
               }}>PDF</div>
               <div>
-                <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 22, color: p.ink, lineHeight: 1.1 }}>
+                <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 22, color: TOKENS.ink, lineHeight: 1.1 }}>
                   {profile?.resume_filename ? (
-                    <><span style={{ color: p.leaf, marginRight: 4 }}>✓</span>{profile.resume_filename}</>
+                    <><span style={{ color: TOKENS.green, marginRight: 4 }}>✓</span>{profile.resume_filename}</>
                   ) : (
-                    <span style={{ color: p.inkMute }}>No resume on file</span>
+                    <span style={{ color: TOKENS.muted }}>No resume on file</span>
                   )}
                 </div>
-                <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute, marginTop: 4, letterSpacing: '.04em' }}>
+                <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11.5, color: TOKENS.muted, marginTop: 4, letterSpacing: '.04em' }}>
                   {profile?.resume_text
                     ? `${profile.resume_text.length.toLocaleString()} chars · base version`
                     : 'Upload one in onboarding or here to start tailoring'}
                 </div>
               </div>
             </div>
-            <p style={{ margin: '12px 0 0', fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 14, color: p.inkSoft }}>
+            <p style={{ margin: '12px 0 0', fontFamily: PAPER_FONTS_V2.serif, fontStyle: 'italic', fontSize: 14, color: TOKENS.inkSoft }}>
               Replacing here also updates the resume Jugaadu uses for outreach drafts.
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <label style={{
-              padding: '7px 12px',
-              fontFamily: PAPER_FONTS.display, fontSize: 13,
-              background: 'transparent', color: p.ink,
-              border: `2px solid ${p.ink}`, cursor: 'pointer',
+              padding: '7px 12px', borderRadius: RADII.buttonTight,
+              fontFamily: PAPER_FONTS_V2.sans, fontSize: 13,
+              background: 'transparent', color: TOKENS.ink,
+              border: `1px solid ${TOKENS.faint}`, cursor: 'pointer',
               display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
             }}>
               ↑ Replace…
@@ -175,14 +213,18 @@ function ResumeV3({ p, go }) {
             </label>
           </div>
         </div>
-      </PaperCard>
+      </div>
 
       {/* The brief */}
       <div style={{ marginTop: 14 }}>
-        <PaperCard p={p} color={p.stamp} hardShadow style={{ padding: '22px 24px' }}>
+        <div style={{
+          background: TOKENS.card, color: TOKENS.ink,
+          border: `1px solid ${TOKENS.lineSoft}`, borderRadius: RADII.card,
+          boxShadow: SHADOWS.card, padding: '22px 24px',
+        }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-            <Eyebrow p={p} en="The brief — what should change"/>
-            <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute, letterSpacing: '.14em', textTransform: 'uppercase' }}>
+            <Eyebrow en="The brief — what should change"/>
+            <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, color: TOKENS.muted, letterSpacing: '.14em', textTransform: 'uppercase' }}>
               one is enough · both is best
             </span>
           </div>
@@ -195,9 +237,9 @@ function ResumeV3({ p, go }) {
                 onChange={(e) => setJobUrl(e.target.value)}
                 placeholder="https://stripe.com/jobs/listing/product-designer-payments"
                 style={{
-                  width: '100%', padding: '12px 14px', background: p.paper,
-                  border: `1.5px solid ${jobUrl.trim() ? p.stamp : p.ink + '30'}`,
-                  fontFamily: PAPER_FONTS.mono, fontSize: 13, color: p.ink, outline: 'none',
+                  width: '100%', padding: '12px 14px', background: TOKENS.paper, borderRadius: RADII.panelTight,
+                  border: `1px solid ${jobUrl.trim() ? TOKENS.red : TOKENS.line}`,
+                  fontFamily: PAPER_FONTS_V2.mono, fontSize: 13, color: TOKENS.ink, outline: 'none',
                 }}
               />
               <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -207,9 +249,9 @@ function ResumeV3({ p, go }) {
                   'anthropic.com/careers/design-engineer',
                 ].map(s => (
                   <button key={s} onClick={() => setJobUrl(s)} style={{
-                    padding: '4px 10px', background: 'transparent',
-                    border: `1px solid ${p.ink}30`, color: p.inkSoft,
-                    fontFamily: PAPER_FONTS.mono, fontSize: 10.5, cursor: 'pointer',
+                    padding: '4px 10px', background: 'transparent', borderRadius: RADII.pill,
+                    border: `1px solid ${TOKENS.line}`, color: TOKENS.muted2,
+                    fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, cursor: 'pointer',
                   }}>{s.split('/')[0]}</button>
                 ))}
               </div>
@@ -223,9 +265,9 @@ function ResumeV3({ p, go }) {
                 rows={4}
                 placeholder="e.g. 'lead with the Stripe work, show python + infra signal, mention shipping the billing migration'. Required if you didn't give a job URL."
                 style={{
-                  width: '100%', padding: '12px 14px', background: p.paper, resize: 'vertical',
-                  border: `1.5px solid ${emphasis.trim() ? p.stamp : p.ink + '30'}`,
-                  fontFamily: PAPER_FONTS.sans, fontSize: 13.5, lineHeight: 1.5, color: p.ink, outline: 'none',
+                  width: '100%', padding: '12px 14px', background: TOKENS.paper, resize: 'vertical', borderRadius: RADII.panelTight,
+                  border: `1px solid ${emphasis.trim() ? TOKENS.red : TOKENS.line}`,
+                  fontFamily: PAPER_FONTS_V2.sans, fontSize: 13.5, lineHeight: 1.5, color: TOKENS.ink, outline: 'none',
                   minHeight: 100,
                 }}
               />
@@ -237,30 +279,39 @@ function ResumeV3({ p, go }) {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{
-                fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkSoft,
+                fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted2,
                 letterSpacing: '.08em', textTransform: 'uppercase',
               }}>Length</span>
               {['1','2'].map(v => {
                 const active = length === v;
                 return (
                   <button key={v} onClick={() => setLength(v)} style={{
-                    padding: '7px 14px', fontFamily: PAPER_FONTS.mono, fontSize: 12,
-                    background: active ? p.stamp : 'transparent',
-                    color: active ? p.paper : p.ink,
-                    border: `1.5px solid ${p.ink}`, cursor: 'pointer',
+                    padding: '7px 14px', fontFamily: PAPER_FONTS_V2.mono, fontSize: 12, borderRadius: RADII.buttonTight,
+                    background: active ? TOKENS.ink : 'transparent',
+                    color: active ? TOKENS.paper : TOKENS.ink,
+                    border: `1px solid ${active ? TOKENS.ink : TOKENS.line}`, cursor: 'pointer',
                   }}>{v} page{v === '2' ? 's' : ''}</button>
                 );
               })}
             </div>
             <div style={{ flex: 1 }}/>
-            <InkButton p={p} color={p.stamp} onClick={tailor} disabled={!canTailor || running}>
-              {running ? <>Tailoring… <Spinner p={p}/></> : <>Tailor my resume →</>}
-            </InkButton>
+            <button onClick={tailor} disabled={!canTailor || running} style={{
+              background: TOKENS.ink, color: TOKENS.paper,
+              border: '1px solid transparent', borderRadius: RADII.buttonTight,
+              padding: '10px 16px', fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, fontWeight: 500,
+              cursor: (!canTailor || running) ? 'not-allowed' : 'pointer',
+              opacity: (!canTailor || running) ? 0.45 : 1,
+              display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
+            }}>
+              {running ? <>Tailoring… <Spinner/></> : <>Tailor my resume →</>}
+            </button>
             {!canTailor && (
-              <Marginalia p={p} rotate={-2}>add a job URL or a description →</Marginalia>
+              <span style={{
+                fontFamily: PAPER_FONTS_V2.serif, fontStyle: 'italic', fontSize: 14, color: TOKENS.muted2,
+              }}>add a job URL or a description →</span>
             )}
           </div>
-        </PaperCard>
+        </div>
       </div>
 
       {/* Live tailoring runs — module-store backed, so they keep going when
@@ -279,40 +330,40 @@ function ResumeV3({ p, go }) {
                   : 'tailoring… reading the posting';
             return (
               <div key={run.id} style={{
-                position: 'relative', overflow: 'hidden',
-                background: p.card, border: `1.5px solid ${failed ? p.stamp : p.ink}`,
-                boxShadow: `4px 4px 0 ${failed ? p.stamp : p.marigold}`,
+                position: 'relative', overflow: 'hidden', borderRadius: RADII.card,
+                background: TOKENS.card, border: `1px solid ${failed ? TOKENS.red : TOKENS.lineSoft}`,
+                boxShadow: SHADOWS.card,
                 padding: '16px 18px 14px',
               }}>
-                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: p.ink + '14' }}>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: TOKENS.line }}>
                   <div style={{
                     height: '100%', width: `${failed ? 100 : pct}%`,
-                    background: failed ? p.stamp : p.leaf, transition: 'width .4s',
+                    background: failed ? TOKENS.red : TOKENS.green, transition: 'width .4s',
                   }}/>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <span style={{
                     width: 7, height: 7, borderRadius: 999, flexShrink: 0,
-                    background: failed ? p.stamp : p.leaf,
+                    background: failed ? TOKENS.red : TOKENS.green,
                     animation: failed ? 'none' : 'pulseDot 1.1s ease-in-out infinite',
                   }}/>
                   <span style={{
-                    fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.14em',
-                    textTransform: 'uppercase', color: failed ? p.stamp : p.leaf,
+                    fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, letterSpacing: '.14em',
+                    textTransform: 'uppercase', color: failed ? TOKENS.red : TOKENS.green,
                   }}>{caption}</span>
                   <span style={{
-                    fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute, minWidth: 0,
+                    fontFamily: PAPER_FONTS_V2.mono, fontSize: 11.5, color: TOKENS.muted, minWidth: 0,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>{run.input}</span>
                   <button onClick={() => dismissRun(run.id)} title="dismiss" style={{
-                    marginLeft: 'auto', background: 'transparent', border: 'none', color: p.inkMute,
-                    fontFamily: PAPER_FONTS.mono, fontSize: 16, lineHeight: 1, cursor: 'pointer', flexShrink: 0,
+                    marginLeft: 'auto', background: 'transparent', border: 'none', color: TOKENS.muted,
+                    fontFamily: PAPER_FONTS_V2.mono, fontSize: 16, lineHeight: 1, cursor: 'pointer', flexShrink: 0,
                   }}>×</button>
                 </div>
                 {!failed && (
                   <p style={{
-                    margin: '10px 0 0', fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
-                    fontSize: 13.5, color: p.inkSoft,
+                    margin: '10px 0 0', fontFamily: PAPER_FONTS_V2.serif, fontStyle: 'italic',
+                    fontSize: 13.5, color: TOKENS.inkSoft,
                   }}>
                     Feel free to move around the app — this keeps running and lands in the history below.
                   </p>
@@ -320,12 +371,17 @@ function ResumeV3({ p, go }) {
                 {failed && (
                   <>
                     <div style={{
-                      marginTop: 10, padding: '10px 14px', background: p.paper,
-                      border: `1.5px solid ${p.stamp}`, color: p.stamp,
-                      fontFamily: PAPER_FONTS.mono, fontSize: 12,
+                      marginTop: 10, padding: '10px 14px', background: TOKENS.paper, borderRadius: RADII.panelTight,
+                      border: `1px solid ${TOKENS.red}`, color: TOKENS.red,
+                      fontFamily: PAPER_FONTS_V2.mono, fontSize: 12,
                     }}>{run.error}</div>
                     <div style={{ marginTop: 8 }}>
-                      <InkButton p={p} kind="outline" size="sm" onClick={() => retryRun(run.id)}>↻ Retry</InkButton>
+                      <button onClick={() => retryRun(run.id)} style={{
+                        background: 'transparent', color: TOKENS.ink,
+                        border: `1px solid ${TOKENS.faint}`, borderRadius: RADII.buttonTight,
+                        padding: '7px 12px', fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, fontWeight: 500,
+                        cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8,
+                      }}>↻ Retry</button>
                     </div>
                   </>
                 )}
@@ -338,23 +394,24 @@ function ResumeV3({ p, go }) {
       {/* History */}
       <div style={{ marginTop: 28 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
-          <Eyebrow p={p} en={`Tailored history · ${history.length} version${history.length === 1 ? '' : 's'}`}/>
-          <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.06em' }}>
+          <Eyebrow en={`Tailored history · ${history.length} version${history.length === 1 ? '' : 's'}`}/>
+          <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted, letterSpacing: '.06em' }}>
             click a row to expand
           </span>
         </div>
         {tailorError && (
           <div style={{
-            marginBottom: 10, padding: '10px 14px', background: p.card,
-            border: `1.5px solid ${p.stamp}`, color: p.stamp,
-            fontFamily: PAPER_FONTS.mono, fontSize: 12,
+            marginBottom: 10, padding: '10px 14px', background: TOKENS.card, borderRadius: RADII.panelTight,
+            border: `1px solid ${TOKENS.red}`, color: TOKENS.red,
+            fontFamily: PAPER_FONTS_V2.mono, fontSize: 12,
           }}>{tailorError}</div>
         )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {history.length === 0 && (
             <div style={{
-              padding: '24px', textAlign: 'center', border: `1.5px dashed ${p.ink}40`,
-              fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', color: p.inkSoft,
+              padding: '24px', textAlign: 'center', border: `1px dashed ${TOKENS.dashed}`, borderRadius: RADII.card,
+              background: TOKENS.cardWarm,
+              fontFamily: PAPER_FONTS_V2.serif, fontStyle: 'italic', color: TOKENS.muted2,
             }}>
               No tailored versions yet. Drop in a job posting URL above.
             </div>
@@ -378,7 +435,7 @@ function ResumeV3({ p, go }) {
               notes: row.regenerate_notes || '',
             };
             return (
-              <HistoryRow key={row.id} p={p} row={adapted} isOpen={isOpen} onToggle={() => setOpen(isOpen ? null : row.id)} fresh={i === 0 && open === row.id}/>
+              <HistoryRow key={row.id} row={adapted} isOpen={isOpen} onToggle={() => setOpen(isOpen ? null : row.id)} fresh={i === 0 && open === row.id}/>
             );
           })}
         </div>
@@ -435,10 +492,10 @@ function extractChanges(row) {
   return out;
 }
 
-function Spinner({ p }) {
+function Spinner() {
   return (
     <span style={{
-      width: 12, height: 12, border: `2px solid ${p.paper}`,
+      width: 12, height: 12, border: `2px solid ${TOKENS.paper}`,
       borderTopColor: 'transparent', borderRadius: 999,
       animation: 'spin 0.8s linear infinite', display: 'inline-block',
       marginLeft: 4,
@@ -449,7 +506,7 @@ function Spinner({ p }) {
 }
 
 
-function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
+function HistoryRow({ row, isOpen, onToggle, fresh }) {
   // Pull the full generation (resume blob + changelog) the first time the row is
   // opened — the history list endpoint only returns metadata. setState lives in
   // the async callbacks, never synchronously in the effect body.
@@ -474,8 +531,9 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
 
   return (
     <div style={{
-      background: p.card, border: `1.5px solid ${isOpen ? p.ink : p.ink + '30'}`,
-      boxShadow: fresh ? `4px 4px 0 ${p.stamp}` : (isOpen ? `3px 3px 0 ${p.marigold}` : 'none'),
+      background: TOKENS.card, border: `1px solid ${isOpen ? TOKENS.line : TOKENS.lineSoft}`,
+      borderRadius: RADII.card, overflow: 'hidden',
+      boxShadow: fresh ? SHADOWS.elevated : (isOpen ? SHADOWS.card : 'none'),
       transition: 'box-shadow .2s, border-color .2s',
     }}>
       <button onClick={onToggle} style={{
@@ -484,45 +542,51 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
           ? { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }
           : { display: 'grid', gridTemplateColumns: '1fr auto auto auto auto', alignItems: 'center', gap: 18 }),
         padding: '14px 20px', background: 'transparent', border: 'none',
-        cursor: 'pointer', textAlign: 'left', color: p.ink,
+        cursor: 'pointer', textAlign: 'left', color: TOKENS.ink,
       }}>
         <div style={{ minWidth: 0, flex: isMobile ? '1 1 100%' : undefined }}>
-          <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.06em' }}>{row.co}</div>
-          <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 19, color: p.ink, lineHeight: 1.05 }}>{row.role}</div>
+          <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted, letterSpacing: '.06em' }}>{row.co}</div>
+          <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 19, color: TOKENS.ink, lineHeight: 1.05 }}>{row.role}</div>
         </div>
-        {fresh && <Stamp color={p.stamp} rotate={-6}>just made</Stamp>}
+        {fresh && (
+          <span style={{
+            fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase',
+            color: TOKENS.red, background: 'rgba(160,61,46,.10)', borderRadius: RADII.pill,
+            padding: '3px 10px', whiteSpace: 'nowrap',
+          }}>just made</span>
+        )}
         {row.status === 'in_flight' ? (
           <span style={{
-            padding: '3px 10px', background: p.stamp + '14', color: p.stamp,
-            fontFamily: PAPER_FONTS.mono, fontSize: 11, letterSpacing: '.04em',
+            padding: '3px 10px', background: TOKENS.amberBg, color: TOKENS.amber, borderRadius: RADII.pill,
+            fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, letterSpacing: '.04em',
           }}>in progress…</span>
         ) : row.status === 'error' ? (
           <span style={{
-            padding: '3px 10px', background: p.stamp + '14', color: p.stamp,
-            fontFamily: PAPER_FONTS.mono, fontSize: 11, letterSpacing: '.04em',
+            padding: '3px 10px', background: 'rgba(160,61,46,.10)', color: TOKENS.red, borderRadius: RADII.pill,
+            fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, letterSpacing: '.04em',
           }}>error</span>
         ) : (
           <span style={{
-            padding: '3px 10px', background: p.leaf + '14', color: p.leaf,
-            fontFamily: PAPER_FONTS.mono, fontSize: 11, letterSpacing: '.04em',
+            padding: '3px 10px', background: TOKENS.greenBg, color: TOKENS.green, borderRadius: RADII.pill,
+            fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, letterSpacing: '.04em',
           }}>ATS {row.ats ?? '—'}</span>
         )}
-        <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{row.when}</span>
-        <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 14, color: p.inkMute }}>{isOpen ? '−' : '+'}</span>
+        <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted, letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{row.when}</span>
+        <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 14, color: TOKENS.muted }}>{isOpen ? '−' : '+'}</span>
       </button>
 
       {isOpen && (
         <div style={{
-          borderTop: `1.5px dashed ${p.ink}24`,
+          borderTop: `1px dashed ${TOKENS.line}`,
           padding: '16px 20px 20px', display: 'grid',
           gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr', gap: 22,
         }}>
           <div>
-            <Eyebrow p={p} en="What Jugaadu changed" color={p.stamp}/>
+            <Eyebrow en="What Jugaadu changed" color={TOKENS.red}/>
             {realChanges.length > 0 ? (
               // The real per-edit changelog: your line → the tailored line, and why.
               <div style={{ marginTop: 10 }}>
-                <ChangeList p={p} changes={realChanges}/>
+                <ChangeList p={CHANGE_PALETTE} changes={realChanges}/>
               </div>
             ) : (
               // Older generations (or a load error) have no stored changelog — fall
@@ -530,54 +594,64 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
               <>
                 <ul style={{
                   margin: '10px 0 0', paddingLeft: 18,
-                  fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
-                  fontSize: 15, lineHeight: 1.55, color: p.inkSoft,
+                  fontFamily: PAPER_FONTS_V2.serif, fontStyle: 'italic',
+                  fontSize: 15, lineHeight: 1.55, color: TOKENS.inkSoft,
                 }}>
                   {row.changes.map((c, i) => <li key={i} style={{ marginBottom: 4 }}>{c}</li>)}
                 </ul>
                 {loading && (
-                  <div style={{ marginTop: 8, fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute }}>
+                  <div style={{ marginTop: 8, fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted }}>
                     reading the diff…
                   </div>
                 )}
               </>
             )}
-            <div style={{ marginTop: 14, fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.04em' }}>
+            <div style={{ marginTop: 14, fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted, letterSpacing: '.04em' }}>
               from: {row.jobUrl}
             </div>
             <div style={{ marginTop: 14 }}>
-              <Eyebrow p={p} en="Notes for next regen" color={p.tea}/>
+              <Eyebrow en="Notes for next regen" color={TOKENS.muted2}/>
               <textarea
                 defaultValue={row.notes}
                 rows={2}
                 placeholder="e.g. 'tone too formal — more punchy', or 'lead with python next time'"
                 style={{
-                  width: '100%', marginTop: 6, padding: '10px 12px', resize: 'vertical',
-                  background: p.paper, color: p.ink,
-                  border: `1.5px solid ${p.ink}30`,
-                  fontFamily: PAPER_FONTS.sans, fontSize: 13, lineHeight: 1.5, outline: 'none',
+                  width: '100%', marginTop: 6, padding: '10px 12px', resize: 'vertical', borderRadius: RADII.panelTight,
+                  background: TOKENS.paper, color: TOKENS.ink,
+                  border: `1px solid ${TOKENS.line}`,
+                  fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, lineHeight: 1.5, outline: 'none',
                 }}
               />
               <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                <InkButton p={p} color={p.tea} size="sm">↻ Regenerate with notes</InkButton>
-                <InkButton p={p} kind="outline" size="sm">Save notes</InkButton>
+                <button style={{
+                  background: TOKENS.ink, color: TOKENS.paper, border: '1px solid transparent',
+                  borderRadius: RADII.buttonTight, padding: '7px 12px',
+                  fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
+                }}>↻ Regenerate with notes</button>
+                <button style={{
+                  background: 'transparent', color: TOKENS.ink, border: `1px solid ${TOKENS.faint}`,
+                  borderRadius: RADII.buttonTight, padding: '7px 12px',
+                  fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
+                }}>Save notes</button>
               </div>
             </div>
           </div>
           {row.status !== 'complete' ? (
             <div>
               <div style={{
-                padding: '14px 16px', background: p.paper,
-                border: `1.5px solid ${p.stamp}`, color: p.stamp,
-                fontFamily: PAPER_FONTS.mono, fontSize: 12, lineHeight: 1.5,
+                padding: '14px 16px', background: TOKENS.paper, borderRadius: RADII.panelTight,
+                border: `1px solid ${TOKENS.red}`, color: TOKENS.red,
+                fontFamily: PAPER_FONTS_V2.mono, fontSize: 12, lineHeight: 1.5,
               }}>
                 {row.status === 'in_flight'
                   ? 'Still tailoring — check back in a moment.'
                   : (row.error || 'This run failed before a resume was produced.')}
               </div>
               <p style={{
-                margin: '10px 0 0', fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
-                fontSize: 13.5, color: p.inkSoft,
+                margin: '10px 0 0', fontFamily: PAPER_FONTS_V2.serif, fontStyle: 'italic',
+                fontSize: 13.5, color: TOKENS.inkSoft,
               }}>
                 Nothing was saved for this version, so there's no PDF/Word to download.
                 Run the brief again from above.
@@ -586,26 +660,26 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
           ) : (
           <div>
             <div style={{
-              background: p.paper, border: `1.5px solid ${p.ink}30`,
+              background: TOKENS.paper, border: `1px solid ${TOKENS.line}`, borderRadius: RADII.panelTight,
               aspectRatio: '8.5/11', padding: '16px 14px', position: 'relative',
-              fontFamily: PAPER_FONTS.serif, color: p.ink, fontSize: 8.5, lineHeight: 1.4, overflow: 'hidden',
+              fontFamily: PAPER_FONTS_V2.serif, color: TOKENS.ink, fontSize: 8.5, lineHeight: 1.4, overflow: 'hidden',
             }}>
               {resume ? (
                 <>
-                  <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 14 }}>
+                  <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 14 }}>
                     {resume.header?.full_name || 'Your name'}
                   </div>
                   {(resume.header?.email || resume.header?.location || resume.header?.links?.website) && (
-                    <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 7, color: p.inkMute, marginTop: 2 }}>
+                    <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 7, color: TOKENS.muted, marginTop: 2 }}>
                       {[resume.header?.email, resume.header?.location, resume.header?.links?.website]
                         .filter(Boolean).join(' · ')}
                     </div>
                   )}
-                  <div style={{ height: 1, background: p.ink + '24', margin: '6px 0' }}/>
+                  <div style={{ height: 1, background: TOKENS.line, margin: '6px 0' }}/>
                   {resume.summary && <div style={{ marginBottom: 4 }}>{resume.summary}</div>}
                   {(resume.experience || []).slice(0, 2).map((exp, i) => (
                     <div key={i} style={{ marginTop: i ? 6 : 0 }}>
-                      <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 10 }}>
+                      <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 10 }}>
                         {[exp.role, exp.company].filter(Boolean).join(' · ')}
                       </div>
                       {(exp.bullets || []).slice(0, 3).map((b, j) => (
@@ -615,7 +689,7 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
                   ))}
                   {(resume.skills || []).length > 0 && (
                     <>
-                      <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 10, marginTop: 6 }}>Skills</div>
+                      <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 10, marginTop: 6 }}>Skills</div>
                       {resume.skills.slice(0, 2).map((s, i) => (
                         <div key={i}>· {s.group ? `${s.group}: ` : ''}{(s.items || []).join(', ')}</div>
                       ))}
@@ -623,19 +697,34 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
                   )}
                 </>
               ) : (
-                <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', color: p.inkMute }}>
+                <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontStyle: 'italic', color: TOKENS.muted }}>
                   {loadErr ? `Couldn't load this version (${loadErr}).` : 'Loading the tailored resume…'}
                 </div>
               )}
               <div style={{
                 position: 'absolute', left: 0, right: 0, bottom: 0, height: 60,
-                background: `linear-gradient(to bottom, transparent, ${p.paper})`,
+                background: `linear-gradient(to bottom, transparent, ${TOKENS.paper})`,
               }}/>
             </div>
             <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
-              <InkButton p={p} kind="outline" size="sm" style={{ flex: 1 }} onClick={() => downloadResume(row.id, 'pdf')}>↓ PDF</InkButton>
-              <InkButton p={p} kind="outline" size="sm" style={{ flex: 1 }} onClick={() => downloadResume(row.id, 'docx')}>↓ Word</InkButton>
-              <InkButton p={p} kind="outline" size="sm" style={{ flex: 1 }} onClick={() => window.open(`/api/resume/history/${row.id}`, '_blank')}>View ↗</InkButton>
+              <button onClick={() => downloadResume(row.id, 'pdf')} style={{
+                flex: 1, background: 'transparent', color: TOKENS.ink, border: `1px solid ${TOKENS.faint}`,
+                borderRadius: RADII.buttonTight, padding: '7px 12px', fontFamily: PAPER_FONTS_V2.sans,
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, whiteSpace: 'nowrap',
+              }}>↓ PDF</button>
+              <button onClick={() => downloadResume(row.id, 'docx')} style={{
+                flex: 1, background: 'transparent', color: TOKENS.ink, border: `1px solid ${TOKENS.faint}`,
+                borderRadius: RADII.buttonTight, padding: '7px 12px', fontFamily: PAPER_FONTS_V2.sans,
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, whiteSpace: 'nowrap',
+              }}>↓ Word</button>
+              <button onClick={() => window.open(`/api/resume/history/${row.id}`, '_blank')} style={{
+                flex: 1, background: 'transparent', color: TOKENS.ink, border: `1px solid ${TOKENS.faint}`,
+                borderRadius: RADII.buttonTight, padding: '7px 12px', fontFamily: PAPER_FONTS_V2.sans,
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, whiteSpace: 'nowrap',
+              }}>View ↗</button>
             </div>
           </div>
           )}
@@ -648,6 +737,5 @@ function HistoryRow({ p, row, isOpen, onToggle, fresh }) {
 
 export default function ResumePage() {
   const router = useRouter();
-  const { p } = usePaperTheme();
-  return <ResumeV3 p={p} go={(r) => router.push(`/app/${r}`)} />;
+  return <ResumeV3 go={(r) => router.push(`/app/${r}`)} />;
 }

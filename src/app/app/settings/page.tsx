@@ -1,166 +1,183 @@
-// @ts-nocheck — Settings v3 page (paper-craft port + real wiring)
+// @ts-nocheck — Settings page (jugaadu reskin + real wiring)
 "use client";
 
 import { useEffect, useState } from "react";
-import { PAPER_FONTS } from "@/components/paper/fonts";
-import { usePaperTheme } from "@/components/paper/use-paper-theme";
+import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
+import { TOKENS, RADII, SHADOWS } from "@/components/paper/tokens";
 import {
-  InkButton,
-  PageHead,
-  PaperCard,
-} from "@/components/paper/primitives";
+  FOLLOWUP_OPTIONS,
+  daysToFollowupLabel,
+  followupLabelToDays,
+  parseWritingSamples,
+  linkedinHandle,
+  deriveConnectedRows,
+} from "@/components/paper/phase5-logic";
 import { useIsMobile } from "@/lib/use-is-mobile";
 
-const FOLLOWUP_OPTIONS = [
-  { label: "3d", days: 3 },
-  { label: "5d", days: 5 },
-  { label: "7d", days: 7 },
-  { label: "10d", days: 10 },
-  { label: "never", days: 0 },
-];
-
-function daysToLabel(d) {
-  if (d == null) return "5d";
-  if (d === 0) return "never";
-  const match = FOLLOWUP_OPTIONS.find((o) => o.days === d);
-  return match?.label ?? `${d}d`;
+// Uppercase IBM Plex Mono section label.
+function MonoLabel({ children, color = TOKENS.muted, size = 10.5, style }) {
+  return (
+    <span
+      style={{
+        fontFamily: PAPER_FONTS_V2.mono,
+        fontSize: size,
+        fontWeight: 500,
+        letterSpacing: ".12em",
+        textTransform: "uppercase",
+        color,
+        ...style,
+      }}
+    >
+      {children}
+    </span>
+  );
 }
 
-// writing_samples is a `text` column, so an array written at onboarding comes
-// back as a JSON-encoded string. Normalize to an array of non-empty samples.
-function parseWritingSamples(raw) {
-  if (Array.isArray(raw)) return raw.filter((s) => typeof s === "string" && s.trim());
-  if (typeof raw === "string" && raw.trim()) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed.filter((s) => typeof s === "string" && s.trim());
-    } catch {
-      // not JSON — treat the whole string as a single sample
-    }
-    return [raw];
-  }
-  return [];
+// White soft-shadow card surface.
+function Card({ children, style }) {
+  return (
+    <div
+      style={{
+        background: TOKENS.card,
+        color: TOKENS.ink,
+        border: `1px solid ${TOKENS.lineSoft}`,
+        borderRadius: RADII.card,
+        boxShadow: SHADOWS.card,
+        padding: "20px 22px",
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
 }
 
-// Pull the handle out of a stored LinkedIn URL (or accept a bare handle / URL).
-function linkedinHandle(url) {
-  if (!url) return "";
-  const m = String(url).match(/linkedin\.com\/in\/([^/?#]+)/i);
-  if (m) return m[1];
-  return String(url).replace(/^https?:\/\//, "").replace(/^www\./, "");
+// Ink solid / outline button.
+function InkButton({ children, onClick, kind = "solid", disabled, style }) {
+  const solid = kind === "solid";
+  const outline = kind === "outline";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        background: solid ? TOKENS.ink : "transparent",
+        color: solid ? TOKENS.paper : TOKENS.ink,
+        border: outline ? `1px solid ${TOKENS.faint}` : "1px solid transparent",
+        borderRadius: RADII.buttonTight,
+        padding: "7px 14px",
+        fontFamily: PAPER_FONTS_V2.sans,
+        fontSize: 13,
+        fontWeight: 500,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.45 : 1,
+        transition: "background .15s, border-color .15s",
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  );
 }
 
-function SettingsV3({ p, t, setTweak, profile, saveProfile, reloadProfile }) {
+function SettingsV3({ profile, saveProfile, reloadProfile }) {
   const isMobile = useIsMobile();
   const [savingFollowup, setSavingFollowup] = useState(false);
   const [editing, setEditing] = useState(null); // resume | linkedin | writing | goals
-  const followupLabel = daysToLabel(profile?.followup_days);
+  const followupLabel = daysToFollowupLabel(profile?.followup_days);
 
   async function pickFollowup(label) {
-    const opt = FOLLOWUP_OPTIONS.find((o) => o.label === label);
-    if (!opt) return;
-    setTweak("followup", label);
+    const days = followupLabelToDays(label);
+    if (days == null) return;
     setSavingFollowup(true);
     try {
-      await saveProfile({ followup_days: opt.days });
+      await saveProfile({ followup_days: days });
     } finally {
       setSavingFollowup(false);
     }
   }
 
-  const samples = parseWritingSamples(profile?.writing_samples);
-  const connected = [
-    {
-      key: "resume",
-      name: "Resume",
-      sub: profile?.resume_filename
-        ? `${profile.resume_filename}${profile.resume_text ? ` · ${profile.resume_text.length.toLocaleString()} chars` : ""}`
-        : "Not yet uploaded",
-      on: !!profile?.resume_text,
-    },
-    {
-      key: "linkedin",
-      name: "LinkedIn",
-      sub: profile?.linkedin_url || "Not yet linked",
-      on: !!profile?.linkedin_url,
-    },
-    {
-      key: "writing",
-      name: "Writing voice",
-      sub: samples.length
-        ? `${samples.length} sample${samples.length === 1 ? "" : "s"} learned`
-        : "No samples on file yet",
-      on: samples.length > 0,
-    },
-    {
-      key: "goals",
-      name: "Goals summary",
-      sub: profile?.context_prompt
-        ? `~ ${Math.round((profile.context_prompt.length || 0) / 5)} word self-summary on file`
-        : "No goals summary yet",
-      on: !!profile?.context_prompt,
-    },
-  ];
+  const connected = deriveConnectedRows(profile);
 
   return (
-    <div className="scroll" style={{ flex: 1, overflow: "auto", padding: isMobile ? "24px 16px 64px" : "48px 56px 80px" }}>
-      <PageHead
-        p={p}
-        eyebrow="Settings · you"
-        title="Your crew,"
-        italic="set up just for you."
-        sub="The defaults shape every draft Jugaadu sends. Change anything; it takes effect from your next message."
-      />
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginTop: 8 }}>
-        <PaperCard p={p} color={p.marigold} hardShadow>
-          <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 22, marginBottom: 14 }}>
-            Paper or ink mode
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            {[
-              { v: false, label: "Paper", sub: "cream · daylight" },
-              { v: true, label: "Ink", sub: "midnight · for late nights" },
-            ].map((o) => {
-              const active = !!t.dark === o.v;
-              return (
-                <button
-                  key={o.label}
-                  onClick={() => setTweak("dark", o.v)}
-                  style={{
-                    flex: 1,
-                    padding: "14px 14px",
-                    textAlign: "left",
-                    background: active ? p.ink : "transparent",
-                    color: active ? p.paper : p.ink,
-                    border: `2px solid ${p.ink}`,
-                    cursor: "pointer",
-                  }}
-                >
-                  <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 19 }}>{o.label}</div>
-                  <div
-                    style={{
-                      fontFamily: PAPER_FONTS.mono,
-                      fontSize: 10.5,
-                      letterSpacing: ".06em",
-                      opacity: 0.7,
-                      marginTop: 2,
-                    }}
-                  >
-                    {o.sub}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </PaperCard>
+    <div
+      className="scroll"
+      style={{
+        flex: 1,
+        overflow: "auto",
+        padding: isMobile ? "24px 16px 64px" : "48px 56px 80px",
+        background: TOKENS.paper,
+        color: TOKENS.ink,
+      }}
+    >
+      {/* Page header */}
+      <div style={{ marginBottom: 22 }}>
+        <MonoLabel>Settings · you</MonoLabel>
+        <h1
+          style={{
+            margin: "8px 0 0",
+            fontFamily: PAPER_FONTS_V2.serif,
+            fontWeight: 400,
+            fontSize: isMobile ? 30 : 34,
+            lineHeight: 1.05,
+            letterSpacing: "-.01em",
+            color: TOKENS.ink,
+          }}
+        >
+          Your crew,{" "}
+          <span style={{ fontStyle: "italic", color: TOKENS.muted2 }}>set up just for you.</span>
+        </h1>
+        <p
+          style={{
+            margin: "10px 0 0",
+            fontFamily: PAPER_FONTS_V2.serif,
+            fontStyle: "italic",
+            fontSize: 15.5,
+            lineHeight: 1.5,
+            color: TOKENS.muted,
+            maxWidth: 560,
+          }}
+        >
+          The defaults shape every draft Jugaadu sends. Change anything; it takes effect from your
+          next message.
+        </p>
+      </div>
 
-        <PaperCard p={p} color={p.leaf} hardShadow>
-          <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 22, marginBottom: 10 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+          gap: 14,
+        }}
+      >
+        <Card>
+          <div
+            style={{
+              fontFamily: PAPER_FONTS_V2.serif,
+              fontSize: 20,
+              marginBottom: 12,
+              color: TOKENS.ink,
+            }}
+          >
             Nudge cadence{" "}
             {savingFollowup && (
-              <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute }}>· saving</span>
+              <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted }}>
+                · saving
+              </span>
             )}
           </div>
+          <p
+            style={{
+              margin: "0 0 12px",
+              fontFamily: PAPER_FONTS_V2.serif,
+              fontStyle: "italic",
+              fontSize: 14,
+              color: TOKENS.muted,
+            }}
+          >
+            When someone doesn&apos;t reply, when should Jugaadu nudge?
+          </p>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {FOLLOWUP_OPTIONS.map((opt) => {
               const active = followupLabel === opt.label;
@@ -170,12 +187,14 @@ function SettingsV3({ p, t, setTweak, profile, saveProfile, reloadProfile }) {
                   onClick={() => pickFollowup(opt.label)}
                   style={{
                     padding: "7px 14px",
-                    fontFamily: PAPER_FONTS.mono,
+                    fontFamily: PAPER_FONTS_V2.mono,
                     fontSize: 13,
-                    background: active ? p.ink : "transparent",
-                    color: active ? p.paper : p.ink,
-                    border: `1.5px solid ${p.ink}`,
+                    borderRadius: RADII.pill,
+                    background: active ? TOKENS.ink : "transparent",
+                    color: active ? TOKENS.paper : TOKENS.ink,
+                    border: `1px solid ${active ? TOKENS.ink : TOKENS.line}`,
                     cursor: "pointer",
+                    transition: "background .15s, border-color .15s",
                   }}
                 >
                   {opt.label}
@@ -183,20 +202,34 @@ function SettingsV3({ p, t, setTweak, profile, saveProfile, reloadProfile }) {
               );
             })}
           </div>
-        </PaperCard>
+        </Card>
 
-        <PaperCard p={p} color={p.tea} hardShadow style={{ gridColumn: "1 / -1" }}>
-          <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 22, marginBottom: 4 }}>
+        <Card style={{ gridColumn: isMobile ? undefined : "1 / -1" }}>
+          <div
+            style={{
+              fontFamily: PAPER_FONTS_V2.serif,
+              fontSize: 20,
+              marginBottom: 4,
+              color: TOKENS.ink,
+            }}
+          >
             What Jugaadu reads
           </div>
-          <p style={{ margin: "0 0 12px", fontFamily: PAPER_FONTS.serif, fontStyle: "italic", fontSize: 14, color: p.inkSoft }}>
+          <p
+            style={{
+              margin: "0 0 14px",
+              fontFamily: PAPER_FONTS_V2.serif,
+              fontStyle: "italic",
+              fontSize: 14,
+              color: TOKENS.muted,
+            }}
+          >
             Update any of these whenever you like — changes apply to your next draft.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {connected.map((item) => (
               <ConnectedRow
                 key={item.key}
-                p={p}
                 item={item}
                 open={editing === item.key}
                 onToggle={() => setEditing(editing === item.key ? null : item.key)}
@@ -207,26 +240,34 @@ function SettingsV3({ p, t, setTweak, profile, saveProfile, reloadProfile }) {
               />
             ))}
           </div>
-        </PaperCard>
+        </Card>
       </div>
     </div>
   );
 }
 
-function ConnectedRow({ p, item, open, onToggle, onClose, profile, saveProfile, reloadProfile }) {
+function ConnectedRow({ item, open, onToggle, onClose, profile, saveProfile, reloadProfile }) {
   const { name, sub, on } = item;
   return (
-    <div style={{ border: `1px solid ${p.ink}24` }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px" }}>
+    <div
+      style={{
+        border: `1px solid ${TOKENS.lineInset}`,
+        borderRadius: RADII.panelTight,
+        background: TOKENS.cardWarm,
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}>
         <span
           style={{
-            width: 14,
-            height: 14,
-            background: on ? p.leaf : "transparent",
-            border: `1px solid ${p.ink}`,
+            width: 16,
+            height: 16,
+            background: on ? TOKENS.green : "transparent",
+            border: `1px solid ${on ? TOKENS.green : TOKENS.line}`,
+            borderRadius: 5,
             display: "grid",
             placeItems: "center",
-            color: p.paper,
+            color: TOKENS.paper,
             fontSize: 10,
             flexShrink: 0,
           }}
@@ -234,12 +275,14 @@ function ConnectedRow({ p, item, open, onToggle, onClose, profile, saveProfile, 
           {on ? "✓" : ""}
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: PAPER_FONTS.sans, fontSize: 13.5, color: p.ink }}>{name}</div>
+          <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13.5, color: TOKENS.ink }}>
+            {name}
+          </div>
           <div
             style={{
-              fontFamily: PAPER_FONTS.mono,
+              fontFamily: PAPER_FONTS_V2.mono,
               fontSize: 11,
-              color: p.inkMute,
+              color: TOKENS.muted,
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -252,33 +295,33 @@ function ConnectedRow({ p, item, open, onToggle, onClose, profile, saveProfile, 
           onClick={onToggle}
           style={{
             flexShrink: 0,
-            padding: "5px 12px",
-            fontFamily: PAPER_FONTS.mono,
-            fontSize: 11,
-            letterSpacing: ".06em",
-            textTransform: "uppercase",
-            background: open ? p.ink : "transparent",
-            color: open ? p.paper : p.ink,
-            border: `1.5px solid ${p.ink}`,
+            padding: "6px 12px",
+            borderRadius: RADII.buttonTight,
+            background: open ? TOKENS.ink : "transparent",
+            color: open ? TOKENS.paper : TOKENS.ink,
+            border: `1px solid ${open ? TOKENS.ink : TOKENS.line}`,
             cursor: "pointer",
+            fontFamily: PAPER_FONTS_V2.mono,
+            fontSize: 11,
+            fontWeight: 500,
+            letterSpacing: ".1em",
+            textTransform: "uppercase",
           }}
         >
           {open ? "Close" : on ? "Update" : "Add"}
         </button>
       </div>
       {open && (
-        <div style={{ padding: "12px 12px 14px", borderTop: `1px solid ${p.ink}14` }}>
-          {item.key === "resume" && (
-            <ResumeEditor p={p} reloadProfile={reloadProfile} onClose={onClose} />
-          )}
+        <div style={{ padding: "12px 12px 14px", borderTop: `1px solid ${TOKENS.lineInset}` }}>
+          {item.key === "resume" && <ResumeEditor reloadProfile={reloadProfile} onClose={onClose} />}
           {item.key === "linkedin" && (
-            <LinkedInEditor p={p} profile={profile} saveProfile={saveProfile} onClose={onClose} />
+            <LinkedInEditor profile={profile} saveProfile={saveProfile} onClose={onClose} />
           )}
           {item.key === "writing" && (
-            <WritingEditor p={p} profile={profile} saveProfile={saveProfile} onClose={onClose} />
+            <WritingEditor profile={profile} saveProfile={saveProfile} onClose={onClose} />
           )}
           {item.key === "goals" && (
-            <GoalsEditor p={p} profile={profile} saveProfile={saveProfile} onClose={onClose} />
+            <GoalsEditor profile={profile} saveProfile={saveProfile} onClose={onClose} />
           )}
         </div>
       )}
@@ -286,20 +329,20 @@ function ConnectedRow({ p, item, open, onToggle, onClose, profile, saveProfile, 
   );
 }
 
-function EditorActions({ p, saving, onSave, onClose, saveLabel = "Save" }) {
+function EditorActions({ saving, onSave, onClose, saveLabel = "Save" }) {
   return (
     <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-      <InkButton p={p} size="sm" color={p.leaf} disabled={saving} onClick={onSave}>
+      <InkButton disabled={saving} onClick={onSave}>
         {saving ? "Saving…" : saveLabel}
       </InkButton>
-      <InkButton p={p} kind="outline" size="sm" disabled={saving} onClick={onClose}>
+      <InkButton kind="outline" disabled={saving} onClick={onClose}>
         Cancel
       </InkButton>
     </div>
   );
 }
 
-function ResumeEditor({ p, reloadProfile, onClose }) {
+function ResumeEditor({ reloadProfile, onClose }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -330,8 +373,9 @@ function ResumeEditor({ p, reloadProfile, onClose }) {
           alignItems: "center",
           gap: 12,
           padding: "14px 16px",
-          background: p.paper,
-          border: `1.5px dashed ${p.ink}40`,
+          background: TOKENS.card,
+          border: `1px dashed ${TOKENS.dashed}`,
+          borderRadius: RADII.panelTight,
           cursor: uploading ? "wait" : "pointer",
         }}
       >
@@ -349,22 +393,23 @@ function ResumeEditor({ p, reloadProfile, onClose }) {
             display: "grid",
             placeItems: "center",
             fontSize: 15,
-            border: `1.5px solid ${p.ink}`,
-            borderRadius: 999,
+            border: `1px solid ${TOKENS.line}`,
+            borderRadius: RADII.pill,
             flexShrink: 0,
+            color: TOKENS.ink,
           }}
         >
           {uploading ? "…" : "↑"}
         </span>
         <div>
-          <div style={{ fontFamily: PAPER_FONTS.sans, fontSize: 13.5, color: p.ink }}>
+          <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13.5, color: TOKENS.ink }}>
             {uploading ? "Parsing…" : "Click to upload a new resume"}
           </div>
           <div
             style={{
-              fontFamily: PAPER_FONTS.mono,
+              fontFamily: PAPER_FONTS_V2.mono,
               fontSize: 11,
-              color: error ? p.stamp : p.inkMute,
+              color: error ? TOKENS.red : TOKENS.muted,
               marginTop: 2,
             }}
           >
@@ -373,7 +418,7 @@ function ResumeEditor({ p, reloadProfile, onClose }) {
         </div>
       </label>
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-        <InkButton p={p} kind="outline" size="sm" disabled={uploading} onClick={onClose}>
+        <InkButton kind="outline" disabled={uploading} onClick={onClose}>
           Done
         </InkButton>
       </div>
@@ -381,7 +426,7 @@ function ResumeEditor({ p, reloadProfile, onClose }) {
   );
 }
 
-function LinkedInEditor({ p, profile, saveProfile, onClose }) {
+function LinkedInEditor({ profile, saveProfile, onClose }) {
   const [handle, setHandle] = useState(() => linkedinHandle(profile?.linkedin_url));
   const [saving, setSaving] = useState(false);
 
@@ -404,11 +449,14 @@ function LinkedInEditor({ p, profile, saveProfile, onClose }) {
           alignItems: "center",
           gap: 8,
           padding: "11px 14px",
-          background: p.paper,
-          border: `1.5px solid ${handle.trim() ? p.stamp : p.ink + "40"}`,
+          background: TOKENS.card,
+          border: `1px solid ${handle.trim() ? TOKENS.green : TOKENS.line}`,
+          borderRadius: RADII.panelTight,
         }}
       >
-        <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 13, color: p.inkMute }}>linkedin.com/in/</span>
+        <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 13, color: TOKENS.muted }}>
+          linkedin.com/in/
+        </span>
         <input
           value={handle}
           onChange={(e) => setHandle(e.target.value)}
@@ -418,18 +466,18 @@ function LinkedInEditor({ p, profile, saveProfile, onClose }) {
             background: "transparent",
             border: "none",
             outline: "none",
-            color: p.ink,
-            fontFamily: PAPER_FONTS.mono,
+            color: TOKENS.ink,
+            fontFamily: PAPER_FONTS_V2.mono,
             fontSize: 14,
           }}
         />
       </div>
-      <EditorActions p={p} saving={saving} onSave={save} onClose={onClose} />
+      <EditorActions saving={saving} onSave={save} onClose={onClose} />
     </div>
   );
 }
 
-function WritingEditor({ p, profile, saveProfile, onClose }) {
+function WritingEditor({ profile, saveProfile, onClose }) {
   const [samples, setSamples] = useState(() => parseWritingSamples(profile?.writing_samples));
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
@@ -458,8 +506,9 @@ function WritingEditor({ p, profile, saveProfile, onClose }) {
           key={i}
           style={{
             padding: "10px 12px",
-            background: p.paper,
-            border: `1.5px solid ${p.leaf}`,
+            background: TOKENS.card,
+            border: `1px solid ${TOKENS.green}`,
+            borderRadius: RADII.panelTight,
             display: "flex",
             gap: 10,
             alignItems: "flex-start",
@@ -467,9 +516,9 @@ function WritingEditor({ p, profile, saveProfile, onClose }) {
         >
           <span
             style={{
-              fontFamily: PAPER_FONTS.mono,
+              fontFamily: PAPER_FONTS_V2.mono,
               fontSize: 10,
-              color: p.leaf,
+              color: TOKENS.green,
               letterSpacing: ".1em",
               flexShrink: 0,
               marginTop: 2,
@@ -477,12 +526,29 @@ function WritingEditor({ p, profile, saveProfile, onClose }) {
           >
             #{String(i + 1).padStart(2, "0")}
           </span>
-          <span style={{ flex: 1, fontFamily: PAPER_FONTS.serif, fontStyle: "italic", fontSize: 14, lineHeight: 1.5, color: p.ink }}>
+          <span
+            style={{
+              flex: 1,
+              fontFamily: PAPER_FONTS_V2.serif,
+              fontStyle: "italic",
+              fontSize: 14,
+              lineHeight: 1.5,
+              color: TOKENS.ink,
+            }}
+          >
             &quot;{s}&quot;
           </span>
           <button
             onClick={() => setSamples(samples.filter((_, j) => j !== i))}
-            style={{ background: "transparent", border: "none", color: p.inkMute, fontSize: 16, cursor: "pointer", padding: 0, lineHeight: 1 }}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: TOKENS.muted,
+              fontSize: 16,
+              cursor: "pointer",
+              padding: 0,
+              lineHeight: 1,
+            }}
           >
             ×
           </button>
@@ -499,10 +565,11 @@ function WritingEditor({ p, profile, saveProfile, onClose }) {
               width: "100%",
               resize: "vertical",
               padding: "11px 14px",
-              background: p.paper,
-              color: p.ink,
-              border: `1.5px solid ${p.ink}30`,
-              fontFamily: PAPER_FONTS.sans,
+              background: TOKENS.card,
+              color: TOKENS.ink,
+              border: `1px solid ${TOKENS.line}`,
+              borderRadius: RADII.panelTight,
+              fontFamily: PAPER_FONTS_V2.sans,
               fontSize: 13.5,
               lineHeight: 1.5,
               outline: "none",
@@ -514,10 +581,11 @@ function WritingEditor({ p, profile, saveProfile, onClose }) {
               disabled={!draft.trim()}
               style={{
                 padding: "7px 14px",
-                background: draft.trim() ? p.ink : "transparent",
-                color: draft.trim() ? p.paper : p.inkMute,
-                border: `1.5px solid ${p.ink}`,
-                fontFamily: PAPER_FONTS.mono,
+                background: draft.trim() ? TOKENS.ink : "transparent",
+                color: draft.trim() ? TOKENS.paper : TOKENS.muted,
+                border: `1px solid ${draft.trim() ? TOKENS.ink : TOKENS.line}`,
+                borderRadius: RADII.buttonTight,
+                fontFamily: PAPER_FONTS_V2.mono,
                 fontSize: 12,
                 cursor: draft.trim() ? "pointer" : "not-allowed",
               }}
@@ -527,12 +595,12 @@ function WritingEditor({ p, profile, saveProfile, onClose }) {
           </div>
         </>
       )}
-      <EditorActions p={p} saving={saving} onSave={save} onClose={onClose} />
+      <EditorActions saving={saving} onSave={save} onClose={onClose} />
     </div>
   );
 }
 
-function GoalsEditor({ p, profile, saveProfile, onClose }) {
+function GoalsEditor({ profile, saveProfile, onClose }) {
   const [text, setText] = useState(profile?.context_prompt ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -557,27 +625,30 @@ function GoalsEditor({ p, profile, saveProfile, onClose }) {
           width: "100%",
           resize: "vertical",
           padding: "12px 14px",
-          background: p.paper,
-          color: p.ink,
-          border: `1.5px solid ${text.trim() ? p.tea : p.ink + "30"}`,
-          fontFamily: PAPER_FONTS.sans,
+          background: TOKENS.card,
+          color: TOKENS.ink,
+          border: `1px solid ${text.trim() ? TOKENS.muted2 : TOKENS.line}`,
+          borderRadius: RADII.panelTight,
+          fontFamily: PAPER_FONTS_V2.sans,
           fontSize: 13.5,
           lineHeight: 1.5,
           outline: "none",
           minHeight: 120,
         }}
       />
-      <EditorActions p={p} saving={saving} onSave={save} onClose={onClose} />
+      <EditorActions saving={saving} onSave={save} onClose={onClose} />
     </div>
   );
 }
 
 export default function SettingsPage() {
-  const { p, t, setTweak } = usePaperTheme();
   const [profile, setProfile] = useState(null);
 
   useEffect(() => {
-    fetch("/api/profile").then((r) => r.json()).then((j) => setProfile(j?.profile ?? null)).catch(() => {});
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((j) => setProfile(j?.profile ?? null))
+      .catch(() => {});
   }, []);
 
   async function reloadProfile() {
@@ -604,13 +675,6 @@ export default function SettingsPage() {
   }
 
   return (
-    <SettingsV3
-      p={p}
-      t={t}
-      setTweak={setTweak}
-      profile={profile}
-      saveProfile={saveProfile}
-      reloadProfile={reloadProfile}
-    />
+    <SettingsV3 profile={profile} saveProfile={saveProfile} reloadProfile={reloadProfile} />
   );
 }

@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PAPER_FONTS } from "@/components/paper/fonts";
-import { usePaperTheme } from "@/components/paper/use-paper-theme";
-import { PageHead, PaperCard, InkButton, Eyebrow } from "@/components/paper/primitives";
-import type { Palette } from "@/components/paper/palette";
+import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
+import { TOKENS, RADII, SHADOWS } from "@/components/paper/tokens";
+import { InkButton2 } from "@/components/paper/primitives2";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { SECTORS } from "@/lib/jobs/catalog/sectors";
 import type { PreferencesDTO, PostedWithin } from "@/lib/jobs/types";
@@ -34,12 +33,10 @@ const LOCATION_OPTIONS = [
 ];
 
 function Chip({
-  p,
   label,
   active,
   onClick,
 }: {
-  p: Palette;
   label: string;
   active: boolean;
   onClick: () => void;
@@ -49,12 +46,12 @@ function Chip({
       onClick={onClick}
       style={{
         padding: "8px 14px",
-        fontFamily: PAPER_FONTS.mono,
+        fontFamily: PAPER_FONTS_V2.mono,
         fontSize: 13,
-        background: active ? p.ink : "transparent",
-        color: active ? p.paper : p.ink,
-        border: `1.5px solid ${p.ink}`,
-        boxShadow: active ? `2px 2px 0 ${p.marigold}` : "none",
+        background: active ? TOKENS.ink : "transparent",
+        color: active ? TOKENS.paper : TOKENS.ink,
+        border: `1px solid ${active ? TOKENS.ink : TOKENS.line}`,
+        borderRadius: RADII.pill,
         cursor: "pointer",
       }}
     >
@@ -64,36 +61,53 @@ function Chip({
 }
 
 function Group({
-  p,
   eyebrow,
   hint,
   color,
   children,
 }: {
-  p: Palette;
   eyebrow: string;
   hint?: string;
   color: string;
   children: React.ReactNode;
 }) {
   return (
-    <PaperCard p={p} color={color} hardShadow style={{ marginBottom: 12 }}>
-      <Eyebrow p={p} en={eyebrow} color={color} />
+    <div
+      style={{
+        background: TOKENS.card,
+        border: `1px solid ${TOKENS.lineSoft}`,
+        borderRadius: RADII.card,
+        boxShadow: SHADOWS.card,
+        padding: "20px 22px",
+        marginBottom: 12,
+      }}
+    >
+      <div
+        style={{
+          fontFamily: PAPER_FONTS_V2.mono,
+          fontSize: 10.5,
+          color,
+          letterSpacing: ".1em",
+          textTransform: "uppercase",
+        }}
+      >
+        {eyebrow}
+      </div>
       {hint && (
         <p
           style={{
             margin: "6px 0 12px",
-            fontFamily: PAPER_FONTS.serif,
+            fontFamily: PAPER_FONTS_V2.serif,
             fontStyle: "italic",
             fontSize: 13.5,
-            color: p.inkSoft,
+            color: TOKENS.inkSoft,
           }}
         >
           {hint}
         </p>
       )}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: hint ? 0 : 12 }}>{children}</div>
-    </PaperCard>
+    </div>
   );
 }
 
@@ -106,7 +120,6 @@ const DEFAULTS: PreferencesDTO = {
 };
 
 export default function JobsPreferencesPage() {
-  const { p } = usePaperTheme();
   const isMobile = useIsMobile();
   const router = useRouter();
 
@@ -166,36 +179,80 @@ export default function JobsPreferencesPage() {
   return (
     <div
       className="scroll"
-      style={{ flex: 1, overflow: "auto", padding: isMobile ? "24px 16px 64px" : "48px 56px 80px" }}
+      style={{ flex: 1, overflow: "auto", padding: isMobile ? "24px 16px 64px" : "48px 56px 80px", background: TOKENS.paper }}
     >
-      <PageHead
-        p={p}
-        eyebrow="Jobs · preferences"
-        title="What should we"
-        italic="scan for?"
-        sub="Pick the sectors you care about — they decide which companies we watch. The filters below narrow what reaches your feed. Changes apply to your next refresh."
-        right={
-          <InkButton p={p} kind="outline" size="sm" onClick={() => router.push("/app/jobs")}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 24,
+          flexWrap: "wrap",
+          marginBottom: 24,
+        }}
+      >
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div
+            style={{
+              fontFamily: PAPER_FONTS_V2.mono,
+              fontSize: 10.5,
+              color: TOKENS.muted,
+              letterSpacing: ".1em",
+              textTransform: "uppercase",
+              marginBottom: 8,
+            }}
+          >
+            Jobs · preferences
+          </div>
+          <h1
+            style={{
+              margin: 0,
+              fontFamily: PAPER_FONTS_V2.serif,
+              fontWeight: 400,
+              fontSize: "clamp(40px, 4.8vw, 64px)",
+              lineHeight: 0.95,
+              letterSpacing: "-.02em",
+              color: TOKENS.ink,
+              textWrap: "balance",
+            }}
+          >
+            What should we <span style={{ fontStyle: "italic", color: TOKENS.red }}>scan for?</span>
+          </h1>
+          <p
+            style={{
+              margin: "14px 0 0",
+              fontFamily: PAPER_FONTS_V2.serif,
+              fontStyle: "italic",
+              fontSize: 18,
+              lineHeight: 1.45,
+              color: TOKENS.inkSoft,
+              maxWidth: 720,
+            }}
+          >
+            Pick the sectors you care about — they decide which companies we watch. The filters below narrow what reaches your feed. Changes apply to your next refresh.
+          </p>
+        </div>
+        <div style={{ flexShrink: 0 }}>
+          <InkButton2 kind="outline" size="sm" onClick={() => router.push("/app/jobs")}>
             ← Back to feed
-          </InkButton>
-        }
-      />
+          </InkButton2>
+        </div>
+      </div>
 
       {!prefs ? (
-        <p style={{ fontFamily: PAPER_FONTS.mono, fontSize: 13, color: p.inkMute }}>Loading…</p>
+        <p style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 13, color: TOKENS.muted }}>Loading…</p>
       ) : (
         <>
-          <Group p={p} eyebrow="Interests" color={p.stamp} hint="Sectors you want to hear about. We grow the company list to match.">
+          <Group eyebrow="Interests" color={TOKENS.red} hint="Sectors you want to hear about. We grow the company list to match.">
             {SECTORS.map((s) => (
-              <Chip key={s.id} p={p} label={s.label} active={prefs.interests.includes(s.id)} onClick={() => toggle("interests", s.id)} />
+              <Chip key={s.id} label={s.label} active={prefs.interests.includes(s.id)} onClick={() => toggle("interests", s.id)} />
             ))}
           </Group>
 
-          <Group p={p} eyebrow="Posted within" color={p.marigold}>
+          <Group eyebrow="Posted within" color={TOKENS.gold}>
             {POSTED_OPTIONS.map((o) => (
               <Chip
                 key={o.id}
-                p={p}
                 label={o.label}
                 active={prefs.posted_within === o.id}
                 onClick={() => {
@@ -206,26 +263,25 @@ export default function JobsPreferencesPage() {
             ))}
           </Group>
 
-          <Group p={p} eyebrow="Company size" color={p.leaf} hint="Leave empty for any size.">
+          <Group eyebrow="Company size" color={TOKENS.green} hint="Leave empty for any size.">
             {SIZE_OPTIONS.map((o) => (
-              <Chip key={o.id} p={p} label={o.label} active={prefs.company_sizes.includes(o.id as PreferencesDTO["company_sizes"][number])} onClick={() => toggle("company_sizes", o.id)} />
+              <Chip key={o.id} label={o.label} active={prefs.company_sizes.includes(o.id as PreferencesDTO["company_sizes"][number])} onClick={() => toggle("company_sizes", o.id)} />
             ))}
           </Group>
 
-          <Group p={p} eyebrow="Location" color={p.tea} hint="Pick cities, Remote, or Anywhere. Leave empty for any.">
+          <Group eyebrow="Location" color={TOKENS.muted2} hint="Pick cities, Remote, or Anywhere. Leave empty for any.">
             {LOCATION_OPTIONS.map((o) => (
-              <Chip key={o.id} p={p} label={o.label} active={prefs.locations.includes(o.id)} onClick={() => toggle("locations", o.id)} />
+              <Chip key={o.id} label={o.label} active={prefs.locations.includes(o.id)} onClick={() => toggle("locations", o.id)} />
             ))}
           </Group>
 
-          <Group p={p} eyebrow="Visa sponsorship" color={p.stamp} hint="A soft signal — we badge likely sponsors but never hide jobs we're unsure about.">
+          <Group eyebrow="Visa sponsorship" color={TOKENS.red} hint="A soft signal — we badge likely sponsors but never hide jobs we're unsure about.">
             {[
               { v: true, label: "I need sponsorship" },
               { v: false, label: "Not needed" },
             ].map((o) => (
               <Chip
                 key={o.label}
-                p={p}
                 label={o.label}
                 active={prefs.visa_required === o.v}
                 onClick={() => {
@@ -237,36 +293,56 @@ export default function JobsPreferencesPage() {
           </Group>
 
           {pins.length > 0 && (
-            <PaperCard p={p} style={{ marginBottom: 12 }}>
-              <Eyebrow p={p} en="Pinned companies (from your profile)" color={p.inkMute} />
+            <div
+              style={{
+                background: TOKENS.card,
+                border: `1px solid ${TOKENS.lineSoft}`,
+                borderRadius: RADII.card,
+                boxShadow: SHADOWS.card,
+                padding: "20px 22px",
+                marginBottom: 12,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: PAPER_FONTS_V2.mono,
+                  fontSize: 10.5,
+                  color: TOKENS.muted,
+                  letterSpacing: ".1em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Pinned companies (from your profile)
+              </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
                 {pins.map((c) => (
                   <span
                     key={c}
                     style={{
-                      fontFamily: PAPER_FONTS.mono,
+                      fontFamily: PAPER_FONTS_V2.mono,
                       fontSize: 11,
-                      color: p.inkSoft,
-                      border: `1px solid ${p.ink}24`,
-                      padding: "4px 10px",
+                      color: TOKENS.inkSoft,
+                      border: `1px solid ${TOKENS.line}`,
+                      borderRadius: RADII.pill,
+                      padding: "4px 12px",
                     }}
                   >
                     {c}
                   </span>
                 ))}
               </div>
-              <p style={{ margin: "10px 0 0", fontFamily: PAPER_FONTS.serif, fontStyle: "italic", fontSize: 13, color: p.inkMute }}>
+              <p style={{ margin: "10px 0 0", fontFamily: PAPER_FONTS_V2.serif, fontStyle: "italic", fontSize: 13, color: TOKENS.muted }}>
                 We always watch these too. Edit them in Settings → Goals.
               </p>
-            </PaperCard>
+            </div>
           )}
 
           <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 18 }}>
-            <InkButton p={p} size="lg" color={p.stamp} disabled={saving} onClick={save}>
+            <InkButton2 kind="solid" disabled={saving} onClick={save} style={{ padding: "12px 20px", fontSize: 15 }}>
               {saving ? "Saving…" : "Save preferences"}
-            </InkButton>
+            </InkButton2>
             {saved && (
-              <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 12, color: p.leaf }}>
+              <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 12, color: TOKENS.green }}>
                 ✓ Saved · applies to your next refresh
               </span>
             )}

@@ -3,18 +3,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PAPER_FONTS } from "@/components/paper/fonts";
-import { usePaperTheme } from "@/components/paper/use-paper-theme";
-import {
-  Eyebrow,
-  InkButton,
-  PageHead,
-  PaperEmpty,
-} from "@/components/paper/primitives";
+import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
+import { TOKENS, RADII, SHADOWS } from "@/components/paper/tokens";
+import { InkButton2 } from "@/components/paper/primitives2";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { hydrateRun } from "@/lib/runs-store";
 
-function PeopleV3({ p, go, PEOPLE_V3 = [], onDeleted }) {
+function PeopleV3({ go, PEOPLE_V3 = [], onDeleted }) {
   const isMobile = useIsMobile();
   const [q, setQ] = useState('');
   const [selectedId, setSelected] = useState(null);
@@ -37,9 +32,21 @@ function PeopleV3({ p, go, PEOPLE_V3 = [], onDeleted }) {
 
   if (!person) {
     return (
-      <div style={{ flex: 1, padding: 48, background: p.paper, color: p.ink }}>
-        <PaperEmpty p={p} hindi="लोग" title="No people yet."
-          sub="Reach out to someone via Compose and they'll show up here with a full timeline of every Jugaadu interaction." />
+      <div style={{ flex: 1, padding: 48, background: TOKENS.paper, color: TOKENS.ink }}>
+        <div style={{
+          padding: '48px 32px', textAlign: 'center',
+          border: `1px dashed ${TOKENS.dashed}`, borderRadius: RADII.card, background: TOKENS.card,
+        }}>
+          <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 26, color: TOKENS.ink, lineHeight: 1.1 }}>
+            No people yet.
+          </div>
+          <p style={{
+            margin: '8px auto 0', maxWidth: 480, fontFamily: PAPER_FONTS_V2.serif,
+            fontStyle: 'italic', fontSize: 16, color: TOKENS.inkSoft, lineHeight: 1.4,
+          }}>
+            Reach out to someone via Compose and they'll show up here with a full timeline of every Jugaadu interaction.
+          </p>
+        </div>
       </div>
     );
   }
@@ -47,15 +54,18 @@ function PeopleV3({ p, go, PEOPLE_V3 = [], onDeleted }) {
   return (
     <div style={{
       flex: 1, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '380px 1fr', overflow: 'hidden',
-      background: p.paper, color: p.ink,
+      background: TOKENS.paper, color: TOKENS.ink,
     }}>
       {/* List */}
       {(!isMobile || mobileView === 'list') && (
-      <div className="scroll" style={{ overflow: 'auto', borderRight: isMobile ? 'none' : `1.5px solid ${p.ink}`, padding: isMobile ? '24px 16px 40px' : '32px 22px 40px' }}>
-        <Eyebrow p={p} en={`People · ${PEOPLE_V3.length} contacts`}/>
+      <div className="scroll" style={{ overflow: 'auto', borderRight: isMobile ? 'none' : `1px solid ${TOKENS.line}`, padding: isMobile ? '24px 16px 40px' : '32px 22px 40px' }}>
+        <div style={{
+          fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, fontWeight: 500, color: TOKENS.muted,
+          letterSpacing: '.1em', textTransform: 'uppercase',
+        }}>{`People · ${PEOPLE_V3.length} contacts`}</div>
         <h1 style={{
-          margin: '4px 0 18px', fontFamily: PAPER_FONTS.display, fontSize: 36,
-          fontWeight: 400, lineHeight: 1, color: p.ink, letterSpacing: '-.02em',
+          margin: '4px 0 18px', fontFamily: PAPER_FONTS_V2.serif, fontSize: 36,
+          fontWeight: 400, lineHeight: 1, color: TOKENS.ink, letterSpacing: '-.02em',
         }}>The crew you've built.</h1>
 
         <input
@@ -63,9 +73,9 @@ function PeopleV3({ p, go, PEOPLE_V3 = [], onDeleted }) {
           onChange={(e) => setQ(e.target.value)}
           placeholder="search by name, company, role, notes…"
           style={{
-            width: '100%', padding: '11px 14px', background: p.card,
-            border: `1.5px solid ${p.ink}30`, fontFamily: PAPER_FONTS.sans,
-            fontSize: 14, color: p.ink, outline: 'none',
+            width: '100%', padding: '11px 14px', background: TOKENS.card,
+            border: `1px solid ${TOKENS.line}`, borderRadius: RADII.panelTight, fontFamily: PAPER_FONTS_V2.sans,
+            fontSize: 14, color: TOKENS.ink, outline: 'none',
           }}
         />
 
@@ -74,17 +84,17 @@ function PeopleV3({ p, go, PEOPLE_V3 = [], onDeleted }) {
         }}>
           {[
             ['all', PEOPLE_V3.length],
-            ['warm', PEOPLE_V3.filter(p => p.warmth === 'warm').length],
-            ['awaiting', PEOPLE_V3.filter(p => p.status === 'awaiting').length],
-            ['queued', PEOPLE_V3.filter(p => p.status === 'queued').length],
+            ['warm', PEOPLE_V3.filter(per => per.warmth === 'warm').length],
+            ['awaiting', PEOPLE_V3.filter(per => per.status === 'awaiting').length],
+            ['queued', PEOPLE_V3.filter(per => per.status === 'queued').length],
           ].map(([l, n]) => {
             const active = filter === l;
             return (
               <button key={l} onClick={() => setFilter(l)} style={{
-                padding: '4px 10px', fontFamily: PAPER_FONTS.mono, fontSize: 11,
-                letterSpacing: '.04em',
-                background: active ? p.ink : 'transparent', color: active ? p.paper : p.ink,
-                border: `1px solid ${p.ink}`, cursor: 'pointer',
+                padding: '4px 12px', fontFamily: PAPER_FONTS_V2.mono, fontSize: 11,
+                letterSpacing: '.04em', borderRadius: RADII.pill,
+                background: active ? TOKENS.ink : 'transparent', color: active ? TOKENS.paper : TOKENS.muted2,
+                border: `1px solid ${active ? TOKENS.ink : TOKENS.line}`, cursor: 'pointer',
               }}>{l} <span style={{ opacity: .6, marginLeft: 4 }}>{n}</span></button>
             );
           })}
@@ -97,27 +107,28 @@ function PeopleV3({ p, go, PEOPLE_V3 = [], onDeleted }) {
               <button key={per.id} onClick={() => { setSelected(per.id); setMobileView('detail'); }} style={{
                 display: 'grid', gridTemplateColumns: '40px 1fr auto', alignItems: 'center', gap: 12,
                 padding: '10px 12px',
-                background: active ? p.card : 'transparent',
-                border: active ? `1.5px solid ${p.ink}` : '1.5px solid transparent',
-                boxShadow: active ? `3px 3px 0 ${warmthColor(p, per.warmth)}` : 'none',
-                textAlign: 'left', cursor: 'pointer', color: p.ink,
+                background: active ? TOKENS.card : 'transparent',
+                border: `1px solid ${active ? TOKENS.line : 'transparent'}`,
+                borderRadius: RADII.panelTight,
+                boxShadow: active ? SHADOWS.card : 'none',
+                textAlign: 'left', cursor: 'pointer', color: TOKENS.ink,
                 transition: 'background .15s',
               }}>
                 <div style={{
-                  width: 40, height: 40, background: p.marigold, color: p.paper,
-                  display: 'grid', placeItems: 'center', border: `1.5px solid ${p.ink}`,
-                  fontFamily: PAPER_FONTS.display, fontSize: 14,
+                  width: 40, height: 40, background: TOKENS.gold, color: TOKENS.paper,
+                  display: 'grid', placeItems: 'center', borderRadius: RADII.pill,
+                  fontFamily: PAPER_FONTS_V2.serif, fontSize: 14,
                 }}>{per.initials}</div>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 16, color: p.ink, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 16, color: TOKENS.ink, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {per.name}
                   </div>
-                  <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, marginTop: 2, letterSpacing: '.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted, marginTop: 2, letterSpacing: '.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {per.role} · {per.co}
                   </div>
                 </div>
                 <span style={{
-                  fontFamily: PAPER_FONTS.mono, fontSize: 10, color: warmthColor(p, per.warmth),
+                  fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, color: warmthColor(per.warmth),
                   letterSpacing: '.04em', whiteSpace: 'nowrap',
                 }}>{per.last}</span>
               </button>
@@ -133,12 +144,12 @@ function PeopleV3({ p, go, PEOPLE_V3 = [], onDeleted }) {
         {isMobile && (
           <button onClick={() => setMobileView('list')} style={{
             display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 16,
-            background: 'transparent', border: `1.5px solid ${p.ink}`, color: p.ink,
-            padding: '8px 14px', fontFamily: PAPER_FONTS.mono, fontSize: 12,
+            background: 'transparent', border: `1px solid ${TOKENS.line}`, color: TOKENS.ink,
+            padding: '8px 14px', borderRadius: RADII.buttonTight, fontFamily: PAPER_FONTS_V2.mono, fontSize: 12,
             letterSpacing: '.04em', cursor: 'pointer',
           }}>← All people</button>
         )}
-        <PersonDetailV3 key={person.id} p={p} person={person} go={go} onDeleted={(id) => {
+        <PersonDetailV3 key={person.id} person={person} go={go} onDeleted={(id) => {
           // Return to the list; the parent drops the row and the desktop
           // fallback (person = filtered[0]) selects the next contact.
           setSelected(null);
@@ -151,11 +162,11 @@ function PeopleV3({ p, go, PEOPLE_V3 = [], onDeleted }) {
   );
 }
 
-function warmthColor(p, w) {
-  return ({ warm: p.leaf, cool: p.tea, cold: p.inkMute, new: p.stamp }[w]) || p.inkMute;
+function warmthColor(w) {
+  return ({ warm: TOKENS.green, cool: TOKENS.muted2, cold: TOKENS.muted, new: TOKENS.red }[w]) || TOKENS.muted;
 }
 
-function PersonDetailV3({ p, person, go, onDeleted }) {
+function PersonDetailV3({ person, go, onDeleted }) {
   const router = useRouter();
   const [detail, setDetail] = useState(null);
   const [opening, setOpening] = useState(null);
@@ -224,38 +235,41 @@ function PersonDetailV3({ p, person, go, onDeleted }) {
         display: 'flex', alignItems: 'flex-start', gap: 22, marginBottom: 24, flexWrap: 'wrap',
       }}>
         <div style={{
-          width: 90, height: 90, background: p.marigold, color: p.paper,
-          display: 'grid', placeItems: 'center', border: `1.5px solid ${p.ink}`,
-          boxShadow: `4px 4px 0 ${p.ink}`,
-          fontFamily: PAPER_FONTS.display, fontSize: 30, flexShrink: 0,
+          width: 90, height: 90, background: TOKENS.gold, color: TOKENS.paper,
+          display: 'grid', placeItems: 'center', borderRadius: RADII.pill,
+          boxShadow: SHADOWS.card,
+          fontFamily: PAPER_FONTS_V2.serif, fontSize: 30, flexShrink: 0,
         }}>{person.initials}</div>
         <div style={{ flex: 1, minWidth: 240 }}>
-          <Eyebrow p={p} en={`Last touch · ${person.last}`} color={warmthColor(p, person.warmth)}/>
+          <div style={{
+            fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, fontWeight: 500, color: warmthColor(person.warmth),
+            letterSpacing: '.1em', textTransform: 'uppercase',
+          }}>{`Last touch · ${person.last}`}</div>
           <h1 style={{
-            margin: '4px 0 6px', fontFamily: PAPER_FONTS.display,
-            fontSize: 42, lineHeight: 1, color: p.ink, fontWeight: 400, letterSpacing: '-.02em',
+            margin: '4px 0 6px', fontFamily: PAPER_FONTS_V2.serif,
+            fontSize: 42, lineHeight: 1, color: TOKENS.ink, fontWeight: 400, letterSpacing: '-.02em',
           }}>{person.name}</h1>
-          <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 17, color: p.inkSoft }}>
+          <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontStyle: 'italic', fontSize: 17, color: TOKENS.inkSoft }}>
             {person.role} at {person.co}
           </div>
           <div style={{
             display: 'flex', gap: 18, marginTop: 12, flexWrap: 'wrap',
-            fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.04em',
+            fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted, letterSpacing: '.04em',
           }}>
             <span>✉ {person.email}</span>
-            <span>● warmth: <span style={{ color: warmthColor(p, person.warmth) }}>{person.warmth}</span></span>
+            <span>● warmth: <span style={{ color: warmthColor(person.warmth) }}>{person.warmth}</span></span>
             <span>status: {person.status}</span>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
-          <InkButton p={p} color={p.stamp} onClick={() => go('compose', {
+          <InkButton2 onClick={() => go('compose', {
             // Seed with the email when we have one (compose flips its
             // "I already have their email" shortcut); otherwise a name+company
             // query so the button still works for email-less contacts.
             input: person.email || [person.name, person.co].filter(Boolean).join(' at '),
-          })}>Reach out again →</InkButton>
+          })}>Reach out again →</InkButton2>
           {!confirmDelete && (
-            <InkButton p={p} kind="outline" onClick={() => setConfirmDelete(true)}>Delete</InkButton>
+            <InkButton2 kind="outline" onClick={() => setConfirmDelete(true)}>Delete</InkButton2>
           )}
         </div>
       </div>
@@ -264,25 +278,25 @@ function PersonDetailV3({ p, person, go, onDeleted }) {
       {confirmDelete && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24,
-          padding: '12px 16px', background: p.card,
-          border: `1.5px solid ${p.stamp}`, boxShadow: `3px 3px 0 ${p.stamp}`,
+          padding: '12px 16px', background: TOKENS.card,
+          border: `1px solid ${TOKENS.red}`, borderRadius: RADII.panel, boxShadow: SHADOWS.card,
           flexWrap: 'wrap',
         }}>
           <span style={{
-            fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 15, color: p.ink,
+            fontFamily: PAPER_FONTS_V2.serif, fontStyle: 'italic', fontSize: 15, color: TOKENS.ink,
           }}>
             Really delete {person.name}? This removes their drafts, timeline, and follow-ups. Past compose runs stay in History.
           </span>
           <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
-            <InkButton p={p} color={p.stamp} size="sm" onClick={doDelete} disabled={deleting}>
+            <InkButton2 size="sm" onClick={doDelete} disabled={deleting} style={{ background: TOKENS.red, color: TOKENS.paper }}>
               {deleting ? 'deleting…' : 'Yes, delete'}
-            </InkButton>
-            <InkButton p={p} kind="outline" size="sm" onClick={() => { setConfirmDelete(false); setDeleteError(null); }} disabled={deleting}>
+            </InkButton2>
+            <InkButton2 kind="outline" size="sm" onClick={() => { setConfirmDelete(false); setDeleteError(null); }} disabled={deleting}>
               Keep
-            </InkButton>
+            </InkButton2>
           </div>
           {deleteError && (
-            <span style={{ flexBasis: '100%', fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.stamp }}>
+            <span style={{ flexBasis: '100%', fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.red }}>
               {deleteError}
             </span>
           )}
@@ -293,9 +307,9 @@ function PersonDetailV3({ p, person, go, onDeleted }) {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 28 }}>
         {(extractFacts(detail) || []).map(f => (
           <span key={f} style={{
-            padding: '4px 12px', background: p.card,
-            border: `1px solid ${p.ink}30`, color: p.ink,
-            fontFamily: PAPER_FONTS.sans, fontSize: 12,
+            padding: '4px 12px', background: TOKENS.card,
+            border: `1px solid ${TOKENS.line}`, color: TOKENS.ink, borderRadius: RADII.pill,
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 12,
           }}>{f}</span>
         ))}
       </div>
@@ -309,68 +323,73 @@ function PersonDetailV3({ p, person, go, onDeleted }) {
         const when = overdue
           ? `overdue · ${Math.abs(days)}d`
           : days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`;
-        const color = overdue ? p.stamp : days <= 2 ? p.marigoldDeep : p.leaf;
+        const color = overdue ? TOKENS.red : days <= 2 ? TOKENS.amber : TOKENS.green;
         const dateLabel = due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         return (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28,
-            padding: '12px 16px', background: p.card,
-            border: `1.5px solid ${color}`, boxShadow: `3px 3px 0 ${color}`,
+            padding: '12px 16px', background: TOKENS.card,
+            border: `1px solid ${color}`, borderRadius: RADII.panel, boxShadow: SHADOWS.card,
           }}>
             <span style={{
-              fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.14em',
+              fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, fontWeight: 500, letterSpacing: '.14em',
               textTransform: 'uppercase', color,
             }}>● Next followup</span>
             <span style={{
-              fontFamily: PAPER_FONTS.display, fontSize: 18, color: p.ink, lineHeight: 1,
+              fontFamily: PAPER_FONTS_V2.serif, fontSize: 18, color: TOKENS.ink, lineHeight: 1,
             }}>{when}</span>
             <span style={{
-              fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.04em',
+              fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted, letterSpacing: '.04em',
             }}>{dateLabel}{nextFollowup.draft?.subject ? ` · ${nextFollowup.draft.subject}` : ''}</span>
           </div>
         );
       })()}
 
       {/* workflows */}
-      <Eyebrow p={p} en={`Workflows · ${workflows.length}`} color={p.stamp}/>
+      <div style={{
+        fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, fontWeight: 500, color: TOKENS.muted,
+        letterSpacing: '.1em', textTransform: 'uppercase',
+      }}>{`Workflows · ${workflows.length}`}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
         {workflows.length === 0 && (
           <div style={{
-            padding: '14px 18px', background: p.card, border: `1.5px dashed ${p.ink}30`,
-            fontFamily: PAPER_FONTS.mono, fontSize: 12, color: p.inkMute, letterSpacing: '.04em',
+            padding: '14px 18px', background: TOKENS.card, border: `1px dashed ${TOKENS.dashed}`,
+            borderRadius: RADII.panel,
+            fontFamily: PAPER_FONTS_V2.mono, fontSize: 12, color: TOKENS.muted, letterSpacing: '.04em',
           }}>No workflows yet for this person.</div>
         )}
         {workflows.map((w) => {
-          const chip = workflowOutcome(p, w.outcome);
+          const chip = workflowOutcome(w.outcome);
           const title = workflowTitle(w);
           return (
             <div key={w.id} style={{
-              background: p.card, border: `1.5px solid ${p.ink}30`,
+              background: TOKENS.card, border: `1px solid ${TOKENS.lineSoft}`,
+              borderRadius: RADII.panel, boxShadow: SHADOWS.card,
               padding: '14px 18px', display: 'grid',
               gridTemplateColumns: '1fr auto auto auto', alignItems: 'center', gap: 14,
             }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{
-                  fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.14em',
-                  textTransform: 'uppercase', color: p.inkMute,
+                  fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, fontWeight: 500, letterSpacing: '.14em',
+                  textTransform: 'uppercase', color: TOKENS.muted,
                 }}>compose · {w.kind}</div>
                 <div style={{
-                  fontFamily: PAPER_FONTS.display, fontSize: 17, color: p.ink, lineHeight: 1.15,
+                  fontFamily: PAPER_FONTS_V2.serif, fontSize: 17, color: TOKENS.ink, lineHeight: 1.15,
                   marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>{title}</div>
               </div>
               <span style={{
-                padding: '3px 10px', background: chip.color + '14', color: chip.color,
-                fontFamily: PAPER_FONTS.mono, fontSize: 11, letterSpacing: '.04em', whiteSpace: 'nowrap',
+                padding: '3px 10px', background: chip.bg, color: chip.color, borderRadius: RADII.pill,
+                fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, letterSpacing: '.04em', whiteSpace: 'nowrap',
               }}>{chip.label}</span>
               <span style={{
-                fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute,
+                fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted,
                 letterSpacing: '.04em', whiteSpace: 'nowrap',
               }}>{relTime(new Date(w.created_at))}</span>
-              <InkButton p={p} kind="outline" size="sm"
+              <InkButton2 kind="outline" size="sm"
                 onClick={() => openWorkflow(w.id)} disabled={opening === w.id}>
                 {opening === w.id ? 'opening…' : 'Open →'}
-              </InkButton>
+              </InkButton2>
             </div>
           );
         })}
@@ -379,11 +398,11 @@ function PersonDetailV3({ p, person, go, onDeleted }) {
   );
 }
 
-function workflowOutcome(p, outcome) {
-  if (outcome === 'complete') return { label: 'ready', color: p.leaf };
-  if (outcome === 'in_flight') return { label: 'in progress…', color: p.stamp };
-  if (outcome === 'needs_disambiguation') return { label: 'needs pick', color: p.marigoldDeep };
-  return { label: 'error', color: p.stamp };
+function workflowOutcome(outcome) {
+  if (outcome === 'complete') return { label: 'ready', color: TOKENS.green, bg: TOKENS.greenBg };
+  if (outcome === 'in_flight') return { label: 'in progress…', color: TOKENS.red, bg: TOKENS.chip };
+  if (outcome === 'needs_disambiguation') return { label: 'needs pick', color: TOKENS.amber, bg: TOKENS.amberBg };
+  return { label: 'error', color: TOKENS.red, bg: TOKENS.chip };
 }
 
 function workflowTitle(w) {
@@ -424,7 +443,6 @@ function extractFacts(detail) {
 
 export default function PeoplePage() {
   const router = useRouter();
-  const { p } = usePaperTheme();
   const [people, setPeople] = useState([]);
   useEffect(() => {
     fetch('/api/people').then((r) => r.json()).then((j) => {
@@ -433,7 +451,6 @@ export default function PeoplePage() {
   }, []);
   return (
     <PeopleV3
-      p={p}
       PEOPLE_V3={people}
       onDeleted={(id) => setPeople((prev) => prev.filter((x) => x.id !== id))}
       go={(r, seed) => {
