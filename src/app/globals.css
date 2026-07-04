@@ -59,11 +59,14 @@
   box-shadow: inset 3px 0 0 var(--color-clay);
 }
 
+/* Prototype ground: warm paper + ink (prototype line 23). The (legacy) layout
+   doesn't paint its own bg, so legacy internal pages warm slightly with this —
+   acceptable, they're slated for deletion. */
 html,
 body {
   height: 100%;
-  background: #f1e7d2;
-  color: #13110c;
+  background: #faf8f3;
+  color: #211e19;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
@@ -72,6 +75,12 @@ textarea,
 input,
 button {
   font-family: inherit;
+}
+
+/* Prototype line 19 — every placeholder app-wide is faint + italic. */
+::placeholder {
+  color: #bdb4a3;
+  font-style: italic;
 }
 
 /* Shared animations referenced inline across compose / resume / onboarding /

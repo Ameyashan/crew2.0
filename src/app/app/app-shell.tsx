@@ -1,6 +1,7 @@
 "use client";
 
 import { TopBar } from "@/components/paper/top-bar";
+import { AuthLoadingOverlay } from "@/components/paper/auth-loading";
 import { TOKENS } from "@/components/paper/tokens";
 import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
 
@@ -22,6 +23,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         fontFamily: PAPER_FONTS_V2.sans,
       }}
     >
+      {/* Post-OAuth "Setting up your Desk…" moment — covers the shell briefly
+          when the auth callback's landing cookie is present, then removes itself. */}
+      <AuthLoadingOverlay />
       <TopBar />
       <div
         style={{

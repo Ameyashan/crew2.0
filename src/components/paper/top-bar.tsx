@@ -110,7 +110,7 @@ export function TopBar() {
         gap: 12,
         flexWrap: "wrap",
         rowGap: 10,
-        padding: "16px clamp(16px, 4vw, 44px)",
+        padding: "20px clamp(16px, 4vw, 44px) 0",
         flexShrink: 0,
         background: TOKENS.paper,
         color: TOKENS.ink,
@@ -167,9 +167,11 @@ export function TopBar() {
                   borderRadius: RADII.pill,
                   textDecoration: "none",
                   fontSize: 13,
-                  fontWeight: active ? 500 : 400,
-                  color: active ? TOKENS.paper : TOKENS.muted,
-                  background: active ? TOKENS.ink : "transparent",
+                  // Prototype navOn: ink text on the chip wash, weight 400 both
+                  // states — NOT inverted ink-bg/paper-text.
+                  fontWeight: 400,
+                  color: active ? TOKENS.ink : TOKENS.muted2,
+                  background: active ? TOKENS.chip : "transparent",
                   lineHeight: 1,
                   whiteSpace: "nowrap",
                   transition: "color .15s, background .15s",
@@ -185,7 +187,7 @@ export function TopBar() {
           <button
             onClick={() => router.push(chip.target)}
             style={{
-              marginLeft: 2,
+              marginLeft: 10,
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
@@ -195,7 +197,6 @@ export function TopBar() {
               fontWeight: 500,
               fontSize: 10.5,
               lineHeight: 1,
-              letterSpacing: ".02em",
               borderRadius: RADII.pill,
               padding: "7px 11px",
               color: chip.tone === "active" ? TOKENS.green : TOKENS.amber,
@@ -213,7 +214,7 @@ export function TopBar() {
               signInWithGoogle("/app/compose").catch((e) => console.error("Sign-in failed", e));
             }}
             style={{
-              marginLeft: 2,
+              marginLeft: 10,
               cursor: "pointer",
               border: "none",
               fontFamily: PAPER_FONTS_V2.sans,
@@ -232,7 +233,7 @@ export function TopBar() {
 
         {/* Account avatar + popover */}
         {!isSignedOut && (
-          <div ref={acctRef} style={{ position: "relative", marginLeft: 2, display: "flex" }}>
+          <div ref={acctRef} style={{ position: "relative", marginLeft: 10, display: "flex" }}>
             <button
               onClick={() => setAcctOpen((o) => !o)}
               title={email ?? undefined}
