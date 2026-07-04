@@ -6,7 +6,12 @@
   --font-sans: var(--font-space-grotesk), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), var(--font-geist-mono), ui-monospace, monospace;
 
-  /* Legacy tokens — kept so the (legacy) routes still render until each is replaced. */
+  /* ── LEGACY tokens ─────────────────────────────────────────────────────────
+     Warm paper-craft/stamp palette. Kept UNTOUCHED so the (legacy) routes and
+     `.row-active` still render until each consumer is migrated. Do not repoint
+     these values — the new reskin lives in the `--color-jg-*` block below under
+     a distinct prefix precisely so the bare names here (e.g. `--color-ink`) keep
+     their old meaning. */
   --color-cream: #f1ead8;
   --color-cream-50: #faf6e8;
   --color-cream-100: #f1ead8;
@@ -16,6 +21,38 @@
   --color-clay: #bd5d3c;
   --color-clay-dark: #9a4830;
   --color-line: #d9d1bb;
+
+  /* ── NEW "jugaadu" reskin tokens ───────────────────────────────────────────
+     Warm, minimal paper aesthetic (see design_handoff_jugaadu_reskin). Prefixed
+     `jg-` so they never collide with the legacy block above. Nothing consumes
+     these yet (Phase 1 is foundation only); primitives2.tsx reads the mirrored
+     hex constants from src/components/paper/tokens.ts. */
+  --color-jg-paper: #faf8f3;
+  --color-jg-card: #ffffff;
+  --color-jg-card-warm: #fdfcf8;
+  --color-jg-ink: #211e19;
+  --color-jg-ink-soft: #3a352c;
+  --color-jg-muted: #8b8171;
+  --color-jg-muted-2: #6f6656;
+  --color-jg-faint: #b0a692;
+  --color-jg-faint-2: #a89e8c;
+  --color-jg-faint-2-alt: #a49a88;
+  --color-jg-line: #e3ddd0;
+  --color-jg-line-soft: #e8e2d5;
+  --color-jg-line-row: #eae4d7;
+  --color-jg-line-inset: #eee7d6;
+  --color-jg-chip: #f2eee4;
+  --color-jg-hover-wash: #f7f4ec;
+  --color-jg-green: #3d7a4f;
+  --color-jg-green-bg: #e9f1e9;
+  --color-jg-amber: #8a6d2f;
+  --color-jg-amber-bg: #f4ecda;
+  --color-jg-amber-wash: #fdf6e8;
+  --color-jg-amber-line: #ecdfc0;
+  --color-jg-gold: #d9a13c;
+  --color-jg-red: #a03d2e;
+  --color-jg-dashed: #ddd5c4;
+  --color-jg-dashed-2: #cfc6b2;
 }
 
 .row-active {
@@ -50,6 +87,13 @@ button {
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
+}
+/* Opacity-only pulse for the reskin's live indicators (e.g. "● crew running").
+   Distinct from `pulseDot` above, which also scales — kept separate so the
+   not-yet-migrated files still depending on `pulseDot`/`shimmer` are unaffected. */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 
 .scroll {
