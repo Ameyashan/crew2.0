@@ -120,6 +120,24 @@ export function storyNudgeKey(userKey?: string | null): string {
   return k ? `${STORY_NUDGE_PREFIX}:${k}` : STORY_NUDGE_PREFIX;
 }
 
+// ── Desk headline ────────────────────────────────────────────────────────────
+// Prototype `deskHeadline` (line 1302): signed-out pitch → first-time welcome →
+// returning prompt. `signedIn` is the tri-state the session probe returns; while
+// it's still resolving (null) we show the returning prompt rather than flashing
+// the wrong variant.
+export function deskHeadline(
+  signedIn: boolean | null,
+  firstTime: boolean,
+  name?: string | null,
+): string {
+  if (signedIn === false) return "A crew of agents for your job hunt.";
+  if (signedIn === true && firstTime) {
+    const first = (name || "").trim().split(/\s+/)[0] || "";
+    return first ? `Welcome, ${first}.` : "Welcome.";
+  }
+  return "What should the crew get done?";
+}
+
 // ── First-time gate ──────────────────────────────────────────────────────────
 // The 3-card grid + first-time headline show only when the account has produced
 // nothing yet (no compose runs, no resume generations).

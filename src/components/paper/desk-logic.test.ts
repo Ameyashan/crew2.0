@@ -10,6 +10,7 @@ import {
   storyNudgeKey,
   STORY_NUDGE_PREFIX,
   isFirstTime,
+  deskHeadline,
   deskRunTitle,
   deskRunChips,
   deskEarlierRuns,
@@ -113,6 +114,22 @@ test("isFirstTime is true only with zero compose AND zero resume runs", () => {
   assert.equal(isFirstTime(1, 0), false);
   assert.equal(isFirstTime(0, 1), false);
   assert.equal(isFirstTime(2, 3), false);
+});
+
+test("deskHeadline: signed-out pitch / first-time welcome / returning prompt", () => {
+  // Signed-out wins regardless of first-time state (prototype line 1302).
+  assert.equal(deskHeadline(false, true, "Sam Sharma"), "A crew of agents for your job hunt.");
+  assert.equal(deskHeadline(false, false, null), "A crew of agents for your job hunt.");
+  // Signed-in first-time greets by first name only.
+  assert.equal(deskHeadline(true, true, "Sam Sharma"), "Welcome, Sam.");
+  assert.equal(deskHeadline(true, true, "  Priya  "), "Welcome, Priya.");
+  // No resolved name yet → a bare welcome, never "Welcome, ."
+  assert.equal(deskHeadline(true, true, null), "Welcome.");
+  assert.equal(deskHeadline(true, true, "   "), "Welcome.");
+  // Returning users get the standing prompt.
+  assert.equal(deskHeadline(true, false, "Sam Sharma"), "What should the crew get done?");
+  // Session still resolving (null) → returning prompt, no wrong-variant flash.
+  assert.equal(deskHeadline(null, true, "Sam Sharma"), "What should the crew get done?");
 });
 
 test("deskRunTitle picks the right label per agent/kind", () => {
