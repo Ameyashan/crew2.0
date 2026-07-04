@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
 import { TOKENS, RADII, SHADOWS } from "@/components/paper/tokens";
+import { AuthLoadingOverlay } from "@/components/paper/auth-loading";
 import {
   onboardingCompletedCount,
   onboardingDonePatch,
@@ -988,5 +989,12 @@ function SampleEditorV3({ samples, setSamples }) {
 
 export default function OnboardingPage() {
   const router = useRouter();
-  return <OnboardingV3 onDone={() => router.push("/app/compose")} />;
+  return (
+    <>
+      {/* First-timers land here straight from the OAuth callback — show the
+          "Setting up your Desk…" moment before the setup card. */}
+      <AuthLoadingOverlay />
+      <OnboardingV3 onDone={() => router.push("/app/compose")} />
+    </>
+  );
 }

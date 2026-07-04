@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { getProfile } from "@/lib/profile";
 import { runWithUser } from "@/lib/user-context";
+import { AUTH_LANDING_COOKIE } from "@/components/paper/auth-loading-logic";
 
 export const runtime = "nodejs";
 
@@ -36,6 +37,16 @@ export async function GET(req: NextRequest) {
   url.pathname = target;
   url.search = "";
   const res = NextResponse.redirect(url);
+  if (userId) {
+    // One-shot signal for the client "Setting up your Desk…" interstitial
+    // (AuthLoadingOverlay reads + clears it). Short-lived so a stale cookie
+    // can't replay the interstitial on an unrelated later visit.
+    res.cookies.set(AUTH_LANDING_COOKIE, "1", {
+      path: "/",
+      maxAge: 60,
+      sameSite: "lax",
+    });
+  }
   if (target !== "/onboarding") {
     res.cookies.set("crew_onboarded", "1", {
       path: "/",
