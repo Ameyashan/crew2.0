@@ -5,11 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PAPER_FONTS } from "@/components/paper/fonts";
 import { usePaperTheme } from "@/components/paper/use-paper-theme";
-import {
-  Eyebrow,
-  InkButton,
-  PaperCard,
-} from "@/components/paper/primitives";
+import { InkButton } from "@/components/paper/primitives";
 import { openGmailCompose } from "@/lib/gmail";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { ChangeList } from "@/components/resume/ChangeList";
@@ -50,6 +46,7 @@ import {
   runStatusChip,
   CHIP_TONE_COLORS,
   THIN_STORY,
+  THIN_STORY_ENTRIES,
   isThinStory,
   hasGateableOutput,
   shouldBlurGate,
@@ -57,6 +54,17 @@ import {
   serializePendingRun,
   parsePendingRun,
   PENDING_RUN_KEY,
+  buildRunSteps,
+  runViewTitle,
+  ANGLE_PILLS,
+  handoffCta,
+  handoffQuestion,
+  sentLine,
+  sentSub,
+  altsLabel,
+  GATE_CHIP_LABEL,
+  GATE_BUTTON_LABEL,
+  GATE_FOOTNOTE,
 } from "@/components/paper/run-view-logic";
 
 // Hit the existing PDF/DOCX endpoints (they take the tailored-resume JSON) and
@@ -90,6 +98,15 @@ const DESK_HOVER_CSS = `
 .dk-card:hover{border-color:#b0a692!important;box-shadow:0 2px 12px rgba(60,50,30,.07)}
 .dk-row:hover{background:#f7f4ec}
 .dk-x:hover{color:#211e19!important}
+.rv-ink:hover{background:#3a352c!important}
+.rv-tile:hover{border-color:#b0a692!important}
+.rv-cand:hover{border-color:#b0a692}
+.rv-alt:hover{border-color:#b0a692!important}
+.rv-avail:hover{border-color:#b0a692!important;background:#fdfcf8!important}
+.rv-x:hover{color:#a03d2e!important}
+.rv-back:hover{border-color:#b0a692!important;color:#211e19!important}
+.rv-ghost:hover{color:#211e19!important}
+.rv-google:hover{background:#faf8f3!important;border-color:#b0a692!important}
 `;
 
 function ComposeV3({ p, go }) {
@@ -314,12 +331,12 @@ function ComposeV3({ p, go }) {
         )}
       </div>
 
-      {/* ─── live runs: one card per run, newest on top (resume runs render on
-          /app/resume). Still the old card language — Phase C rebuilds these. ─── */}
+      {/* ─── live runs: one prototype run section per run, newest on top (resume
+          runs render on /app/resume) ─── */}
       {liveNonResume.length > 0 && (
         <div style={{
-          padding: `0 ${sidePad}px 24px`, maxWidth: 1060, margin: '0 auto', width: '100%',
-          boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 16,
+          padding: `12px ${sidePad}px 32px`, maxWidth: 1060, margin: '0 auto', width: '100%',
+          boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 36,
         }}>
           {liveNonResume.map((run) => (
             <RunCard key={run.id} p={p} run={run} go={go} storyIsEmpty={storyIsEmpty} signedIn={signedIn}/>
@@ -427,48 +444,149 @@ const EARLIER_CHIP_TONE = {
 };
 
 /* ─────────────────────── one run, all its lifecycle stages ─────────────────────── */
+// Prototype lines 534–799: header + status chip, vertical steps list, pull-review
+// panel, ATS resume card, people panel with drafts/angles, handoff → sent state,
+// and the signed-out blur gate. Presentation only — the run-store state machine,
+// steer, Hunter verdicts, Gmail links and the shortlist data all stay.
+
+// Agent keys per run kind (the run-store's progress keys). Presentation-side
+// only: the backend decides what actually runs.
+const AGENT_KEYS = {
+  person: ['person', 'email', 'outreach'],
+  job: ['resume', 'person', 'email', 'outreach'],
+};
+
+// Confidence-tier chip colours in the token palette (verified green, plausible
+// amber, pure format guess neutral).
+function tierChip(tier) {
+  if (tier === 'high') return { label: 'verified', color: TOKENS.green, bg: TOKENS.greenBg };
+  if (tier === 'medium') return { label: 'likely', color: TOKENS.amber, bg: TOKENS.amberBg };
+  return { label: 'guess', color: TOKENS.muted, bg: TOKENS.chip };
+}
 
 function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
-  const numberWord = ['zero', 'one', 'two', 'three', 'four', 'five'];
-  const all = AGENTS_DATA[run.kind] || AGENTS_DATA.person;
-  const activeCount = Array.isArray(run.selectedAgents) && run.selectedAgents.length > 0
-    ? all.filter((a) => run.selectedAgents.includes(a.k)).length
-    : all.length;
-  const agentsLabel = activeCount === 1
-    ? 'one agent on it'
-    : `${numberWord[activeCount] || activeCount} agents on it`;
-  // Status chip: the parsing/working/done/error machine relabeled to the
-  // prototype's RUNNING / DONE / NEEDS-YOU chips — pure rename/recolor, no logic
-  // change (see run-view-logic.runStatusChip). RUNNING + NEEDS-YOU are amber,
-  // DONE is green.
-  const chip = runStatusChip(run.stage, { reconnecting: run.reconnecting });
-  const chipTone = CHIP_TONE_COLORS[chip.tone];
-  // Secondary caption next to the chip — only while agents are actually going.
-  const stageDetail = run.stage === 'working' && !run.reconnecting ? agentsLabel : '';
+  const isMobile = useIsMobile();
   const thin = isThinStory(storyIsEmpty);
-  // Signed-out blur gate: once outputs exist and the viewer is DEFINITIVELY
-  // signed out, the steps stay readable but the output panels blur behind a
-  // sign-in overlay. `signedIn` is tri-state (null while resolving); treating
-  // "not yet known" as signed-in avoids flashing the gate over a signed-in
-  // user's outputs before the session check lands.
-  const hasOutput = hasGateableOutput(run, hasPartialResult(run));
-  const gated = shouldBlurGate({ signedIn: signedIn !== false, run, hasPartial: hasPartialResult(run) });
+  // Handoff → sent state. Set when the user confirms "Sent ✓"; the confirm also
+  // POSTs /api/draft/[id]/sent so the person lands in People with the follow-up
+  // queued server-side.
+  const [sent, setSent] = useState(null); // { channel, first } | null
+  // Pull-review panel collapse (see showPull below).
+  const [pullDone, setPullDone] = useState(false);
+
+  const chipBase = runStatusChip(run.stage, { reconnecting: run.reconnecting });
+  const chip = sent ? { label: 'DONE', tone: 'done', pulse: false } : chipBase;
+  const chipTone = CHIP_TONE_COLORS[chip.tone];
+
+  const hasPartial = hasPartialResult(run);
+  const hasOutput = hasGateableOutput(run, hasPartial);
+  // `signedIn` is tri-state (null while resolving); treat "not yet known" as
+  // signed-in so the gate never flashes over a signed-in user's outputs.
+  const gated = shouldBlurGate({ signedIn: signedIn !== false, run, hasPartial });
+
+  const parsed = run.parsed;
+  const contacts = run.contacts || null;
+  const hasDual = !!(contacts && (contacts.poster || contacts.hiring_manager));
+  const anyEnrichment =
+    run.enrichment || contacts?.hiring_manager?.enrichment || contacts?.poster?.enrichment || null;
+  const draftList = Array.isArray(run.drafts) && run.drafts.length
+    ? run.drafts
+    : (contacts?.hiring_manager?.drafts || contacts?.poster?.drafts || []);
+  const draftCount = new Set(
+    (Array.isArray(draftList) ? draftList : [])
+      .map((d) => (d?.channel === 'x_dm' ? 'x' : d?.channel))
+      .filter(Boolean),
+  ).size;
+
+  // A job parse is REAL only once the stream stamped `unparsed: false` (the
+  // server's target_role/company replacing the preview). The local parse
+  // previews (inferJobV3 / inferPersonV3) fabricate sample copy for demo
+  // keywords, so they never feed the header or the steps.
+  const jobParsed = run.kind === 'job' && parsed && parsed.unparsed === false ? parsed : null;
+  const parsedLabel = run.kind === 'job'
+    ? ([jobParsed?.role, jobParsed?.company, jobParsed?.location].filter(Boolean).join(' · ')
+        || jobHost(run.input) || null)
+    : null;
+
+  // Only REAL researched people feed the steps/title — never the parse preview.
+  const stepPerson =
+    run.person || contacts?.hiring_manager?.person || contacts?.poster?.person || null;
+  // run.candidates is the server's real shortlist on job runs; on person runs it
+  // holds the fabricated parse-preview list (until a needs_disambiguation error
+  // replaces it), so it never counts as "people found" there.
+  const peopleCount = run.kind === 'job' && Array.isArray(run.candidates) && run.candidates.length
+    ? run.candidates.length
+    : (hasDual
+        ? [contacts?.poster, contacts?.hiring_manager && !contacts.hiring_manager.sameAsPoster ? contacts.hiring_manager : null].filter(Boolean).length
+        : (stepPerson ? 1 : 0));
+
+  // Pull-review panel: shown while the resume agent is choosing/weaving. Real
+  // Story entries arrive with Phase E — until then only the thin-Story variant
+  // (the two generic THIN_STORY_ENTRIES rows) has honest data to show, so the
+  // panel renders for thin runs only. Signed-out runs auto-advance (~2.2s) per
+  // the prototype; the panel can't pause the real pipeline, so confirming just
+  // collapses it.
+  const resumeSelected = run.kind === 'job'
+    && (!Array.isArray(run.selectedAgents) || run.selectedAgents.length === 0 || run.selectedAgents.includes('resume'));
+  const showPull = run.kind === 'job' && run.stage === 'working' && thin && resumeSelected
+    && (run.progress?.resume ?? 0) < 100 && !run.stepErrors?.resume && !pullDone;
+  useEffect(() => {
+    if (!showPull || signedIn !== false) return;
+    const t = setTimeout(() => setPullDone(true), 2200);
+    return () => clearTimeout(t);
+  }, [showPull, signedIn]);
+
+  const steps = buildRunSteps({
+    stage: run.stage,
+    kind: run.kind === 'job' ? 'job' : 'person',
+    progress: run.progress,
+    selectedAgents: run.selectedAgents,
+    stepErrors: run.stepErrors,
+    screenshot: !!run.screenshot,
+    parsedLabel,
+    thin,
+    pulling: showPull,
+    peopleCount,
+    personLabel: stepPerson?.name || null,
+    personSub: [stepPerson?.role, stepPerson?.company].filter(Boolean).join(' · ') || null,
+    emailVerdict: emailVerdict(anyEnrichment),
+    draftCount,
+    ats: run.kind === 'job'
+      ? { before: jobParsed?.ats_score_before ?? null, after: jobParsed?.ats_score ?? null }
+      : null,
+  });
+
+  const title = runViewTitle({
+    kind: run.kind === 'job' ? 'job' : 'person',
+    role: run.kind === 'job' ? (jobParsed?.role ?? run.screenshotRole ?? null) : null,
+    company: run.kind === 'job'
+      ? (jobParsed?.company ?? run.screenshotCompany ?? null)
+      : (stepPerson?.company ?? null),
+    personName: run.kind === 'job' ? null : (stepPerson?.name ?? null),
+    fallback: jobHost(run.input) || run.intent || run.input,
+  });
+
+  // Resume Darzi was opted in, but the resolved kind is a person — there's no
+  // JD to tailor against. Warn and continue with the rest of the crew.
+  const resumeMismatch = (run.stage === 'working' || run.stage === 'done')
+    && run.kind === 'person'
+    && Array.isArray(run.selectedAgents)
+    && run.selectedAgents.includes('resume');
 
   return (
-    <div style={{
-      border: `1.5px solid ${p.ink}24`, background: p.paper, padding: '16px 18px',
-    }}>
-      {/* card header: status badge · detail · echoed input · dismiss */}
-      <div style={{
-        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12,
-      }}>
-        <div style={{ minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+    <section style={{ animation: 'fadeUp .4s ease' }}>
+      {/* ─── header: title + status chip + dismiss ─── */}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+        <div style={{
+          fontFamily: PAPER_FONTS_V2.serif, fontSize: isMobile ? 22 : 26, lineHeight: 1.3,
+          letterSpacing: '-.01em', color: TOKENS.ink, minWidth: 0,
+        }}>{title}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 11px',
-            border: `1px solid ${chipTone.line}`, background: chipTone.bg, color: chipTone.color,
-            borderRadius: 99,
-            fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, letterSpacing: '.1em',
-            textTransform: 'uppercase', flexShrink: 0, alignSelf: 'center',
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, fontWeight: 500, lineHeight: 1,
+            color: chipTone.color, background: chipTone.bg, borderRadius: 5, padding: '5px 8px',
+            textTransform: 'uppercase', whiteSpace: 'nowrap',
           }}>
             {chip.pulse && (
               <span style={{
@@ -478,139 +596,1270 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
             )}
             {chip.label}
           </span>
-          {stageDetail && (
-            <span style={{
-              fontFamily: PAPER_FONTS.mono, fontSize: 10, letterSpacing: '.16em',
-              textTransform: 'uppercase', color: p.stamp,
-            }}>{stageDetail}</span>
-          )}
-          <span style={{
-            fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 460,
-          }}>{run.input}</span>
-          {run.screenshot && (
-            <span style={{
-              fontFamily: PAPER_FONTS.mono, fontSize: 10, letterSpacing: '.04em',
-              color: p.leaf, border: `1px solid ${p.leaf}66`, padding: '1px 6px',
-              whiteSpace: 'nowrap',
-            }}>📎 {run.screenshot.name}</span>
-          )}
+          <button onClick={() => dismissRun(run.id)} title="dismiss" className="dk-x" style={{
+            background: 'transparent', border: 'none', color: TOKENS.faint,
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 16, lineHeight: 1, cursor: 'pointer', padding: '0 2px',
+          }}>×</button>
         </div>
-        <button onClick={() => dismissRun(run.id)} title="dismiss" style={{
-          background: 'transparent', border: 'none', color: p.inkMute,
-          fontFamily: PAPER_FONTS.mono, fontSize: 16, lineHeight: 1, cursor: 'pointer', flexShrink: 0,
-        }}>×</button>
       </div>
 
-      {/* parsing → shimmer preview */}
-      {run.stage === 'parsing' && (
-        <ParsedCard p={p} stage="parsing" kind={run.kind} parsed={run.parsed} hideConfirm/>
-      )}
+      {/* ─── sub-line: intent echo + screenshot chip (12×9 hatch swatch) ─── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
+        <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, lineHeight: 1.6, color: TOKENS.muted }}>
+          from &ldquo;{run.intent || run.input}&rdquo; · crew assembled automatically
+        </div>
+        {run.screenshot && (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, fontWeight: 500, lineHeight: 1,
+            color: TOKENS.muted2, background: TOKENS.chip, borderRadius: 5, padding: '4px 8px',
+          }}>
+            <span style={{
+              width: 12, height: 9, borderRadius: 2, display: 'inline-block',
+              background: 'repeating-linear-gradient(-45deg,#cfc6b2,#cfc6b2 2px,#f2eee4 2px,#f2eee4 4px)',
+            }}/>
+            {run.screenshot.name}
+          </span>
+        )}
+      </div>
 
-      {/* Resume Darzi was opted in, but the resolved kind is a person — there's
-          no JD to tailor against. We don't block the run; we warn and continue
-          with whatever else was selected. */}
-      {(run.stage === 'working' || run.stage === 'done')
-        && run.kind === 'person'
-        && Array.isArray(run.selectedAgents)
-        && run.selectedAgents.includes('resume') && (
-        <div style={{
-          marginTop: 12, padding: '8px 12px',
-          border: `1.5px dashed ${p.marigold}`, background: p.paper,
-          display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          <span style={{
-            fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.16em',
-            color: p.marigoldDeep, textTransform: 'uppercase', flexShrink: 0,
-          }}>heads up</span>
-          <span style={{
-            fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkSoft, lineHeight: 1.4,
-          }}>Resume Darzi needs a job link — skipping for this {run.screenshot ? 'screenshot' : 'run'}. The rest is on it.</span>
+      {/* ─── steps list ─── */}
+      {steps.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', maxWidth: 820 }}>
+          {steps.map((s) => <StepRow key={s.id} s={s}/>)}
         </div>
       )}
 
-      {/* working / done → the agent row */}
-      {(run.stage === 'working' || run.stage === 'done') && (
-        <AgentRowV3 p={p} kind={run.kind} stage={run.stage} progress={run.progress}
-          enrichment={run.enrichment} selectedAgents={run.selectedAgents}
-          stepErrors={run.stepErrors}/>
+      {resumeMismatch && (
+        <div style={{
+          marginTop: 10, maxWidth: 820, display: 'flex', alignItems: 'center', gap: 10,
+          background: TOKENS.amberWash, border: `1px solid ${TOKENS.amberLine}`,
+          borderRadius: RADII.panelTight, padding: '10px 14px', boxSizing: 'border-box',
+        }}>
+          <span style={{
+            fontFamily: PAPER_FONTS_V2.mono, fontSize: 9.5, fontWeight: 500, letterSpacing: '.08em',
+            textTransform: 'uppercase', color: TOKENS.amber, flexShrink: 0,
+          }}>RESUME</span>
+          <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.5, color: TOKENS.muted2 }}>
+            The resume agent needs a job link — skipping for this {run.screenshot ? 'screenshot' : 'run'}. The rest of the crew is on it.
+          </span>
+        </div>
       )}
 
-      {/* done — or mid-run as soon as any agent has produced a deliverable → the
-          package, filling in section-by-section so the user isn't blocked on the
-          slowest agent. Signed-out viewers see it behind the blur gate. */}
-      {hasOutput && (
-        <div style={{ position: 'relative' }}>
-          <div style={{
+      {/* ─── error state: message + shortlist picker + retry ─── */}
+      {run.stage === 'error' && <RunErrorBlock run={run}/>}
+
+      {/* ─── outputs (blur-gated for signed-out viewers) ─── */}
+      <div style={{ position: 'relative' }}>
+        <div
+          style={{
             filter: gated ? 'blur(9px)' : 'none',
             pointerEvents: gated ? 'none' : 'auto',
             userSelect: gated ? 'none' : 'auto',
             transition: 'filter .3s ease',
-          }} aria-hidden={gated || undefined}>
-            <PackageV3 p={p} kind={run.kind} parsed={run.parsed} intent={run.intent}
-              drafts={run.drafts} enrichment={run.enrichment} person={run.person} run={run}
-              storyIsEmpty={thin}
-              onReset={() => dismissRun(run.id)} go={go}/>
-          </div>
-          {gated && <BlurGateOverlay kind={run.kind} run={run} input={run.input}/>}
-        </div>
-      )}
+          }}
+          aria-hidden={gated || undefined}
+        >
+          {showPull && <PullPanel go={go} signedIn={signedIn} onConfirm={() => setPullDone(true)}/>}
 
-      {/* error → message, optional candidate picker, retry */}
-      {run.stage === 'error' && (
-        <>
-          <div style={{
-            marginTop: 12, padding: '12px 16px', background: p.card,
-            border: `1.5px solid ${p.stamp}`, color: p.stamp,
-            fontFamily: PAPER_FONTS.mono, fontSize: 12,
-          }}>{run.error}</div>
-          {Array.isArray(run.candidates) && run.candidates.length > 0 && (
-            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {run.candidates.map((c, i) => (
-                <button key={c.name || i} onClick={() => retryRun(run.id, {
-                  name: c.name, role: c.role ?? null, company: c.company ?? null, linkedin: c.linkedin ?? null,
-                })} style={{
-                  display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center',
-                  padding: '10px 12px', background: p.paper,
-                  border: `1.5px solid ${p.ink}24`, cursor: 'pointer', textAlign: 'left',
-                }}>
-                  <div>
-                    <div style={{ fontFamily: PAPER_FONTS.sans, fontSize: 14, color: p.ink }}>{c.name}</div>
-                    {(c.role || c.company) && (
-                      <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute }}>
-                        {[c.role, c.company].filter(Boolean).join(' · ')}
-                      </div>
-                    )}
-                  </div>
-                  {c.confidence != null && (
-                    <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.stamp }}>{c.confidence}%</span>
-                  )}
-                </button>
-              ))}
-            </div>
+          {run.kind === 'job' && parsed?.resume && (
+            <ResumeOutCard p={p} run={run} go={go} thin={thin}/>
           )}
-          <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {run.suggestedKind === 'job' && !(Array.isArray(run.candidates) && run.candidates.length > 0) && (
-              <InkButton p={p} color={p.stamp} size="sm" onClick={() => switchRunToJob(run.id)}>
-                Run as a job application →
-              </InkButton>
-            )}
-            <InkButton p={p} kind="outline" size="sm" onClick={() => retryRun(run.id)}>↻ Retry</InkButton>
+
+          {sent ? (
+            <SentRow sent={sent} onBack={() => dismissRun(run.id)}/>
+          ) : (
+            hasOutput && (
+              <PeoplePanel run={run} go={go} thin={thin}
+                onSent={(info) => setSent(info)}/>
+            )
+          )}
+        </div>
+        {gated && <BlurGateOverlay kind={run.kind} run={run} input={run.input}/>}
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────── steps list row ─────────────────────── */
+// Done = 20px green circle with ✓; active = 20px pulsing gold ring; a non-fatal
+// per-agent failure gets an amber ! circle. Title 14.5/500 + mono agent chip,
+// muted sub underneath (prototype lines 549–565).
+
+function StepRow({ s }) {
+  return (
+    <div style={{
+      display: 'flex', gap: 16, padding: '15px 0',
+      borderTop: `1px solid ${TOKENS.lineRow}`, animation: 'fadeUp .35s ease',
+    }}>
+      {s.state === 'done' && (
+        <div style={{
+          width: 20, height: 20, borderRadius: 99, background: TOKENS.green, color: '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: PAPER_FONTS_V2.sans, fontSize: 10, fontWeight: 600, lineHeight: 1, flex: 'none',
+        }}>✓</div>
+      )}
+      {s.state === 'active' && (
+        <div style={{
+          width: 20, height: 20, borderRadius: 99, border: `2px solid ${TOKENS.gold}`,
+          flex: 'none', boxSizing: 'border-box', animation: 'pulse 1.4s infinite',
+        }}/>
+      )}
+      {s.state === 'error' && (
+        <div style={{
+          width: 20, height: 20, borderRadius: 99, background: TOKENS.amberBg, color: TOKENS.amber,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, fontWeight: 600, lineHeight: 1, flex: 'none',
+        }}>!</div>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 14.5, fontWeight: 500, lineHeight: 1.35, color: TOKENS.ink,
+          }}>{s.title}</span>
+          <span style={{
+            fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, lineHeight: 1,
+            color: TOKENS.muted, background: TOKENS.chip, borderRadius: 4, padding: '3px 6px',
+          }}>{s.agent}</span>
+        </div>
+        {s.sub && (
+          <div style={{
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.55,
+            color: s.state === 'error' ? TOKENS.amber : TOKENS.muted, marginTop: 3,
+          }}>{s.sub}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────── pull-review panel (prototype lines 570–614) ─────────────────────── */
+// "RESUME AGENT · NEEDS YOUR EYES / Pulling these from your Story". Until Phase E
+// lands a real story_entries model this renders the thin-Story variant only: the
+// two generic THIN_STORY_ENTRIES rows + the THIN STORY banner. Removals and
+// additions are local to the review (the panel can't steer the live pipeline
+// yet); "Looks right — generate resume →" collapses it.
+
+function PullPanel({ go, signedIn, onConfirm }) {
+  const [entries, setEntries] = useState(() =>
+    THIN_STORY_ENTRIES.map((e, i) => ({ id: i, raw: e.title, why: e.why })),
+  );
+  const [adding, setAdding] = useState('');
+
+  function addEntry() {
+    const text = adding.trim();
+    if (!text) return;
+    setEntries((list) => [...list, {
+      id: Date.now(), raw: text, why: 'you added this yourself — always included',
+    }]);
+    setAdding('');
+  }
+
+  return (
+    <div style={{
+      marginTop: 6, maxWidth: 820, boxSizing: 'border-box',
+      background: TOKENS.card, border: `1px solid ${TOKENS.amberLine}`, borderRadius: RADII.card,
+      boxShadow: SHADOWS.elevated, padding: '24px 26px', animation: 'fadeUp .35s ease',
+    }}>
+      <div style={{
+        fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, lineHeight: 1,
+        letterSpacing: '.08em', color: TOKENS.amber, marginBottom: 6,
+      }}>RESUME AGENT · NEEDS YOUR EYES</div>
+      <div style={{
+        fontFamily: PAPER_FONTS_V2.serif, fontSize: 20, lineHeight: 1.3, color: TOKENS.ink, marginBottom: 4,
+      }}>Pulling these from your Story</div>
+      <div style={{
+        fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, lineHeight: 1.6, color: TOKENS.muted, marginBottom: 18,
+      }}>Picked for what the posting asks for. Remove anything, or add something else.</div>
+
+      {/* thin-Story banner */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12, background: TOKENS.amberWash,
+        border: `1px solid ${TOKENS.amberLine}`, borderRadius: RADII.panelTight,
+        padding: '12px 16px', marginBottom: 14, flexWrap: 'wrap',
+      }}>
+        <span style={{
+          fontFamily: PAPER_FONTS_V2.mono, fontSize: 9.5, fontWeight: 500, lineHeight: 1,
+          letterSpacing: '.08em', color: TOKENS.amber, background: TOKENS.amberBg,
+          borderRadius: 4, padding: '4px 7px', flex: 'none',
+        }}>{THIN_STORY.banner}</span>
+        <span style={{
+          flex: 1, minWidth: 180, fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.5, color: TOKENS.muted2,
+        }}>Your Story only has these entries — the resume will be generic. Add your resume to give the crew real material.</span>
+        <button onClick={() => go('resume')} className="rv-ink" style={{
+          fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, fontWeight: 500, lineHeight: 1,
+          color: TOKENS.paper, background: TOKENS.ink, border: 'none',
+          borderRadius: RADII.buttonTight, padding: '9px 13px', cursor: 'pointer', flex: 'none',
+          transition: 'background .15s',
+        }}>{THIN_STORY.cta}</button>
+      </div>
+
+      {/* entry rows */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {entries.map((e) => (
+          <div key={e.id} style={{
+            display: 'flex', gap: 14, alignItems: 'flex-start', background: TOKENS.cardWarm,
+            border: `1px solid ${TOKENS.lineInset}`, borderRadius: RADII.panelTight, padding: '13px 16px',
+          }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 14.5, lineHeight: 1.45, color: TOKENS.ink }}>{e.raw}</div>
+              <div style={{
+                fontFamily: PAPER_FONTS_V2.sans, fontStyle: 'italic', fontSize: 11.5, lineHeight: 1.5,
+                color: TOKENS.amber, marginTop: 4,
+              }}>why: {e.why}</div>
+            </div>
+            <button onClick={() => setEntries((list) => list.filter((x) => x.id !== e.id))} title="remove"
+              className="rv-x" style={{
+                background: 'transparent', border: 'none', cursor: 'pointer', padding: 4,
+                fontFamily: PAPER_FONTS_V2.sans, fontSize: 14, lineHeight: 1, color: TOKENS.faint,
+              }}>✕</button>
           </div>
-        </>
+        ))}
+      </div>
+
+      {/* add-your-own input */}
+      <div style={{ marginTop: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
+        <input
+          value={adding}
+          onChange={(e) => setAdding(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEntry(); } }}
+          placeholder="…or add something new, in your own words"
+          style={{
+            flex: 1, border: `1px solid ${TOKENS.line}`, borderRadius: RADII.button, padding: '11px 14px',
+            fontFamily: PAPER_FONTS_V2.serif, fontSize: 14, lineHeight: 1.4,
+            background: TOKENS.card, boxSizing: 'border-box', color: TOKENS.ink, outline: 'none',
+          }}
+        />
+        <button onClick={addEntry} className="dk-pill" style={{
+          fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, fontWeight: 500, lineHeight: 1, color: TOKENS.muted2,
+          border: `1px solid ${TOKENS.line}`, borderRadius: RADII.buttonTight, background: 'transparent',
+          padding: '10px 14px', cursor: 'pointer', flex: 'none', transition: 'border-color .15s, color .15s',
+        }}>Add</button>
+      </div>
+
+      {/* footer: count + confirm */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, gap: 12 }}>
+        <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, lineHeight: 1.5, color: TOKENS.faint }}>
+          {entries.length} entries → 1 page
+        </span>
+        <button onClick={onConfirm} className="rv-ink" style={{
+          fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, fontWeight: 500, lineHeight: 1,
+          color: TOKENS.paper, background: TOKENS.ink, border: 'none',
+          borderRadius: RADII.button, padding: '12px 20px', cursor: 'pointer', transition: 'background .15s',
+        }}>Looks right — generate resume →</button>
+      </div>
+      {signedIn === false && (
+        <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, color: TOKENS.faint, marginTop: 10 }}>
+          running anonymously — the crew continues on its own
+        </div>
       )}
     </div>
   );
 }
 
-/* ─────────────────────── signed-out blur gate overlay ─────────────────────── */
+/* ─────────────────────── resume output card (prototype lines 616–660) ─────────────────────── */
+// ATS score header + delta, 8px gradient progress bar, gains list derived from
+// the tailor's real change log, and the PDF/DOCX download tiles. The full-read
+// modal, change log and regenerate-with-notes survive as quiet affordances.
 
-// The card that sits over the blurred output for a signed-out viewer. Purely
-// presentational once the layout gate (anon can reach /app/compose) and the
-// pendingRun stash exist. The sign-in control is a real, focusable <button> (not
-// a styled div): it persists enough of the run to sessionStorage — which
-// survives the same-origin OAuth + onboarding redirect — then kicks off the real
-// Supabase Google OAuth, returning to /app/compose where the run re-opens
+function ResumeOutCard({ p, run, go, thin }) {
+  const parsed = run.parsed || {};
+  const resume = parsed.resume;
+  const ats = parsed.ats_score ?? null;
+  const before = parsed.ats_score_before ?? null;
+  const changes = Array.isArray(resume?.changes) ? resume.changes : [];
+  const jobRole = parsed.role;
+  const jobCompany = parsed.company;
+  const [downloading, setDownloading] = useState(null); // 'pdf' | 'docx' | null
+  const [dlError, setDlError] = useState(null);
+  const [expanded, setExpanded] = useState(false);
+  const [showChanges, setShowChanges] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
+  const [notes, setNotes] = useState('');
+  const regenerating = !!run.regenerating;
+
+  async function handleDownload(fmt) {
+    setDlError(null);
+    setDownloading(fmt);
+    try {
+      await downloadResumeBlob(resume, fmt);
+    } catch (e) {
+      setDlError(String(e?.message || e));
+    } finally {
+      setDownloading(null);
+    }
+  }
+
+  const atsHead = thin
+    ? `ATS SCORE · ${THIN_STORY.atsHeader}`
+    : before != null
+      ? 'ATS SCORE · VS YOUR UPLOADED RESUME'
+      : 'ATS SCORE · VS THE JOB POSTING';
+  const delta = ats != null && before != null ? ats - before : null;
+  const deltaLabel = delta != null
+    ? (delta > 0 ? `↑ from ${before}` : delta < 0 ? `↓ from ${before}` : 'same as before')
+    : (thin ? THIN_STORY.atsNote : '');
+  const deltaColor = delta != null
+    ? (delta >= 0 ? TOKENS.green : TOKENS.red)
+    : TOKENS.amber;
+
+  // Gains list from the real change log — green + for material added/lifted,
+  // muted − for trims. First three; the full log lives behind "what changed".
+  const gainMeta = {
+    added: { plus: '+', color: TOKENS.green },
+    emphasized: { plus: '+', color: TOKENS.green },
+    reordered: { plus: '↑', color: TOKENS.green },
+    rewritten: { plus: '+', color: TOKENS.green },
+    dropped: { plus: '−', color: TOKENS.muted },
+  };
+  const gains = changes.slice(0, 3).map((c) => {
+    const m = gainMeta[c.kind] || gainMeta.rewritten;
+    return { plus: m.plus, color: m.color, text: c.reason || c.after || c.section || 'tailored' };
+  });
+
+  const fileBase = `Resume — ${jobCompany || jobRole || 'tailored'}`;
+  const pages = resume?.meta?.page_count || 1;
+
+  return (
+    <div style={{
+      marginTop: 6, maxWidth: 560, boxSizing: 'border-box',
+      background: TOKENS.card, border: `1px solid ${TOKENS.lineSoft}`, borderRadius: RADII.card,
+      boxShadow: SHADOWS.elevated, padding: '24px 26px', animation: 'fadeUp .35s ease',
+    }}>
+      {/* score header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 12 }}>
+        <span style={{
+          fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, lineHeight: 1,
+          letterSpacing: '.08em', color: TOKENS.faint,
+        }}>{ats != null ? atsHead : 'TAILORED RESUME'}</span>
+        {ats != null && (
+          <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, lineHeight: 1, color: deltaColor, whiteSpace: 'nowrap' }}>
+            <span style={{
+              fontFamily: PAPER_FONTS_V2.serif, fontSize: 22, fontWeight: 500, lineHeight: 1, color: TOKENS.ink,
+            }}>{ats}</span>
+            {deltaLabel ? ` ${deltaLabel}` : ''}
+          </span>
+        )}
+      </div>
+
+      {/* progress bar */}
+      {ats != null && (
+        <div style={{ position: 'relative', height: 8, borderRadius: 99, background: TOKENS.chip, marginBottom: 14 }}>
+          <div style={{
+            position: 'absolute', left: 0, top: 0, height: 8, width: `${Math.max(0, Math.min(100, ats))}%`,
+            borderRadius: 99, background: 'linear-gradient(90deg,#ddd5c4 60%,#3d7a4f)',
+          }}/>
+        </div>
+      )}
+
+      {/* gains from the real change log */}
+      {gains.length > 0 && (
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 8,
+          fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.55, color: TOKENS.muted2, marginBottom: 18,
+        }}>
+          {gains.map((g, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8 }}>
+              <span style={{ color: g.color, flex: 'none' }}>{g.plus}</span>
+              <span>{g.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {ats == null && changes.length === 0 && (
+        <div style={{
+          fontFamily: PAPER_FONTS_V2.sans, fontStyle: 'italic', fontSize: 12.5, lineHeight: 1.55,
+          color: TOKENS.muted, marginBottom: 18,
+        }}>
+          The crew couldn&apos;t read this job posting, so this is a light reformat of your existing
+          resume rather than a tailored rewrite. Add notes below and re-run to tailor it.
+        </div>
+      )}
+
+      {/* thin-Story reweave banner */}
+      {thin && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12, background: TOKENS.amberWash,
+          border: `1px solid ${TOKENS.amberLine}`, borderRadius: RADII.panelTight,
+          padding: '12px 16px', marginBottom: 14, flexWrap: 'wrap',
+        }}>
+          <span style={{ flex: 1, minWidth: 180, fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.5, color: TOKENS.muted2 }}>
+            Built from a thin Story. Add your resume and the crew reweaves it with real material.
+          </span>
+          <button onClick={() => go('resume')} className="rv-ink" style={{
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, fontWeight: 500, lineHeight: 1,
+            color: TOKENS.paper, background: TOKENS.ink, border: 'none',
+            borderRadius: RADII.buttonTight, padding: '9px 13px', cursor: 'pointer', flex: 'none',
+            transition: 'background .15s',
+          }}>{THIN_STORY.cta}</button>
+        </div>
+      )}
+
+      {/* download tiles */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+        {[
+          { fmt: 'pdf', name: `${fileBase}.pdf`, sub: `${pages} page${pages > 1 ? 's' : ''} · for humans` },
+          { fmt: 'docx', name: `${fileBase}.docx`, sub: 'editable · for portals' },
+        ].map((tile) => (
+          <button key={tile.fmt} className="rv-tile"
+            disabled={!resume || downloading === tile.fmt}
+            onClick={() => handleDownload(tile.fmt)}
+            style={{
+              border: `1px solid ${TOKENS.lineSoft}`, borderRadius: RADII.panel, padding: '14px 16px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+              background: 'transparent', cursor: resume ? 'pointer' : 'default', textAlign: 'left',
+              transition: 'border-color .15s', minWidth: 0,
+            }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{
+                fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, fontWeight: 500, lineHeight: 1.3, color: TOKENS.ink,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{tile.name}</div>
+              <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, lineHeight: 1.5, color: TOKENS.faint }}>{tile.sub}</div>
+            </div>
+            <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 15, lineHeight: 1, color: TOKENS.muted2, flex: 'none' }}>
+              {downloading === tile.fmt ? '…' : '↓'}
+            </span>
+          </button>
+        ))}
+      </div>
+      {dlError && (
+        <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, color: TOKENS.red, marginBottom: 10 }}>{dlError}</div>
+      )}
+
+      {/* quiet affordances: full read / change log / regenerate notes */}
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+        <button onClick={() => resume && setExpanded(true)} disabled={!resume} className="rv-ghost" style={{
+          background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
+          fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted, letterSpacing: '.04em',
+        }}>read the full resume ↗</button>
+        {changes.length > 0 && (
+          <button onClick={() => setShowChanges((s) => !s)} className="rv-ghost" style={{
+            background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
+            fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted, letterSpacing: '.04em',
+          }}>{showChanges ? '× hide changes' : `what changed (${changes.length})`}</button>
+        )}
+        <button onClick={() => setShowNotes((s) => !s)} disabled={!resume} className="rv-ghost" style={{
+          background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
+          fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted, letterSpacing: '.04em',
+        }}>{showNotes ? '× close notes' : '✎ regenerate with notes'}</button>
+      </div>
+
+      {showChanges && changes.length > 0 && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${TOKENS.lineRow}` }}>
+          <ChangeList p={p} changes={changes} compact/>
+        </div>
+      )}
+
+      {showNotes && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${TOKENS.lineRow}` }}>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            disabled={regenerating}
+            placeholder="e.g. lead with my platform work, cut the older bullets, make it one page"
+            rows={3}
+            style={{
+              width: '100%', resize: 'vertical', minHeight: 64, boxSizing: 'border-box',
+              padding: '10px 12px', background: TOKENS.card,
+              border: `1px solid ${TOKENS.line}`, borderRadius: RADII.button, outline: 'none',
+              fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.5, color: TOKENS.ink,
+            }}
+          />
+          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button className="rv-ink"
+              disabled={!notes.trim() || regenerating}
+              onClick={async () => { await regenerateResume(run.id, notes); setNotes(''); }}
+              style={{
+                fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, fontWeight: 500, lineHeight: 1,
+                color: TOKENS.paper, background: TOKENS.ink, border: 'none',
+                borderRadius: RADII.buttonTight, padding: '10px 14px',
+                cursor: notes.trim() && !regenerating ? 'pointer' : 'default',
+                opacity: !notes.trim() || regenerating ? 0.6 : 1, transition: 'background .15s',
+              }}>{regenerating ? 'Regenerating…' : '↻ Regenerate resume'}</button>
+            <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, color: TOKENS.faint }}>
+              reruns the resume agent only
+            </span>
+          </div>
+          {run.regenError && (
+            <div style={{ marginTop: 8, fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, color: TOKENS.red }}>{run.regenError}</div>
+          )}
+        </div>
+      )}
+
+      {expanded && resume && (
+        <ResumeModal p={p} resume={resume} jobRole={jobRole} jobCompany={jobCompany}
+          atsScore={ats} atsScoreBefore={before} onClose={() => setExpanded(false)}/>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────── people panel (prototype lines 662–767) ─────────────────────── */
+// "Who to reach out to": candidate cards (real shortlist / dual-contact slots),
+// WHO + WHY + EMAIL columns, and the drafts card with underline channel tabs,
+// inline angle pills and the handoff → "did it go out?" flow. Everything shown
+// is real crew output; panels degrade honestly when an agent returned nothing.
+
+function PeoplePanel({ run, go, thin, onSent }) {
+  const isMobile = useIsMobile();
+  const contacts = run.contacts || null;
+  const hasDual = !!(contacts && (contacts.poster || contacts.hiring_manager));
+
+  // Dual-contact (screenshot) runs: the poster and the sourced hiring manager
+  // each hold their own research / email / drafts.
+  const slots = [];
+  if (hasDual) {
+    if (contacts.poster) slots.push({ key: 'poster', badge: 'POSTED THE ROLE', c: contacts.poster });
+    if (contacts.hiring_manager && !contacts.hiring_manager.sameAsPoster) {
+      slots.push({ key: 'hiring_manager', badge: 'LIKELY HIRING MANAGER', c: contacts.hiring_manager });
+    }
+  }
+  const [activeKey, setActiveKey] = useState(null);
+  const activeSlot = slots.find((s) => s.key === activeKey) || slots[0] || null;
+
+  const effPerson = hasDual ? (activeSlot?.c?.person ?? null) : run.person;
+  const effEnrichment = hasDual ? (activeSlot?.c?.enrichment ?? null) : run.enrichment;
+  const effDrafts = hasDual ? (activeSlot?.c?.drafts ?? null) : run.drafts;
+
+  // The shortlist is real only on job runs (the server's `candidates` event);
+  // person-run candidates are the fabricated parse preview — never rendered.
+  const shortlist = !hasDual && run.kind === 'job' && Array.isArray(run.candidates)
+    ? run.candidates
+    : [];
+  const personName = effPerson?.name || null;
+  const personRole = effPerson?.role || null;
+  const personCompany = effPerson?.company || run.parsed?.company || null;
+  const first = personName ? personName.split(/\s+/)[0] : null;
+  const links = effPerson?.links || {};
+  const facts = (effPerson?.context_lines || []).filter(Boolean);
+  const searched = effPerson?.searched || null;
+
+  // ranked real addresses (verified → plausible → format guesses)
+  const emailCandidates = buildEmailCandidates(effEnrichment);
+  const primary = emailCandidates[0] || null;
+  const alternates = emailCandidates.slice(1);
+  const [emailPick, setEmailPick] = useState({}); // personName → chosen alternate
+  const [altsOpen, setAltsOpen] = useState(false);
+  const pickedAlt = personName ? emailPick[personName] : null;
+  const emailShown = pickedAlt || primary?.email || '';
+  const primaryChip = pickedAlt
+    ? { label: 'guess · your pick', color: TOKENS.amber, bg: TOKENS.amberBg }
+    : primary
+      ? (() => {
+          const t = tierChip(primary.tier);
+          const pct = typeof effEnrichment?.confidence === 'number'
+            ? `${Math.round(effEnrichment.confidence * 100)}% · ` : '';
+          return { ...t, label: `${primary.tier === 'low' ? '' : pct}${t.label}` };
+        })()
+      : null;
+
+  // drafts by UI channel (pipeline says x_dm, tabs say x)
+  const draftBy = {};
+  for (const d of (Array.isArray(effDrafts) ? effDrafts : [])) {
+    if (d?.channel) draftBy[d.channel === 'x_dm' ? 'x' : d.channel] = d;
+  }
+  const draftedCount = Object.keys(draftBy).length;
+  const [channel, setChannel] = useState('email');
+  const [handoffOpen, setHandoffOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [edits, setEdits] = useState({}); // `${who}:${channel}` → body override
+  const [editText, setEditText] = useState('');
+
+  const editKey = `${activeSlot?.key || personName || 'p'}:${channel}`;
+  const draft = draftBy[channel] || null;
+  const body = edits[editKey] ?? (draft?.body || '');
+  const subject = channel === 'email' ? (draft?.subject || '') : null;
+  const redrafting = run.redrafting === channel || !!run.steering;
+
+  const meta = channel === 'email'
+    ? `To: ${emailShown || '(no public email found — add it in Gmail)'}${subject ? ` · Subject: ${subject}` : ''}`
+    : channel === 'linkedin'
+      ? (links.linkedin ? `LinkedIn message · ${links.linkedin.replace(/^https?:\/\//, '')}` : 'LinkedIn message')
+      : (links.x ? `X direct message · ${links.x.replace(/^https?:\/\//, '')}` : 'X direct message');
+
+  // Candidate cards: dual slots, else the real shortlist, else the single person.
+  let cards = [];
+  if (slots.length) {
+    cards = slots.map((s) => {
+      const pers = s.c?.person || {};
+      return {
+        key: s.key, badge: s.badge,
+        name: pers.name || '(searching…)',
+        role: [pers.role, pers.company].filter(Boolean).join(' · '),
+        blurb: (pers.context_lines || []).filter(Boolean)[0] || '',
+        links: pers.links || {},
+        selected: activeSlot?.key === s.key,
+        onSelect: () => { setActiveKey(s.key); setHandoffOpen(false); setEditing(false); },
+      };
+    });
+  } else if (shortlist.length) {
+    cards = shortlist.map((c, i) => {
+      const isCurrent = !!personName && c.name === personName;
+      return {
+        key: c.name || String(i),
+        badge: `${i === 0 ? 'BEST MATCH' : 'ALTERNATE'}${c.confidence != null ? ` · ${c.confidence}` : ''}`,
+        name: c.name,
+        role: [c.role, c.company].filter(Boolean).join(' · '),
+        blurb: c.why || '',
+        links: { linkedin: c.linkedin || null },
+        selected: isCurrent,
+        // Re-picks the hiring manager: reruns email + outreach for them (existing
+        // shortlist behavior, now on the prototype cards).
+        onSelect: () => { if (!isCurrent) { pickCandidate(run.id, c); setHandoffOpen(false); setEditing(false); } },
+      };
+    });
+  } else if (personName) {
+    cards = [{
+      key: 'person',
+      badge: effPerson?.match_confidence ? `${String(effPerson.match_confidence).toUpperCase()} MATCH` : 'YOUR PERSON',
+      name: personName,
+      role: [personRole, personCompany].filter(Boolean).join(' · '),
+      blurb: facts[0] || '',
+      links,
+      selected: true,
+      onSelect: () => {},
+    }];
+  }
+
+  if (!cards.length && !draftedCount) {
+    // The crew couldn't pin anyone down — say so honestly.
+    return (
+      <div style={{
+        marginTop: 20, maxWidth: 820, fontFamily: PAPER_FONTS_V2.sans, fontStyle: 'italic',
+        fontSize: 13, lineHeight: 1.6, color: TOKENS.muted,
+      }}>
+        The crew couldn&apos;t pin down a specific person.
+        {searched && <> Searched &ldquo;{searched}&rdquo;.</>}
+        {' '}Try a LinkedIn or X link, or add a company in the intent box.
+      </div>
+    );
+  }
+
+  function openChannel() {
+    if (!body) return;
+    if (channel === 'email') {
+      openGmailCompose({ to: emailShown, subject, body });
+    } else if (channel === 'linkedin') {
+      window.open(links.linkedin ? withHttps(links.linkedin) : 'https://www.linkedin.com/messaging/', '_blank', 'noopener');
+    } else {
+      window.open(links.x ? withHttps(links.x) : 'https://x.com/messages', '_blank', 'noopener');
+    }
+    setHandoffOpen(true);
+  }
+
+  function confirmSent() {
+    setHandoffOpen(false);
+    // Real send confirmation: marks the draft sent, logs the interaction, queues
+    // the follow-up — the person lands in People (existing endpoint).
+    if (draft?.id) {
+      fetch(`/api/draft/${draft.id}/sent`, { method: 'POST' }).catch(() => {});
+    }
+    onSent({ channel, first });
+  }
+
+  return (
+    <div style={{ marginTop: 20, animation: 'fadeUp .35s ease' }}>
+      <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 20, lineHeight: 1.3, color: TOKENS.ink, marginBottom: 4 }}>
+        Who to reach out to
+      </div>
+      <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, lineHeight: 1.6, color: TOKENS.muted, marginBottom: 20 }}>
+        {cards.length > 1
+          ? 'Ranked by who decides · pick a person — the drafts are written for each'
+          : 'Email, LinkedIn and X drafts are written — pick your channel'}
+      </div>
+      {thin && (
+        <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.6, color: TOKENS.amber, margin: '-10px 0 20px' }}>
+          ⚠ Drafts are running generic — the crew has almost no Story to hook from.{' '}
+          <button onClick={() => go('resume')} style={{
+            background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, color: TOKENS.amber, textDecoration: 'underline',
+          }}>Add your resume</button> for sharper openers.
+        </div>
+      )}
+
+      {/* candidate cards */}
+      {cards.length > 0 && (
+        <div style={{
+          display: 'grid', gap: 14, marginBottom: 24,
+          // A lone card keeps the prototype's 1-of-3 width instead of spanning
+          // the whole panel.
+          gridTemplateColumns: isMobile
+            ? '1fr'
+            : cards.length === 1 ? 'minmax(0, 420px)' : `repeat(${Math.min(cards.length, 3)}, 1fr)`,
+        }}>
+          {cards.map((c) => (
+            <div key={c.key} onClick={c.onSelect} className={c.selected ? undefined : 'rv-cand'} style={{
+              background: TOKENS.card,
+              border: c.selected ? `1.5px solid ${TOKENS.ink}` : `1px solid ${TOKENS.lineSoft}`,
+              borderRadius: RADII.card, padding: '20px 22px', position: 'relative',
+              cursor: c.onSelect && !c.selected ? 'pointer' : 'default',
+              boxShadow: c.selected ? '0 3px 16px rgba(60,50,30,.08)' : 'none',
+              transition: 'border-color .15s, box-shadow .15s',
+            }}>
+              <div style={{
+                position: 'absolute', top: -9, left: 20,
+                fontFamily: PAPER_FONTS_V2.mono, fontSize: 9.5, fontWeight: 500, lineHeight: 1,
+                letterSpacing: '.08em',
+                color: c.selected ? TOKENS.paper : TOKENS.muted2,
+                background: c.selected ? TOKENS.ink : TOKENS.chip,
+                borderRadius: 4, padding: '4px 7px', whiteSpace: 'nowrap',
+              }}>{c.badge}</div>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', margin: '6px 0 12px' }}>
+                <div style={{
+                  width: 42, height: 42, borderRadius: 99, background: TOKENS.lineSoft, flex: 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontFamily: PAPER_FONTS_V2.serif, fontSize: 14, fontWeight: 500, lineHeight: 1, color: TOKENS.muted2,
+                }}>
+                  {(c.name || '?').split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{
+                    fontFamily: PAPER_FONTS_V2.serif, fontSize: 17, fontWeight: 500, lineHeight: 1.2, color: TOKENS.ink,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>{c.name}</div>
+                  {c.role && (
+                    <div style={{
+                      fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, lineHeight: 1.4, color: TOKENS.muted,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>{c.role}</div>
+                  )}
+                </div>
+              </div>
+              {c.blurb && (
+                <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.6, color: TOKENS.muted2 }}>{c.blurb}</div>
+              )}
+              <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
+                {c.selected && primary && (
+                  <span style={{
+                    fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, lineHeight: 1,
+                    color: tierChip(primary.tier).color, background: tierChip(primary.tier).bg,
+                    borderRadius: 4, padding: '4px 7px',
+                  }}>email · {tierChip(primary.tier).label}</span>
+                )}
+                {c.links?.linkedin && (
+                  <span style={{
+                    fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, lineHeight: 1,
+                    color: TOKENS.muted, background: TOKENS.chip, borderRadius: 4, padding: '4px 7px',
+                  }}>linkedin</span>
+                )}
+                {c.links?.x && (
+                  <span style={{
+                    fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, lineHeight: 1,
+                    color: TOKENS.muted, background: TOKENS.chip, borderRadius: 4, padding: '4px 7px',
+                  }}>x</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* details: left column (who / why / email) + right drafts card */}
+      <div style={{
+        display: 'grid', gap: 20, alignItems: 'start',
+        gridTemplateColumns: isMobile ? '1fr' : '380px 1fr',
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+          {/* WHO */}
+          <div style={{
+            background: TOKENS.card, border: `1px solid ${TOKENS.lineSoft}`,
+            borderRadius: RADII.card, padding: '20px 22px',
+          }}>
+            <div style={{
+              fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, lineHeight: 1,
+              letterSpacing: '.08em', color: TOKENS.faint, marginBottom: 12,
+            }}>WHO THEY ARE</div>
+            <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13.5, lineHeight: 1.65, color: TOKENS.inkSoft }}>
+              {personName
+                ? `${personName}${personRole ? ` — ${personRole}` : ''}${personCompany ? ` at ${personCompany}` : ''}.`
+                : 'The crew is still pinning this person down.'}
+              {effPerson?.match_confidence ? ` Match confidence: ${effPerson.match_confidence}.` : ''}
+            </div>
+            {Object.keys(links).filter((k) => links[k]).length > 0 && (
+              <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, lineHeight: 1.5, color: TOKENS.faint, marginTop: 10 }}>
+                sources: {Object.keys(links).filter((k) => links[k]).map((k, i, arr) => (
+                  <span key={k}>
+                    <a href={withHttps(links[k])} target="_blank" rel="noopener noreferrer"
+                      style={{ color: TOKENS.faint, textDecoration: 'underline', textUnderlineOffset: 2 }}>{k}</a>
+                    {i < arr.length - 1 ? ' · ' : ''}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* WHY — the research hooks the outreach is angled on */}
+          {facts.length > 0 && (
+            <div style={{
+              background: TOKENS.cardWarm, border: `1px solid ${TOKENS.amberLine}`,
+              borderRadius: RADII.card, padding: '20px 22px',
+            }}>
+              <div style={{
+                fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, lineHeight: 1,
+                letterSpacing: '.08em', color: TOKENS.amber, marginBottom: 12,
+              }}>WHY THEY&apos;LL CARE ABOUT YOU</div>
+              <div style={{
+                display: 'flex', flexDirection: 'column', gap: 10,
+                fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, lineHeight: 1.6, color: TOKENS.inkSoft,
+              }}>
+                {facts.map((w) => (
+                  <div key={w} style={{ display: 'flex', gap: 9 }}>
+                    <span style={{ color: TOKENS.amber, flex: 'none' }}>→</span>
+                    <span>{w}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* EMAIL */}
+          <div style={{
+            background: TOKENS.card, border: `1px solid ${TOKENS.lineSoft}`,
+            borderRadius: RADII.card, padding: '18px 22px',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{
+                  fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, lineHeight: 1,
+                  letterSpacing: '.08em', color: TOKENS.faint, marginBottom: 8,
+                }}>EMAIL</div>
+                <div style={{
+                  fontFamily: PAPER_FONTS_V2.mono, fontSize: 13.5, lineHeight: 1.3, color: emailShown ? TOKENS.ink : TOKENS.faint,
+                  overflowWrap: 'anywhere',
+                }}>{emailShown || 'no public address found'}</div>
+              </div>
+              {primaryChip && (
+                <span style={{
+                  fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, lineHeight: 1,
+                  color: primaryChip.color, background: primaryChip.bg, borderRadius: 4, padding: '4px 7px',
+                  whiteSpace: 'nowrap', flex: 'none',
+                }}>{primaryChip.label}</span>
+              )}
+            </div>
+            {alternates.length > 0 && (
+              <>
+                <button onClick={() => setAltsOpen((v) => !v)} className="rv-ghost" style={{
+                  background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
+                  fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, lineHeight: 1.5, color: TOKENS.muted, marginTop: 12,
+                }}>{altsLabel(altsOpen, alternates.length)}</button>
+                {altsOpen && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                    {alternates.map((a) => (
+                      <button key={a.email} className="rv-alt"
+                        onClick={() => personName && setEmailPick((m) => ({ ...m, [personName]: a.email }))}
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+                          border: `1px solid ${TOKENS.lineInset}`, borderRadius: RADII.buttonTight,
+                          padding: '9px 12px', background: 'transparent', cursor: 'pointer',
+                          transition: 'border-color .15s', width: '100%', textAlign: 'left',
+                        }}>
+                        <span style={{
+                          fontFamily: PAPER_FONTS_V2.mono, fontSize: 12.5, lineHeight: 1, color: TOKENS.muted2,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
+                        }}>{a.email}</span>
+                        <span style={{
+                          fontFamily: PAPER_FONTS_V2.mono, fontSize: 9.5, fontWeight: 500, lineHeight: 1,
+                          color: TOKENS.muted, background: TOKENS.chip, borderRadius: 4, padding: '3px 6px', flex: 'none',
+                        }}>GUESS</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* drafts card */}
+        <div style={{
+          background: TOKENS.card, border: `1px solid ${TOKENS.lineSoft}`,
+          borderRadius: RADII.card, overflow: 'hidden', minWidth: 0,
+        }}>
+          {/* underline tabs */}
+          <div style={{
+            display: 'flex', borderBottom: `1px solid ${TOKENS.lineInset}`, padding: '0 22px',
+            alignItems: 'center', flexWrap: 'wrap',
+          }}>
+            {[
+              { id: 'email', label: 'Email' },
+              { id: 'linkedin', label: 'LinkedIn' },
+              { id: 'x', label: 'X' },
+            ].map((t) => {
+              const on = channel === t.id;
+              return (
+                <button key={t.id}
+                  onClick={() => { setChannel(t.id); setHandoffOpen(false); setEditing(false); }}
+                  style={{
+                    fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, fontWeight: 500, lineHeight: 1,
+                    padding: '16px 14px', cursor: 'pointer', background: 'transparent', border: 'none',
+                    color: on ? TOKENS.ink : TOKENS.faint2,
+                    borderBottom: `2px solid ${on ? TOKENS.ink : 'transparent'}`, marginBottom: -1,
+                  }}>{t.label}</button>
+              );
+            })}
+            <div style={{
+              marginLeft: 'auto', fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, lineHeight: 1,
+              color: TOKENS.faint, padding: '8px 0',
+            }}>
+              {draftedCount >= 3 ? 'all three drafted · pick your channel'
+                : draftedCount > 0 ? `${draftedCount} drafted so far`
+                : 'drafting…'}
+            </div>
+          </div>
+
+          <div style={{ padding: 22 }}>
+            <div style={{
+              fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, lineHeight: 1.5, color: TOKENS.faint,
+              marginBottom: 12, overflowWrap: 'anywhere',
+            }}>{meta}</div>
+
+            {editing ? (
+              <>
+                <textarea
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  rows={8}
+                  style={{
+                    width: '100%', boxSizing: 'border-box', resize: 'vertical',
+                    border: `1px solid ${TOKENS.line}`, borderRadius: RADII.panelTight, padding: '12px 14px',
+                    fontFamily: PAPER_FONTS_V2.serif, fontSize: 15, lineHeight: 1.75, color: TOKENS.inkSoft,
+                    outline: 'none', background: TOKENS.card,
+                  }}
+                />
+                <div style={{ display: 'flex', gap: 9, marginTop: 10 }}>
+                  <button className="rv-ink" onClick={() => { setEdits((m) => ({ ...m, [editKey]: editText })); setEditing(false); }}
+                    style={{
+                      fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, fontWeight: 500, lineHeight: 1,
+                      color: TOKENS.paper, background: TOKENS.ink, border: 'none',
+                      borderRadius: RADII.button, padding: '10px 15px', cursor: 'pointer', transition: 'background .15s',
+                    }}>Save</button>
+                  <button className="dk-pill" onClick={() => setEditing(false)} style={{
+                    fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, fontWeight: 500, lineHeight: 1,
+                    color: TOKENS.muted2, background: 'transparent',
+                    border: `1px solid ${TOKENS.line}`, borderRadius: RADII.button, padding: '10px 15px',
+                    cursor: 'pointer', transition: 'border-color .15s, color .15s',
+                  }}>Cancel</button>
+                </div>
+              </>
+            ) : (
+              <div style={{
+                fontFamily: PAPER_FONTS_V2.serif, fontSize: 15, lineHeight: 1.75, color: TOKENS.inkSoft,
+                whiteSpace: 'pre-line',
+              }}>
+                {redrafting && !body
+                  ? 'Rewriting…'
+                  : body || 'The draft for this channel appears here once the outreach agent finishes.'}
+              </div>
+            )}
+
+            {/* steer the draft — free-form directive across all three channels.
+                A steer supersedes any local edits, so clear the overrides. */}
+            {!editing && (
+              <SteerDraft runId={run.id} drafts={effDrafts} recipientName={personName}
+                onSteer={() => setEdits({})}/>
+            )}
+
+            {/* angles + actions */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              marginTop: 18, paddingTop: 18, borderTop: `1px solid ${TOKENS.chip}`, gap: 12, flexWrap: 'wrap',
+            }}>
+              <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, lineHeight: 1, color: TOKENS.muted }}>
+                  {redrafting ? '↻ rewriting…' : '↻ Another angle:'}
+                </span>
+                {ANGLE_PILLS.map((a) => (
+                  <button key={a.id} className="dk-pill"
+                    disabled={!body || redrafting}
+                    onClick={() => {
+                      if (!body || redrafting) return;
+                      // The rewrite replaces the draft — drop any local edit so
+                      // the new copy actually shows.
+                      setEdits((m) => {
+                        const next = { ...m };
+                        delete next[editKey];
+                        return next;
+                      });
+                      regenerateDraft(
+                        run.id, channel, a.directive,
+                        { subject, body, recipientName: personName },
+                        hasDual ? activeSlot?.key : undefined,
+                      );
+                    }}
+                    style={{
+                      fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, lineHeight: 1, color: TOKENS.muted2,
+                      background: 'transparent', border: `1px solid ${TOKENS.line}`, borderRadius: RADII.pill,
+                      padding: '6px 11px', cursor: body && !redrafting ? 'pointer' : 'default',
+                      opacity: !body || redrafting ? 0.55 : 1, transition: 'border-color .15s, color .15s',
+                    }}>{a.label}</button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 9 }}>
+                <button className="dk-pill"
+                  disabled={!body}
+                  onClick={() => { setEditText(body); setEditing(true); }}
+                  style={{
+                    fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, fontWeight: 500, lineHeight: 1,
+                    color: TOKENS.muted2, background: 'transparent',
+                    border: `1px solid ${TOKENS.line}`, borderRadius: RADII.button, padding: '11px 15px',
+                    cursor: body ? 'pointer' : 'default', opacity: body ? 1 : 0.55,
+                    transition: 'border-color .15s, color .15s',
+                  }}>Edit</button>
+                <button className="rv-ink"
+                  disabled={!body}
+                  onClick={openChannel}
+                  style={{
+                    fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, fontWeight: 500, lineHeight: 1,
+                    color: TOKENS.paper, background: TOKENS.ink, border: 'none',
+                    borderRadius: RADII.button, padding: '12px 18px',
+                    cursor: body ? 'pointer' : 'default', opacity: body ? 1 : 0.55, transition: 'background .15s',
+                  }}>{handoffCta(channel)}</button>
+              </div>
+            </div>
+
+            {/* handoff → did it go out? */}
+            {handoffOpen ? (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10, marginTop: 16,
+                background: TOKENS.cardWarm, border: `1px dashed ${TOKENS.amberLine}`,
+                borderRadius: RADII.panelTight, padding: '12px 16px', animation: 'fadeUp .3s ease', flexWrap: 'wrap',
+              }}>
+                <span style={{
+                  flex: 1, minWidth: 160, fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, lineHeight: 1.5, color: TOKENS.inkSoft,
+                }}>{handoffQuestion(channel)} <em>Did it go out?</em></span>
+                <button onClick={confirmSent} style={{
+                  fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, fontWeight: 500, lineHeight: 1,
+                  color: TOKENS.paper, background: TOKENS.green, border: 'none',
+                  borderRadius: RADII.pill, padding: '9px 14px', cursor: 'pointer', flex: 'none',
+                }}>Sent ✓</button>
+                <button onClick={() => setHandoffOpen(false)} style={{
+                  fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, fontWeight: 500, lineHeight: 1,
+                  color: TOKENS.muted, background: TOKENS.chip, border: 'none',
+                  borderRadius: RADII.pill, padding: '9px 14px', cursor: 'pointer', flex: 'none',
+                }}>Not yet</button>
+              </div>
+            ) : (
+              body && (
+                <div style={{ marginTop: 16, fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, lineHeight: 1.6, color: TOKENS.faint }}>
+                  When you come back we&apos;ll ask <em>&ldquo;did it go out?&rdquo;</em> — one tap and{' '}
+                  {first || 'they'} land{first ? 's' : ''} in your tracker with the follow-up queued.
+                </div>
+              )
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────── sent state (prototype lines 787–798) ─────────────────────── */
+
+function SentRow({ sent, onBack }) {
+  return (
+    <div style={{
+      marginTop: 20, maxWidth: 820, borderTop: `1px solid ${TOKENS.lineRow}`,
+      padding: '22px 0', animation: 'fadeUp .35s ease',
+    }}>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+        <div style={{
+          width: 20, height: 20, borderRadius: 99, background: TOKENS.green, color: '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: PAPER_FONTS_V2.sans, fontSize: 10, fontWeight: 600, lineHeight: 1, flex: 'none',
+        }}>✓</div>
+        <div>
+          <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 14.5, fontWeight: 500, lineHeight: 1.35, color: TOKENS.ink }}>
+            {sentLine(sent.first, sent.channel)}
+          </div>
+          <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.6, color: TOKENS.muted, marginTop: 3 }}>
+            {sentSub(sent.first)}
+          </div>
+          <button onClick={onBack} className="rv-back" style={{
+            display: 'inline-block', marginTop: 14, background: 'transparent', cursor: 'pointer',
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, fontWeight: 500, lineHeight: 1, color: TOKENS.muted2,
+            border: `1px solid ${TOKENS.line}`, borderRadius: RADII.button, padding: '11px 16px',
+            transition: 'border-color .15s, color .15s',
+          }}>← Back to the Desk</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────── error state ─────────────────────── */
+// NEEDS-YOU chip is already amber; the message, the identify shortlist and the
+// retry affordances restyled to the token language. Same actions as before.
+
+function RunErrorBlock({ run }) {
+  // Only the server's real disambiguation shortlist is offered for a retry —
+  // the local parse preview (inferPersonV3/makeP, marked by companySlug)
+  // fabricates sample people and never renders.
+  const candidates = (Array.isArray(run.candidates) ? run.candidates : [])
+    .filter((c) => c && !('companySlug' in c));
+  return (
+    <div style={{ marginTop: 10, maxWidth: 820 }}>
+      <div style={{
+        background: TOKENS.amberWash, border: `1px solid ${TOKENS.amberLine}`,
+        borderRadius: RADII.panel, padding: '13px 16px',
+        fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, lineHeight: 1.55, color: TOKENS.inkSoft,
+      }}>{run.error}</div>
+
+      {candidates.length > 0 && (
+        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {candidates.map((c, i) => (
+            <button key={c.name || i} className="rv-alt"
+              onClick={() => retryRun(run.id, {
+                name: c.name, role: c.role ?? null, company: c.company ?? null, linkedin: c.linkedin ?? null,
+              })}
+              style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+                padding: '11px 16px', background: TOKENS.card,
+                border: `1px solid ${TOKENS.lineSoft}`, borderRadius: RADII.panelTight,
+                cursor: 'pointer', textAlign: 'left', transition: 'border-color .15s',
+              }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 15, lineHeight: 1.3, color: TOKENS.ink }}>{c.name}</div>
+                {(c.role || c.company) && (
+                  <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, lineHeight: 1.4, color: TOKENS.muted }}>
+                    {[c.role, c.company].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+              </div>
+              {c.confidence != null && (
+                <span style={{
+                  fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, fontWeight: 500, lineHeight: 1,
+                  color: TOKENS.amber, background: TOKENS.amberBg, borderRadius: 4, padding: '4px 7px', flex: 'none',
+                }}>{c.confidence}%</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {run.suggestedKind === 'job' && candidates.length === 0 && (
+          <button className="rv-ink" onClick={() => switchRunToJob(run.id)} style={{
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, fontWeight: 500, lineHeight: 1,
+            color: TOKENS.paper, background: TOKENS.ink, border: 'none',
+            borderRadius: RADII.button, padding: '11px 15px', cursor: 'pointer', transition: 'background .15s',
+          }}>Run as a job application →</button>
+        )}
+        <button className="dk-pill" onClick={() => retryRun(run.id)} style={{
+          fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, fontWeight: 500, lineHeight: 1,
+          color: TOKENS.muted2, background: 'transparent',
+          border: `1px solid ${TOKENS.line}`, borderRadius: RADII.button, padding: '11px 15px',
+          cursor: 'pointer', transition: 'border-color .15s, color .15s',
+        }}>↻ Retry</button>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────── steer the draft ─────────────────────── */
+
+// Rotating placeholder hints for the "steer the draft" input. Cycle slowly so
+// they read as suggestions, not noise; paused while focused or non-empty.
+const STEER_HINTS = [
+  "focus on their pottery side project",
+  "mention we both went to Cornell",
+  "lean on the fundraising angle",
+  "emphasize their recent NYC move",
+];
+
+// Free-form directive fanned across all three channels via steerAllChannels
+// (existing store action). Reads busy/error/history from the live run so a
+// steer kicked off here shows progress anywhere it's mounted.
+function SteerDraft({ runId, drafts, recipientName, onSteer }) {
+  const [value, setValue] = useState("");
+  const [focused, setFocused] = useState(false);
+  const [hintIdx, setHintIdx] = useState(0);
+  const runs = useRuns();
+  const run = runs.find((r) => r.id === runId);
+  const busy = !!run?.steering;
+  const err = run?.steerError;
+  const history = Array.isArray(run?.steerHistory) ? run.steerHistory : [];
+  const hasAnyDraft = Array.isArray(drafts) && drafts.some((d) => (d?.body || "").trim());
+  const disabled = busy || !hasAnyDraft;
+
+  useEffect(() => {
+    if (focused || value) return;
+    const t = setInterval(() => setHintIdx((i) => (i + 1) % STEER_HINTS.length), 4000);
+    return () => clearInterval(t);
+  }, [focused, value]);
+
+  function submit(directive) {
+    const text = (directive || "").trim();
+    if (!text || disabled) return;
+    setValue("");
+    if (onSteer) onSteer();
+    steerAllChannels(runId, text, { drafts, recipientName });
+  }
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        border: `1px solid ${TOKENS.line}`, borderRadius: RADII.button, background: TOKENS.card,
+        padding: '2px 2px 2px 12px', opacity: disabled && !busy ? 0.55 : 1,
+      }}>
+        <input
+          value={value}
+          disabled={disabled}
+          placeholder={busy ? 'rewriting all three…' : hasAnyDraft ? `steer the draft — ${STEER_HINTS[hintIdx]}` : 'waiting for the draft…'}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(value); } }}
+          style={{
+            flex: 1, border: 'none', outline: 'none', background: 'transparent', minWidth: 0,
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.4, color: TOKENS.ink, padding: '8px 0',
+          }}
+        />
+        <button
+          onClick={() => submit(value)}
+          disabled={disabled || !value.trim()}
+          aria-label="Steer all three drafts"
+          className={value.trim() && !disabled ? 'rv-ink' : undefined}
+          style={{
+            border: 'none', borderRadius: RADII.buttonTight, padding: '8px 12px', flex: 'none',
+            background: value.trim() && !disabled ? TOKENS.ink : TOKENS.chip,
+            color: value.trim() && !disabled ? TOKENS.paper : TOKENS.faint,
+            cursor: value.trim() && !disabled ? 'pointer' : 'default',
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, fontWeight: 500, lineHeight: 1, transition: 'background .15s',
+          }}>{busy ? '…' : '↵'}</button>
+      </div>
+      {history.length > 0 && (
+        <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{
+            fontFamily: PAPER_FONTS_V2.mono, fontSize: 9.5, fontWeight: 500, letterSpacing: '.08em', color: TOKENS.faint,
+          }}>RECENT</span>
+          {history.map((h) => (
+            <button key={h} onClick={() => submit(h)} disabled={disabled} className="dk-pill" style={{
+              fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, lineHeight: 1, color: TOKENS.muted2,
+              background: 'transparent', border: `1px solid ${TOKENS.line}`, borderRadius: RADII.pill,
+              padding: '6px 11px', cursor: disabled ? 'default' : 'pointer', maxWidth: 220,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              transition: 'border-color .15s, color .15s',
+            }}>{h}</button>
+          ))}
+        </div>
+      )}
+      {err && (
+        <div style={{ marginTop: 6, fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, color: TOKENS.red }}>{err}</div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────── signed-out blur gate overlay (prototype lines 770–783) ─────────────────────── */
+
+// The card over the blurred output for a signed-out viewer: amber "CREW
+// FINISHED · YOU'RE SIGNED OUT" chip and an OUTLINE Google button with the
+// multicolor G (per the prototype — not the old green chip / solid ink button).
+// The sign-in control persists enough of the run to sessionStorage — which
+// survives the same-origin OAuth + onboarding redirect — then kicks off the
+// real Supabase Google OAuth, returning to /app/compose where the run re-opens
 // unlocked (see ComposeV3's pendingRun restore effect).
 function BlurGateOverlay({ kind, run, input }) {
   async function signIn() {
@@ -634,51 +1883,53 @@ function BlurGateOverlay({ kind, run, input }) {
   }
   return (
     <div style={{
-      position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
-      padding: 16, zIndex: 3,
+      position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-start',
+      justifyContent: 'center', paddingTop: 44, zIndex: 20,
     }}>
       <div style={{
-        width: '100%', maxWidth: 410, background: TOKENS.card,
-        border: `1px solid ${TOKENS.lineSoft}`, borderRadius: 16,
-        boxShadow: '0 16px 48px rgba(60,50,30,.2)',
-        padding: '26px 26px 24px', textAlign: 'center', animation: 'fadeUp .3s ease',
+        width: 410, maxWidth: '92%', boxSizing: 'border-box', background: TOKENS.card,
+        border: `1px solid ${TOKENS.line}`, borderRadius: RADII.modal,
+        boxShadow: SHADOWS.modal,
+        padding: '34px 38px 28px', textAlign: 'center', animation: 'fadeUp .35s ease',
       }}>
         <span style={{
           display: 'inline-block', fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500,
-          letterSpacing: '.12em', textTransform: 'uppercase', color: TOKENS.green,
-          background: TOKENS.greenBg, borderRadius: 99, padding: '5px 11px',
-        }}>Crew finished · you&apos;re signed out</span>
+          lineHeight: 1, letterSpacing: '.1em', textTransform: 'uppercase', color: TOKENS.amber,
+          background: TOKENS.amberBg, borderRadius: 5, padding: '5px 9px', marginBottom: 14,
+        }}>{GATE_CHIP_LABEL}</span>
         <div style={{
-          fontFamily: PAPER_FONTS_V2.serif, fontSize: 22, lineHeight: 1.25, color: TOKENS.ink,
-          margin: '14px 0 8px',
+          fontFamily: PAPER_FONTS_V2.serif, fontSize: 24, lineHeight: 1.3, letterSpacing: '-.01em',
+          color: TOKENS.ink, marginBottom: 10,
         }}>The work is done. It&apos;s waiting behind the blur.</div>
         <div style={{
-          fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, lineHeight: 1.5, color: TOKENS.muted, marginBottom: 18,
+          fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, lineHeight: 1.65, color: TOKENS.muted, marginBottom: 24,
         }}>{gateSummary(kind)}</div>
-        <button onClick={signIn} style={{
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          width: '100%', padding: '11px 16px', cursor: 'pointer',
-          background: TOKENS.ink, color: TOKENS.paper, border: 'none', borderRadius: 9,
-          fontFamily: PAPER_FONTS_V2.sans, fontSize: 14, fontWeight: 500,
+        <button onClick={signIn} className="rv-google" style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, width: '100%',
+          border: `1px solid ${TOKENS.dashed2}`, borderRadius: RADII.panelTight, padding: '13px 18px',
+          cursor: 'pointer', background: TOKENS.card, transition: 'background .15s, border-color .15s',
         }}>
-          <GoogleGlyph/> Sign in with Google
+          <GoogleGlyph/>
+          <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 14, fontWeight: 500, lineHeight: 1, color: TOKENS.ink }}>
+            {GATE_BUTTON_LABEL}
+          </span>
         </button>
-        <div style={{
-          fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, lineHeight: 1.5, color: TOKENS.faint, marginTop: 12,
-        }}>Free — this run is saved to your account the moment you&apos;re in.</div>
+        <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, lineHeight: 1.7, color: TOKENS.faint, marginTop: 18 }}>
+          {GATE_FOOTNOTE}
+        </div>
       </div>
     </div>
   );
 }
 
-// The multi-path Google "G" mark, sized for the gate button.
-function GoogleGlyph({ size = 16 }) {
+// The multicolor Google "G" (prototype's exact paths), sized for the gate button.
+function GoogleGlyph({ size = 18 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" style={{ flexShrink: 0 }}>
-      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/>
-      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
-      <path fill="#4CAF50" d="M24 44c5.5 0 10.5-2.1 14.3-5.6l-6.6-5.6C29.7 34.5 27 35.5 24 35.5c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
-      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4 5.6l6.6 5.6C41.8 36 44 30.6 44 24c0-1.3-.1-2.4-.4-3.5z"/>
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
     </svg>
   );
 }
@@ -890,200 +2141,10 @@ function DeskComposer({ input, setInput, screenshot, setScreenshot, onGo, fillCo
   );
 }
 
-/* ─────────────────────── parsed / review ─────────────────────── */
-
-function ParsedCard({ p, stage, kind, parsed, onConfirm, onChoose, hideConfirm }) {
-  const parsing = stage === 'parsing';
-  const [picking, setPicking] = useState(false);
-
-  if (!parsed) {
-    return (
-      <PaperCard p={p} style={{ marginTop: 14, padding: '28px 26px' }} color={p.tea}>
-        <Shimmer p={p} width="40%" height={16}/>
-        <div style={{ height: 14 }}/>
-        <Shimmer p={p} width="80%" height={28}/>
-      </PaperCard>
-    );
-  }
-
-  if (kind === 'person') {
-    const candidates = parsed.candidates;
-    const chosen = parsed.chosen;
-    return (
-      <PaperCard p={p} hardShadow color={p.stamp} style={{ marginTop: 14, padding: '24px 26px' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 18, marginBottom: 14 }}>
-          <div style={{
-            width: 72, height: 72, background: p.marigold, color: p.paper,
-            display: 'grid', placeItems: 'center',
-            fontFamily: PAPER_FONTS.display, fontSize: 32, border: `1.5px solid ${p.ink}`,
-          }}>{chosen.initials}</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <Eyebrow p={p} en={`Best match · ${chosen.confidence}% confidence`} color={p.leaf}/>
-            <div style={{
-              fontFamily: PAPER_FONTS.display, fontSize: 34, lineHeight: 1.05, marginTop: 4, color: p.ink,
-            }}>{chosen.name}</div>
-            <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 17, color: p.inkSoft, marginTop: 4 }}>
-              {chosen.role} · {chosen.company}
-            </div>
-            <div style={{
-              display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 10,
-              fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.04em',
-            }}>
-              <span>● {chosen.location}</span>
-              <span>· {chosen.signal}</span>
-            </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {!hideConfirm && <InkButton p={p} color={p.stamp} onClick={onConfirm} disabled={parsing}>Send the crew →</InkButton>}
-            <button onClick={() => setPicking(!picking)} style={{
-              background: 'transparent', border: 'none', color: p.inkSoft,
-              fontFamily: PAPER_FONTS.mono, fontSize: 11, letterSpacing: '.06em',
-              cursor: 'pointer', textTransform: 'uppercase', textAlign: 'right',
-            }}>{picking ? '× close' : '↓ other matches'}</button>
-          </div>
-        </div>
-
-        {picking && (
-          <div style={{ marginTop: 12, paddingTop: 14, borderTop: `1.5px dashed ${p.ink}30` }}>
-            <Eyebrow p={p} en="Other candidates Jugaadu found" color={p.inkMute}/>
-            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {candidates.filter(c => c.name !== chosen.name).map(c => (
-                <button key={c.name} onClick={() => { onChoose({ candidates, chosen: c }); setPicking(false); }} style={{
-                  display: 'grid', gridTemplateColumns: '36px 1fr auto', gap: 12, alignItems: 'center',
-                  padding: '10px 12px', background: p.paper,
-                  border: `1.5px solid ${p.ink}24`, cursor: 'pointer', textAlign: 'left',
-                }}>
-                  <div style={{
-                    width: 32, height: 32, background: p.paperShade, color: p.ink,
-                    display: 'grid', placeItems: 'center',
-                    fontFamily: PAPER_FONTS.display, fontSize: 13,
-                  }}>{c.initials}</div>
-                  <div>
-                    <div style={{ fontFamily: PAPER_FONTS.sans, fontSize: 14, color: p.ink }}>{c.name}</div>
-                    <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.02em' }}>{c.role} · {c.company}</div>
-                  </div>
-                  <span style={{
-                    fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.stamp,
-                    letterSpacing: '.04em',
-                  }}>{c.confidence}%</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </PaperCard>
-    );
-  }
-
-  // job — not parsed yet: be honest that the posting is read on send, don't
-  // show fabricated company/role/skills.
-  if (parsed.unparsed) {
-    const host = jobHost(parsed.source);
-    return (
-      <PaperCard p={p} hardShadow color={p.marigold} style={{ marginTop: 14, padding: '24px 26px' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 18 }}>
-          <div style={{
-            width: 64, height: 64, background: p.ink, color: p.paper,
-            display: 'grid', placeItems: 'center',
-            fontFamily: PAPER_FONTS.display, fontSize: 28,
-          }}>↗</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <Eyebrow p={p} en="Job link · not parsed yet" color={p.marigoldDeep}/>
-            <div style={{
-              fontFamily: PAPER_FONTS.display, fontSize: 28, lineHeight: 1.05, marginTop: 4, color: p.ink,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>{host || 'Job posting'}</div>
-            {parsed.source && (
-              <div style={{
-                fontFamily: PAPER_FONTS.mono, fontSize: 12, color: p.inkMute, marginTop: 4,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>{parsed.source}</div>
-            )}
-            <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 16, color: p.inkSoft, marginTop: 10 }}>
-              Jugaadu reads the full posting when you send the crew.
-            </div>
-          </div>
-          {!hideConfirm && <InkButton p={p} color={p.stamp} onClick={onConfirm} disabled={parsing}>Send the crew →</InkButton>}
-        </div>
-      </PaperCard>
-    );
-  }
-
-  // job
-  return (
-    <PaperCard p={p} hardShadow color={p.marigold} style={{ marginTop: 14, padding: '24px 26px' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 18 }}>
-        <div style={{
-          width: 64, height: 64, background: p.ink, color: p.paper,
-          display: 'grid', placeItems: 'center',
-          fontFamily: PAPER_FONTS.display, fontSize: 28,
-        }}>{parsed.logo}</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Eyebrow p={p} en={`Job parsed · ${parsed.posted}`} color={p.marigoldDeep}/>
-          <div style={{
-            fontFamily: PAPER_FONTS.display, fontSize: 28, lineHeight: 1.05, marginTop: 4, color: p.ink,
-          }}>{parsed.role}</div>
-          <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 17, color: p.inkSoft, marginTop: 4 }}>
-            {parsed.company} · {parsed.location} · {parsed.comp}
-          </div>
-          <div style={{ marginTop: 12, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {parsed.tags.map(tag => (
-              <span key={tag} style={{
-                padding: '3px 10px', background: p.paper, border: `1px solid ${p.ink}30`,
-                fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.ink, letterSpacing: '.02em',
-              }}>{tag}</span>
-            ))}
-          </div>
-        </div>
-        {!hideConfirm && <InkButton p={p} color={p.stamp} onClick={onConfirm} disabled={parsing}>Send the crew →</InkButton>}
-      </div>
-    </PaperCard>
-  );
-}
-
-function Shimmer({ p, width = 100, height = 12 }) {
-  return (
-    <div style={{
-      display: 'inline-block', width, height,
-      background: `linear-gradient(90deg, ${p.ink}10 0%, ${p.ink}24 50%, ${p.ink}10 100%)`,
-      backgroundSize: '200% 100%', animation: 'shimmer 1.4s linear infinite',
-    }}/>
-  );
-}
-
-/* ─────────────────────── working agents row ─────────────────────── */
-
-const AGENTS_DATA = {
-  person: [
-    { k: 'person',   nameEn: 'Person Khoji',   nameHi: 'खोजी',       glyph: '◆', color: 'leaf',     desc: 'finds the right human',
-      steps: ['scraping their profile…', 'cross-checking LinkedIn…', 'ranking by signal…', 'locking in target…', 'identified ✓'] },
-    { k: 'email',    nameEn: 'Email Wallah',   nameHi: 'ईमेल वाला',  glyph: '✉', color: 'stamp',    desc: 'verifies a working address',
-      steps: ['querying Apollo…', 'checking Hunter…', 'verifying MX…', 'cross-validating…', 'address checked'] },
-    { k: 'outreach', nameEn: 'Outreach Bhai',  nameHi: 'आउटरीच भाई', glyph: '↗', color: 'marigold', desc: 'drafts email, LinkedIn & X DMs',
-      steps: ['reading their threads…', 'finding a real hook…', 'matching your voice…', 'drafting 3 channels…', 'drafts ready'] },
-  ],
-  job: [
-    { k: 'resume',   nameEn: 'Resume Darzi',   nameHi: 'दर्जी',      glyph: '§', color: 'marigold', desc: 'tailors your CV to the JD',
-      steps: ['pulling your CV…', 'matching to JD…', 'rewriting bullets…', 'checking ATS…', 'PDF + Word ready'] },
-    { k: 'person',   nameEn: 'Person Khoji',   nameHi: 'खोजी',       glyph: '◆', color: 'leaf',     desc: 'finds the hiring manager',
-      steps: ['scraping the team…', 'ranking by fit…', 'cross-checking LinkedIn…', 'shortlisting…', 'hiring manager picked'] },
-    { k: 'email',    nameEn: 'Email Wallah',   nameHi: 'ईमेल वाला',  glyph: '✉', color: 'stamp',    desc: 'verifies a working address',
-      steps: ['querying Apollo…', 'checking Hunter…', 'verifying MX…', 'cross-validating…', 'address checked'] },
-    { k: 'outreach', nameEn: 'Outreach Bhai',  nameHi: 'आउटरीच भाई', glyph: '↗', color: 'tea',      desc: 'drafts the cold email + followup',
-      steps: ['reading her threads…', 'finding a hook…', 'matching voice…', 'drafting + queueing followup…', 'cold email ready'] },
-  ],
-};
-
-
 function defaultSelectionFor(kind, haveEmail) {
-  const all = (AGENTS_DATA[kind] || AGENTS_DATA.person).map((a) => a.k);
-  const set = new Set(all);
+  const set = new Set(AGENT_KEYS[kind] || AGENT_KEYS.person);
   if (haveEmail) set.delete('email');
   return set;
-}
-
-function colorOf(p, name) {
-  return ({ marigold: p.marigold, stamp: p.stamp, leaf: p.leaf, tea: p.tea }[name]) || p.ink;
 }
 
 // True once at least one agent has streamed back a real deliverable, so the
@@ -1122,1025 +2183,6 @@ function emailVerdict(enrichment) {
   }
   if (Array.isArray(enrichment.guesses) && enrichment.guesses.length > 0) return 'format guess';
   return 'no address found';
-}
-
-function AgentRowV3({ p, kind, stage, progress, enrichment, selectedAgents, stepErrors }) {
-  const isMobile = useIsMobile();
-  const all = AGENTS_DATA[kind] || AGENTS_DATA.person;
-  // Filter to the user's frozen selection. If the run pre-dates the selector or
-  // wasn't given one (e.g. a screenshot-only run), show all agents.
-  const agents = Array.isArray(selectedAgents) && selectedAgents.length > 0
-    ? all.filter((a) => selectedAgents.includes(a.k))
-    : all;
-  const mobileCols = Math.min(agents.length, 2) || 1;
-  return (
-    <div style={{
-      marginTop: 14, display: 'grid',
-      gridTemplateColumns: isMobile ? `repeat(${mobileCols}, 1fr)` : `repeat(${agents.length || 1}, 1fr)`, gap: 12,
-    }}>
-      {agents.map((a, idx) => {
-        const pct = progress[a.k] || (stage === 'done' ? 100 : 0);
-        const working = stage === 'working' && pct < 100;
-        const done = pct >= 100;
-        const stepI = Math.min(a.steps.length - 1, Math.floor((pct / 100) * a.steps.length));
-        const ac = colorOf(p, a.color);
-        // A non-fatal failure on this agent (e.g. the résumé branch erroring
-        // while the rest of the crew finished) trumps the scripted captions.
-        const stepError = stepErrors?.[a.k] || null;
-        // Email Wallah's done state shows Hunter's actual verdict; everyone else
-        // (and the in-progress steps) uses the scripted step labels.
-        const realVerdict = a.k === 'email' && done ? emailVerdict(enrichment) : null;
-        const stepLabel = stepError
-          ? stepError
-          : pct === 0 && stage === 'working'
-            ? 'queued…'
-            : (realVerdict || a.steps[stepI]);
-        return (
-          <div key={a.k} style={{
-            background: p.card, color: p.ink,
-            border: `1.5px solid ${done ? p.ink : p.ink + '40'}`,
-            boxShadow: done ? `4px 4px 0 ${ac}` : 'none',
-            padding: '16px 16px 14px', position: 'relative', minWidth: 0,
-            minHeight: 168, display: 'flex', flexDirection: 'column', gap: 8,
-            transition: 'box-shadow .25s, border-color .25s',
-          }}>
-            <div style={{
-              position: 'absolute', top: 0, left: 0, right: 0, height: 3,
-              background: p.ink + '14', overflow: 'hidden',
-            }}>
-              <div style={{
-                height: '100%', width: `${pct}%`, background: ac,
-                boxShadow: working ? `0 0 10px ${ac}` : 'none',
-                transition: 'width .3s',
-              }}/>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-              <div style={{
-                width: 36, height: 36,
-                background: done ? ac : 'transparent', color: done ? p.paper : ac,
-                border: `1.5px solid ${ac}`,
-                display: 'grid', placeItems: 'center',
-                fontFamily: PAPER_FONTS.display, fontSize: 18,
-              }}>{a.glyph}</div>
-              <span style={{
-                fontFamily: PAPER_FONTS.mono, fontSize: 9.5, letterSpacing: '.16em',
-                color: done ? ac : p.inkMute, textTransform: 'uppercase',
-              }}>Agent {idx + 1}</span>
-            </div>
-            <div>
-              <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 19, lineHeight: 1.05, color: p.ink }}>{a.nameEn}</div>
-            </div>
-            <div style={{
-              marginTop: 'auto', padding: '8px 10px',
-              background: done ? p.paper : 'transparent',
-              border: `1px solid ${stepError ? p.stamp + '60' : done ? ac + '60' : p.ink + '20'}`,
-              display: 'flex', alignItems: 'center', gap: 8, minHeight: 36,
-            }}>
-              <span style={{
-                width: 7, height: 7, borderRadius: 999, background: stepError ? p.stamp : ac,
-                animation: working ? 'pulseDot 1.1s ease-in-out infinite' : 'none',
-                opacity: pct === 0 ? .3 : 1, flexShrink: 0,
-              }}/>
-              <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: stepError ? p.stamp : p.ink, lineHeight: 1.3 }}>
-                {stepLabel}
-              </span>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/* ─────────────────────── package (done) ─────────────────────── */
-
-// The email draft surfaced in the package. Shared so the header CTA and the
-// per-card "Open in Gmail" button open the exact same message. Real outreach
-// draft + best-available address; prefer a verified email, fall back to the top
-// format-guess so "To" is never empty. Honest blanks when nothing was found —
-// never fabricated sample copy. Works the same for job and person runs.
-function buildEmailDraft({ drafts, enrichment }) {
-  const emailDraft = Array.isArray(drafts) ? drafts.find((d) => d.channel === 'email') : null;
-  const guess = Array.isArray(enrichment?.guesses) && enrichment.guesses.length
-    ? enrichment.guesses[0].email : '';
-  return {
-    to: enrichment?.email || guess || '',
-    subject: emailDraft?.subject || '',
-    body: emailDraft?.body || '',
-  };
-}
-
-// "Another angle" presets. Each is a one-line directive the redraft endpoint
-// applies to the draft that's currently on screen — facts and ask preserved,
-// just a different cut.
-const ANGLE_PRESETS = [
-  { id: 'angle',   label: '↻ Another angle',   directive: 'Rewrite with a completely different opening hook and angle. Keep the same facts and the single ask, but find a fresh way in — do not reuse the first sentence.' },
-  { id: 'shorter', label: '✂ Make it shorter', directive: 'Cut it down hard — aim for 60–80 words. Keep only the single strongest specific reference and the ask. Strip throat-clearing and filler.' },
-  { id: 'founder', label: '⚡ More founder-like', directive: 'Rewrite in a direct, high-conviction founder voice: short sentences, plain words, a clear point of view, no hedging and no corporate softeners.' },
-  { id: 'warmer',  label: '☺ Warmer',          directive: 'Make it warmer and more personable while staying concise — a touch more human, still not gushing or over-familiar.' },
-  { id: 'formal',  label: '◷ More formal',     directive: 'Make the tone a notch more formal and polished, without becoming stiff or corporate.' },
-];
-
-// The "Another angle" control: an outline button that opens a small menu of
-// rewrite presets. Selecting one calls regenerateDraft, which swaps the new copy
-// into the run's drafts so the card re-renders. Reads its busy/error state from
-// the live run so a rewrite kicked off here shows progress anywhere it's mounted.
-function AnotherAngle({ p, runId, channel, subject, body, recipientName, style, slot }) {
-  const [open, setOpen] = useState(false);
-  const runs = useRuns();
-  const run = runs.find((r) => r.id === runId);
-  const busy = run?.redrafting === channel;
-  const err = run?.redraftError;
-  const disabled = busy || !body;
-
-  return (
-    <div style={{ position: 'relative', ...style }}>
-      <InkButton p={p} kind="outline" size="sm" style={{ width: '100%' }}
-        disabled={disabled}
-        onClick={() => setOpen((o) => !o)}>
-        {busy ? 'Rewriting…' : '↻ Another angle ▾'}
-      </InkButton>
-      {open && !busy && (
-        <>
-          {/* click-away catcher */}
-          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 19 }}/>
-          <div style={{
-            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 20,
-            background: p.paper, border: `1.5px solid ${p.ink}`,
-            boxShadow: `3px 3px 0 ${p.ink}1a`,
-          }}>
-            {ANGLE_PRESETS.map((preset, i) => (
-              <button key={preset.id} onClick={() => {
-                setOpen(false);
-                regenerateDraft(runId, channel, preset.directive, { subject, body, recipientName }, slot);
-              }} style={{
-                display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer',
-                padding: '8px 12px', background: 'transparent', color: p.ink,
-                border: 'none', borderTop: i ? `1px solid ${p.ink}1a` : 'none',
-                fontFamily: PAPER_FONTS.sans, fontSize: 12.5,
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = p.ink + '0d'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
-                {preset.label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-      {err && (
-        <div style={{
-          marginTop: 6, fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.stamp,
-        }}>{err}</div>
-      )}
-    </div>
-  );
-}
-
-// Rotating placeholder hints for the "Steer the draft" input. Cycle slowly so
-// they read as suggestions, not noise; pause cycling whenever the input is
-// focused or non-empty.
-const STEER_HINTS = [
-  "focus on their pottery side project",
-  "mention we both went to Cornell",
-  "lean on the fundraising angle",
-  "emphasize their recent NYC move",
-];
-
-// "Steer the draft" — a free-form text strip that fans one directive across all
-// three channels via steerAllChannels. Sits between the draft body and the
-// action row inside PersonPackage. Reads busy/error/history from the live run
-// so a steer kicked off from one tab is visible from any tab.
-function SteerDraft({ p, runId, drafts, recipientName }) {
-  const [value, setValue] = useState("");
-  const [focused, setFocused] = useState(false);
-  const [hintIdx, setHintIdx] = useState(0);
-  const runs = useRuns();
-  const run = runs.find((r) => r.id === runId);
-  const busy = !!run?.steering;
-  const err = run?.steerError;
-  const history = Array.isArray(run?.steerHistory) ? run.steerHistory : [];
-  const hasAnyDraft = Array.isArray(drafts) && drafts.some((d) => (d?.body || "").trim());
-  const disabled = busy || !hasAnyDraft;
-
-  useEffect(() => {
-    if (focused || value) return;
-    const t = setInterval(() => setHintIdx((i) => (i + 1) % STEER_HINTS.length), 4000);
-    return () => clearInterval(t);
-  }, [focused, value]);
-
-  function submit(directive) {
-    const text = (directive || "").trim();
-    if (!text || disabled) return;
-    setValue("");
-    steerAllChannels(runId, text, { drafts, recipientName });
-  }
-
-  return (
-    <div style={{ marginTop: 12 }}>
-      {busy && (
-        <div style={{ marginBottom: 6 }}>
-          <span style={{
-            fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.stamp, letterSpacing: '.08em',
-          }}>REWRITING ALL THREE…</span>
-        </div>
-      )}
-      <div style={{
-        display: 'flex', alignItems: 'stretch', gap: 0,
-        border: `1.5px solid ${p.ink}`, background: p.paper,
-        opacity: disabled && !busy ? 0.55 : 1,
-      }}>
-        <textarea
-          rows={1}
-          value={value}
-          disabled={disabled}
-          placeholder={hasAnyDraft ? STEER_HINTS[hintIdx] : 'waiting for the draft…'}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              submit(value);
-            }
-          }}
-          style={{
-            flex: 1, resize: 'none', border: 'none', outline: 'none', background: 'transparent',
-            color: p.ink, padding: '10px 12px',
-            fontFamily: PAPER_FONTS.sans, fontSize: 13.5, lineHeight: 1.4,
-          }}
-        />
-        <button
-          onClick={() => submit(value)}
-          disabled={disabled || !value.trim()}
-          aria-label="Steer all three drafts"
-          style={{
-            padding: '0 14px', border: 'none', borderLeft: `1.5px solid ${p.ink}`,
-            background: value.trim() && !disabled ? p.ink : 'transparent',
-            color: value.trim() && !disabled ? p.paper : p.ink,
-            cursor: value.trim() && !disabled ? 'pointer' : 'default',
-            fontFamily: PAPER_FONTS.mono, fontSize: 12, letterSpacing: '.08em',
-          }}>
-          {busy ? '…' : 'SEND ↵'}
-        </button>
-      </div>
-      {history.length > 0 && (
-        <div style={{
-          marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
-        }}>
-          <span style={{
-            fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute, letterSpacing: '.08em',
-          }}>RECENT</span>
-          {history.map((h) => (
-            <button key={h} onClick={() => submit(h)} disabled={disabled} style={{
-              padding: '4px 8px', background: 'transparent', color: p.ink,
-              border: `1px solid ${p.ink}40`, cursor: disabled ? 'default' : 'pointer',
-              fontFamily: PAPER_FONTS.sans, fontSize: 11.5, maxWidth: 220,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}
-            onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = p.ink + '0d'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
-              {h}
-            </button>
-          ))}
-        </div>
-      )}
-      {err && (
-        <div style={{
-          marginTop: 6, fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.stamp,
-        }}>{err}</div>
-      )}
-    </div>
-  );
-}
-
-function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, run, onReset, go, storyIsEmpty }) {
-  const headerEmail = buildEmailDraft({ drafts, enrichment });
-  const isMobile = useIsMobile();
-  return (
-    <div style={{ marginTop: 18 }}>
-      <PaperCard p={p} hardShadow color={p.stamp} style={{ padding: '20px 24px' }}>
-        <div style={{
-          display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
-          gap: 18, flexWrap: 'wrap',
-        }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{
-              fontFamily: PAPER_FONTS.display, fontSize: isMobile ? 23 : 30, lineHeight: 1.05, color: p.ink,
-            }}>
-              Everything you need to send,
-              <span style={{ fontStyle: 'italic', color: p.stamp }}> in your voice.</span>
-            </div>
-          </div>
-          <div style={{
-            display: 'flex', gap: 10,
-            flexDirection: isMobile ? 'column' : 'row',
-            width: isMobile ? '100%' : 'auto',
-          }}>
-            <InkButton p={p} kind="outline" onClick={onReset}
-              style={isMobile ? { width: '100%', justifyContent: 'center' } : undefined}>↺ Another</InkButton>
-            <InkButton p={p} color={p.stamp} onClick={() => headerEmail.body && openGmailCompose(headerEmail)}
-              style={isMobile ? { width: '100%', justifyContent: 'center' } : undefined}>
-              <span style={{
-                width: 18, height: 18, background: p.paper, color: p.stamp,
-                display: 'grid', placeItems: 'center', fontFamily: PAPER_FONTS.mono,
-                fontSize: 11, fontWeight: 700,
-              }}>G</span>
-              Open in Gmail
-            </InkButton>
-          </div>
-        </div>
-      </PaperCard>
-
-      {kind === 'person'
-        ? <PersonPackage p={p} parsed={parsed} drafts={drafts} enrichment={enrichment} run={run} go={go} storyIsEmpty={storyIsEmpty}/>
-        : <JobPackage    p={p} parsed={parsed} drafts={drafts} enrichment={enrichment} person={person} run={run} go={go} storyIsEmpty={storyIsEmpty}/>
-      }
-    </div>
-  );
-}
-
-// Thin-Story treatment shared by the output panels. Shows only when the account
-// has no resume on file (storyIsEmpty), so the crew is weaving from guesses. The
-// "Add resume" control routes to Story, where ingesting a resume re-weaves the
-// run with real material. Amber throughout, per the prototype's thin-Story state.
-function ThinStoryBanner({ go, note, header = THIN_STORY.banner }) {
-  return (
-    <div style={{
-      marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-      background: TOKENS.amberWash, border: `1px solid ${TOKENS.amberLine}`, borderRadius: 10,
-      padding: '9px 12px',
-    }}>
-      <span style={{
-        fontFamily: PAPER_FONTS_V2.mono, fontSize: 9.5, fontWeight: 500, letterSpacing: '.12em',
-        textTransform: 'uppercase', color: TOKENS.amber, flexShrink: 0,
-      }}>⚠ {header}</span>
-      <span style={{
-        fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, lineHeight: 1.4, color: TOKENS.muted2, minWidth: 0, flex: 1,
-      }}>{note}</span>
-      <button onClick={() => go('resume')} style={{
-        fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, fontWeight: 500, color: TOKENS.paper,
-        background: TOKENS.ink, border: 'none', borderRadius: 99, padding: '6px 12px', cursor: 'pointer', flexShrink: 0,
-      }}>{THIN_STORY.cta}</button>
-    </div>
-  );
-}
-
-function PersonPackage({ p, parsed, drafts, enrichment, run, go, storyIsEmpty }) {
-  const [channel, setChannel] = useState('email'); // email | linkedin | x
-  const isMobile = useIsMobile();
-  const thin = isThinStory(storyIsEmpty);
-
-  // The real researched person streamed back from /api/compose (research step).
-  // Fall back to the lightweight paste-preview only for the headline fields, so
-  // the card never goes blank — but everything shown is the actual human, not
-  // fabricated sample copy.
-  const research = run?.person || null;
-  const stub = parsed?.chosen || {};
-  const personName = research?.name || stub.name || null;
-  const personRole = research?.role || stub.role || null;
-  const personCompany = research?.company || stub.company || null;
-  const personLinks = research?.links || {};
-  const personFacts = (research?.context_lines || []).filter(Boolean);
-  const initials = personName
-    ? personName.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
-    : (stub.initials || '?');
-  const matchLabel = research?.match_confidence ? `${research.match_confidence} match` : null;
-
-  // Real drafts from the Outreach agent. The pipeline speaks 'x_dm'; the UI tabs
-  // say 'x' — normalize so the X tab shows its real draft (and a redraft, which
-  // upserts under 'x', lands in the same slot).
-  const draftByChannel = {};
-  if (Array.isArray(drafts)) for (const d of drafts) {
-    draftByChannel[d.channel === 'x_dm' ? 'x' : d.channel] = d;
-  }
-
-  // Ranked real addresses (verified → plausible → guess) for the email channel.
-  const emailMsg = buildEmailDraft({ drafts, enrichment });
-  const emailCandidates = buildEmailCandidates(enrichment);
-  const emailPrimary = emailCandidates[0] || null;
-  const emailOthers = emailCandidates.slice(1);
-
-  const messages = {
-    email: emailMsg,
-    linkedin: {
-      to: personLinks.linkedin ? personLinks.linkedin.replace(/^https?:\/\//, '') : (personName || ''),
-      subject: null,
-      body: draftByChannel.linkedin?.body || '',
-    },
-    x: {
-      to: personLinks.x ? personLinks.x.replace(/^https?:\/\//, '') : (personName || ''),
-      subject: null,
-      body: draftByChannel.x?.body || '',
-    },
-  };
-  const m = messages[channel];
-
-  return (
-    <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr', gap: 12 }}>
-      {/* draft */}
-      <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
-        {thin && <div style={{ marginBottom: 14, marginTop: -4 }}><ThinStoryBanner go={go} note={THIN_STORY.peopleWarn}/></div>}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
-          {[
-            { id: 'email',    label: '✉ Email',     desc: 'cold email' },
-            { id: 'linkedin', label: 'in LinkedIn', desc: 'DM' },
-            { id: 'x',        label: '𝕏  X',        desc: 'reply / DM' },
-          ].map(c => {
-            const on = channel === c.id;
-            return (
-              <button key={c.id} onClick={() => setChannel(c.id)} style={{
-                flex: 1, minWidth: 0, overflow: 'hidden', padding: '10px 12px',
-                background: on ? p.ink : 'transparent',
-                color: on ? p.paper : p.ink, border: `1.5px solid ${p.ink}`,
-                fontFamily: PAPER_FONTS.display, fontSize: 16, textAlign: 'left',
-                cursor: 'pointer',
-              }}>
-                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.label}</div>
-                <div style={{
-                  fontFamily: PAPER_FONTS.mono, fontSize: 9.5, letterSpacing: '.1em',
-                  opacity: .7, marginTop: 2, textTransform: 'uppercase',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>{c.desc}</div>
-              </button>
-            );
-          })}
-        </div>
-        <div style={{
-          background: p.paper, border: `1.5px solid ${p.ink}30`,
-          padding: '14px 16px', fontFamily: PAPER_FONTS.sans, fontSize: 14, lineHeight: 1.55,
-        }}>
-          <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute, marginBottom: 6, overflowWrap: 'anywhere' }}>
-            <span style={{ color: p.inkMute }}>To &nbsp;</span>
-            <span style={{ color: m.to ? p.ink : p.inkMute }}>
-              {m.to || (channel === 'email' ? '(no public email found — add it in Gmail)' : '(profile link not found)')}
-            </span>
-            {channel === 'email' && emailPrimary && <TierBadge p={p} tier={emailPrimary.tier}/>}
-          </div>
-          {channel === 'email' && emailOthers.length > 0 && (
-            <EmailOptions p={p} candidates={emailOthers} subject={m.subject} body={m.body}
-              header="other addresses · click to use"/>
-          )}
-          {m.subject && (
-            <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute, marginTop: 6, marginBottom: 8 }}>
-              <span style={{ color: p.inkMute }}>Subject &nbsp;</span><span style={{ color: p.ink }}>{m.subject}</span>
-            </div>
-          )}
-          <div style={{ height: 1, background: p.ink + '14', margin: '8px 0 10px' }}/>
-          <p style={{ margin: 0, whiteSpace: 'pre-wrap', color: p.ink }}>
-            {m.body || 'The draft for this channel will appear here once the Outreach agent finishes.'}
-          </p>
-        </div>
-        <SteerDraft p={p} runId={run?.id} drafts={drafts} recipientName={personName}/>
-        <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {channel === 'email' && (
-            <InkButton p={p} color={p.stamp} size="sm" disabled={!m.body} onClick={() => {
-              openGmailCompose({ to: m.to, subject: m.subject, body: m.body });
-            }}>Open in Gmail →</InkButton>
-          )}
-          <AnotherAngle p={p} runId={run?.id} channel={channel} style={{ flex: 1 }}
-            subject={m.subject} body={m.body} recipientName={personName}/>
-        </div>
-      </PaperCard>
-
-      {/* person */}
-      <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
-        <Eyebrow p={p} en={matchLabel ? `The person · ${matchLabel}` : 'The person'} color={p.leaf}/>
-        {personName ? (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
-              <div style={{
-                width: 52, height: 52, background: p.marigold, color: p.paper,
-                display: 'grid', placeItems: 'center', fontFamily: PAPER_FONTS.display, fontSize: 20,
-                border: `1.5px solid ${p.ink}`,
-              }}>{initials}</div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 19, color: p.ink }}>{personName}</div>
-                {(personRole || personCompany) && (
-                  <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 13.5, color: p.inkSoft }}>
-                    {[personRole, personCompany].filter(Boolean).join(' · ')}
-                  </div>
-                )}
-                {personLinks.linkedin && (
-                  <a
-                    href={personLinks.linkedin.match(/^https?:\/\//) ? personLinks.linkedin : `https://${personLinks.linkedin}`}
-                    target="_blank" rel="noopener noreferrer"
-                    title="Open LinkedIn profile in a new tab"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 5,
-                      fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.stamp,
-                      textDecoration: 'none', letterSpacing: '.04em',
-                    }}>in · View LinkedIn ↗</a>
-                )}
-              </div>
-            </div>
-            {personFacts.length > 0 && (
-              <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {personFacts.map(f => (
-                  <span key={f} style={{
-                    padding: '4px 10px', background: p.paper, border: `1px solid ${p.ink}30`,
-                    fontFamily: PAPER_FONTS.sans, fontSize: 11.5, color: p.ink,
-                  }}>{f}</span>
-                ))}
-              </div>
-            )}
-            <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 6 }}>
-              {emailPrimary && (
-                <KV p={p} k="email" v={emailPrimary.email}
-                  chip={tierMeta(p, emailPrimary.tier).label}
-                  chipColor={tierMeta(p, emailPrimary.tier).color}/>
-              )}
-              {personLinks.linkedin && <KV p={p} k="linkedin" v={personLinks.linkedin.replace(/^https?:\/\//, '')} href={withHttps(personLinks.linkedin)}/>}
-              {personLinks.x && <KV p={p} k="x" v={personLinks.x.replace(/^https?:\/\//, '')} href={withHttps(personLinks.x)}/>}
-              {personLinks.website && <KV p={p} k="website" v={personLinks.website.replace(/^https?:\/\//, '')} href={withHttps(personLinks.website)}/>}
-              {personLinks.github && <KV p={p} k="github" v={personLinks.github.replace(/^https?:\/\//, '')} href={withHttps(personLinks.github)}/>}
-            </div>
-            <button onClick={() => go('people')} style={{
-              marginTop: 12, width: '100%', padding: '10px 12px', background: 'transparent',
-              border: `1.5px dashed ${p.ink}40`, color: p.ink,
-              fontFamily: PAPER_FONTS.mono, fontSize: 11.5, letterSpacing: '.08em',
-              textTransform: 'uppercase', cursor: 'pointer',
-            }}>Save to People ↗</button>
-          </>
-        ) : (
-          <div style={{
-            marginTop: 12, fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
-            fontSize: 13, color: p.inkMute,
-          }}>
-            The crew couldn&apos;t pin down a specific person. Try a LinkedIn or X
-            link, or add a company in the intent box.
-          </div>
-        )}
-      </PaperCard>
-    </div>
-  );
-}
-
-function JobPackage({ p, parsed, drafts, enrichment, person, run, go, storyIsEmpty }) {
-  const thin = isThinStory(storyIsEmpty);
-  const [picking, setPicking] = useState(false);
-  const [expanded, setExpanded] = useState(false);   // full-size resume modal
-  const [showNotes, setShowNotes] = useState(false);  // regenerate-with-notes panel
-  const [showChanges, setShowChanges] = useState(false); // "what changed" panel
-  const [notes, setNotes] = useState('');
-  const [downloading, setDownloading] = useState(null); // 'pdf' | 'docx' | null
-  const [dlError, setDlError] = useState(null);
-  const [activeKey, setActiveKey] = useState('poster'); // dual-contact toggle: 'poster' | 'hiring_manager'
-  const isMobile = useIsMobile();
-  const regenerating = !!run?.regenerating;
-
-  async function handleDownload(fmt) {
-    setDlError(null);
-    setDownloading(fmt);
-    try {
-      await downloadResumeBlob(resume, fmt);
-    } catch (e) {
-      setDlError(String(e?.message || e));
-    } finally {
-      setDownloading(null);
-    }
-  }
-  // Everything here is real data produced by the crew for the job URL the user
-  // pasted: the tailor agent's resume, the research agent's hiring manager, the
-  // email lookup, and the outreach draft. Fall back to honest placeholders only
-  // when an agent genuinely returned nothing — never to fabricated sample copy.
-  const jobRole = parsed?.role;
-  const jobCompany = parsed?.company;
-  const atsScore = parsed?.ats_score;
-  const atsScoreBefore = parsed?.ats_score_before;
-  const resume = parsed?.resume;
-  const changes = Array.isArray(resume?.changes) ? resume.changes : [];
-
-  // Dual-contact (screenshot) runs hold a poster + hiring-manager contact, each
-  // with its own research / email / drafts; legacy runs carry a single contact in
-  // the person/enrichment/drafts props. Build the slot list and pick the active.
-  const contacts = run?.contacts || null;
-  const hasDual = !!(contacts && (contacts.poster || contacts.hiring_manager));
-  const slots = [];
-  if (contacts?.poster) slots.push({ key: 'poster', label: 'Posted by', c: contacts.poster });
-  if (contacts?.hiring_manager && !contacts.hiring_manager.sameAsPoster) {
-    slots.push({ key: 'hiring_manager', label: 'Hiring manager', c: contacts.hiring_manager });
-  }
-  const activeSlot = slots.find((s) => s.key === activeKey) || slots[0] || null;
-  const posterIsHM = !!contacts?.hiring_manager?.sameAsPoster;
-  const effPerson     = hasDual ? (activeSlot?.c?.person ?? null)     : person;
-  const effEnrichment = hasDual ? (activeSlot?.c?.enrichment ?? null) : enrichment;
-  const effDrafts     = hasDual ? (activeSlot?.c?.drafts ?? null)     : drafts;
-
-  // Real outreach draft + best-available email via the shared builder.
-  const { to: emailTo, subject: emailSubject, body: emailBody } =
-    buildEmailDraft({ drafts: effDrafts, enrichment: effEnrichment });
-  // Discovered/guessed addresses ranked into confidence tiers (high=verified,
-  // medium=plausible, low=pure guess). The first is the primary recipient.
-  const emailCandidates = buildEmailCandidates(effEnrichment);
-  const emailPrimary = emailCandidates[0] || null;
-  const emailOthers = emailCandidates.slice(1);
-
-  const personName = effPerson?.name || null;
-  const personRole = effPerson?.role || null;
-  const personCompany = effPerson?.company || jobCompany || null;
-  const personFacts = (effPerson?.context_lines || []).filter(Boolean);
-  const personLinks = effPerson?.links || {};
-  const initials = personName
-    ? personName.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
-    : '?';
-  const matchLabel = effPerson?.match_confidence ? `${effPerson.match_confidence} match` : null;
-  const candidates = Array.isArray(run?.candidates) ? run.candidates : [];
-  const searched = effPerson?.searched || null;
-  // The person card's eyebrow names which contact is showing.
-  const personEyebrow = hasDual
-    ? `${activeSlot?.label || 'Contact'}${matchLabel ? ` · ${matchLabel}` : ''}`
-    : (matchLabel ? `Hiring manager · ${matchLabel}` : 'Hiring manager');
-
-  return (
-    <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1.2fr 1fr', gap: 12 }}>
-      {/* resume */}
-      <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Eyebrow p={p} en={thin ? THIN_STORY.atsHeader : "Tailored resume"} color={thin ? TOKENS.amber : p.marigold}/>
-          <AtsBadge p={p} before={atsScoreBefore} after={atsScore}/>
-        </div>
-        {thin && (
-          <ThinStoryBanner go={go} header={THIN_STORY.banner}
-            note={`${THIN_STORY.atsNote} — ${THIN_STORY.atsNegative}.`}/>
-        )}
-        {(jobRole || jobCompany) && (
-          <div style={{
-            fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 13, color: p.inkSoft, marginTop: 6,
-          }}>
-            for {[jobRole, jobCompany].filter(Boolean).join(' at ')}
-          </div>
-        )}
-        <div
-          onClick={() => resume && setExpanded(true)}
-          title={resume ? 'Click to read the full resume' : undefined}
-          style={{
-          marginTop: 12, background: p.paper, border: `1.5px solid ${p.ink}30`,
-          aspectRatio: '8.5/11', padding: '14px 14px', position: 'relative',
-          fontFamily: PAPER_FONTS.serif, color: p.ink, fontSize: 8, lineHeight: 1.3, overflow: 'hidden',
-          cursor: resume ? 'zoom-in' : 'default',
-        }}>
-          {resume && (
-            <div style={{
-              position: 'absolute', top: 8, right: 8, zIndex: 2,
-              padding: '3px 8px', background: p.ink, color: p.paper,
-              fontFamily: PAPER_FONTS.mono, fontSize: 8, letterSpacing: '.08em',
-              textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 4,
-            }}>⤢ expand</div>
-          )}
-          {resume ? (
-            <>
-              <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 14 }}>
-                {resume.header?.full_name || 'Your name'}
-              </div>
-              {(resume.header?.email || resume.header?.location || resume.header?.links?.website) && (
-                <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 7, color: p.inkMute, marginTop: 2 }}>
-                  {[resume.header?.email, resume.header?.location, resume.header?.links?.website]
-                    .filter(Boolean).join(' · ')}
-                </div>
-              )}
-              <div style={{ height: 1, background: p.ink + '30', margin: '6px 0' }}/>
-              {resume.summary && <div style={{ marginBottom: 4 }}>{resume.summary}</div>}
-              {(resume.experience || []).slice(0, 2).map((exp, i) => (
-                <div key={i} style={{ marginTop: i ? 6 : 0 }}>
-                  <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 9 }}>
-                    {[exp.role, exp.company].filter(Boolean).join(' · ')}
-                  </div>
-                  {(exp.bullets || []).slice(0, 3).map((b, j) => (
-                    <div key={j}>· {b}</div>
-                  ))}
-                </div>
-              ))}
-              {(resume.skills || []).length > 0 && (
-                <>
-                  <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 9, marginTop: 6 }}>Skills</div>
-                  {resume.skills.slice(0, 2).map((s, i) => (
-                    <div key={i}>· {s.group ? `${s.group}: ` : ''}{(s.items || []).join(', ')}</div>
-                  ))}
-                </>
-              )}
-            </>
-          ) : (
-            <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', color: p.inkMute }}>
-              The tailored resume preview will appear here once the Resume agent finishes.
-            </div>
-          )}
-          <div style={{
-            position: 'absolute', left: 0, right: 0, bottom: 0, height: 50,
-            background: `linear-gradient(to bottom, transparent, ${p.paper})`,
-          }}/>
-          <div style={{
-            position: 'absolute', right: 8, bottom: 6,
-            fontFamily: PAPER_FONTS.mono, fontSize: 7, color: p.inkMute,
-          }}>PDF · 1 of {resume?.meta?.page_count || 1}</div>
-        </div>
-        <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
-          <InkButton p={p} kind="outline" size="sm" style={{ flex: 1 }}
-            disabled={!resume || downloading === 'pdf'}
-            onClick={() => handleDownload('pdf')}>
-            {downloading === 'pdf' ? '…PDF' : '↓ PDF'}
-          </InkButton>
-          <InkButton p={p} kind="outline" size="sm" style={{ flex: 1 }}
-            disabled={!resume || downloading === 'docx'}
-            onClick={() => handleDownload('docx')}>
-            {downloading === 'docx' ? '…Word' : '↓ Word'}
-          </InkButton>
-          <InkButton p={p} kind={showNotes ? 'solid' : 'outline'} size="sm" style={{ flex: 1 }}
-            disabled={!resume}
-            onClick={() => setShowNotes((s) => !s)}>
-            ✎ Notes
-          </InkButton>
-        </div>
-        {dlError && (
-          <div style={{
-            marginTop: 8, fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.stamp,
-          }}>{dlError}</div>
-        )}
-
-        {/* what changed — your resume vs the tailored version, with the why */}
-        {changes.length > 0 && (
-          <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1.5px dashed ${p.ink}24` }}>
-            <button onClick={() => setShowChanges((s) => !s)} style={{
-              background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
-              color: p.inkSoft, fontFamily: PAPER_FONTS.mono, fontSize: 11,
-              letterSpacing: '.06em', textTransform: 'uppercase',
-            }}>
-              {showChanges ? '× hide changes' : `✦ what changed (${changes.length})`}
-            </button>
-            {showChanges && (
-              <div style={{ marginTop: 10 }}>
-                <ChangeList p={p} changes={changes} compact/>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* No changelog came back — say so plainly instead of silently dropping
-            the panel (which reads as a broken feature, especially on mobile).
-            A null ATS alongside it means the tailor never read the posting. */}
-        {resume && changes.length === 0 && (
-          <div style={{
-            marginTop: 10, paddingTop: 10, borderTop: `1.5px dashed ${p.ink}24`,
-            fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 12, color: p.inkMute, lineHeight: 1.4,
-          }}>
-            {atsScore == null
-              ? "No change log — Jugaadu couldn't read this job posting, so this is a light reformat of your existing resume rather than a tailored rewrite. Paste the job description into Notes and re-run to tailor it."
-              : "No change log for this run — the tailor didn't flag specific edits."}
-          </div>
-        )}
-
-        {/* regenerate with notes — reruns ONLY the resume agent */}
-        {showNotes && (
-          <div style={{
-            marginTop: 10, paddingTop: 10, borderTop: `1.5px dashed ${p.ink}24`,
-          }}>
-            <div style={{
-              fontFamily: PAPER_FONTS.mono, fontSize: 10, letterSpacing: '.1em',
-              textTransform: 'uppercase', color: p.inkMute, marginBottom: 6,
-            }}>What should change?</div>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              disabled={regenerating}
-              placeholder="e.g. lead with my platform work, cut the older bullets, push the AI/ML angle harder, make it one page"
-              rows={3}
-              style={{
-                width: '100%', resize: 'vertical', minHeight: 64,
-                padding: '10px 12px', background: p.paper,
-                border: `1.5px solid ${p.ink}30`,
-                fontFamily: PAPER_FONTS.mono, fontSize: 12, lineHeight: 1.5, color: p.ink,
-                outline: 'none',
-              }}
-            />
-            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <InkButton p={p} color={p.marigold} size="sm"
-                disabled={!notes.trim() || regenerating}
-                onClick={async () => { await regenerateResume(run.id, notes); setNotes(''); }}>
-                {regenerating ? 'Regenerating…' : '↻ Regenerate resume'}
-              </InkButton>
-              <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute }}>
-                reruns the Resume agent only
-              </span>
-            </div>
-            {run?.regenError && (
-              <div style={{
-                marginTop: 8, fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.stamp,
-              }}>{run.regenError}</div>
-            )}
-          </div>
-        )}
-      </PaperCard>
-
-      {expanded && resume && (
-        <ResumeModal p={p} resume={resume} jobRole={jobRole} jobCompany={jobCompany}
-          atsScore={atsScore} atsScoreBefore={atsScoreBefore} onClose={() => setExpanded(false)}/>
-      )}
-
-      {/* email draft */}
-      <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
-        <div style={{ marginBottom: 8 }}>
-          <Eyebrow p={p} en={hasDual && activeSlot ? `Cold email · ${activeSlot.label}` : 'Cold email · drafted'} color={p.tea}/>
-        </div>
-        <div style={{
-          background: p.paper, border: `1.5px solid ${p.ink}30`,
-          padding: '12px 14px', fontFamily: PAPER_FONTS.sans, fontSize: 13, lineHeight: 1.55,
-        }}>
-          <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, overflowWrap: 'anywhere' }}>
-            <span>To &nbsp;</span>
-            <span style={{ color: emailTo ? p.ink : p.inkMute }}>
-              {emailTo || '(no public email found — add it in Gmail)'}
-            </span>
-            {emailPrimary && <TierBadge p={p} tier={emailPrimary.tier}/>}
-          </div>
-          {emailOthers.length > 0 && (
-            <EmailOptions p={p} candidates={emailOthers} subject={emailSubject} body={emailBody}
-              header="other addresses · click to use"/>
-          )}
-          {emailSubject && (
-            <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, marginTop: 4 }}>
-              <span>Subject &nbsp;</span><span style={{ color: p.ink }}>{emailSubject}</span>
-            </div>
-          )}
-          <div style={{ height: 1, background: p.ink + '14', margin: '8px 0' }}/>
-          <p style={{ margin: 0, color: p.ink, whiteSpace: 'pre-wrap' }}>
-            {emailBody || 'The cold email draft will appear here once the Outreach agent finishes.'}
-          </p>
-        </div>
-        <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <InkButton p={p} color={p.stamp} size="sm" style={{ flex: 1 }} disabled={!emailBody} onClick={() => {
-            openGmailCompose({ to: emailTo, subject: emailSubject, body: emailBody });
-          }}>Open in Gmail →</InkButton>
-          <AnotherAngle p={p} runId={run?.id} channel="email" style={{ flex: 1 }}
-            subject={emailSubject} body={emailBody} recipientName={personName}
-            slot={hasDual ? activeSlot?.key : undefined}/>
-        </div>
-      </PaperCard>
-
-      {/* person — for a screenshot run this toggles between the poster and the
-          most-probable hiring manager; the email card above follows the toggle. */}
-      <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
-        <Eyebrow p={p} en={personEyebrow} color={p.leaf}/>
-        {slots.length >= 2 && (
-          <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
-            {slots.map((s) => {
-              const on = activeSlot?.key === s.key;
-              return (
-                <button key={s.key} onClick={() => setActiveKey(s.key)} style={{
-                  flex: 1, padding: '7px 8px', cursor: 'pointer',
-                  background: on ? p.ink : 'transparent', color: on ? p.paper : p.inkSoft,
-                  border: `1.5px solid ${on ? p.ink : p.ink + '30'}`,
-                  fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.04em',
-                  textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                }}>{s.label}{s.c?.person?.name ? ` · ${s.c.person.name.split(/\s+/)[0]}` : ''}</button>
-              );
-            })}
-          </div>
-        )}
-        {posterIsHM && (
-          <div style={{
-            marginTop: 8, fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
-            fontSize: 11.5, color: p.inkMute, lineHeight: 1.4,
-          }}>The person who posted this role is also the hiring manager.</div>
-        )}
-        {personName ? (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
-              <div style={{
-                width: 52, height: 52, background: p.marigold, color: p.paper,
-                display: 'grid', placeItems: 'center', fontFamily: PAPER_FONTS.display, fontSize: 18,
-                border: `1.5px solid ${p.ink}`,
-              }}>{initials}</div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 18, color: p.ink }}>{personName}</div>
-                {(personRole || personCompany) && (
-                  <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 13, color: p.inkSoft }}>
-                    {[personRole, personCompany].filter(Boolean).join(' · ')}
-                  </div>
-                )}
-                {personLinks.linkedin && (
-                  <a
-                    href={personLinks.linkedin.match(/^https?:\/\//) ? personLinks.linkedin : `https://${personLinks.linkedin}`}
-                    target="_blank" rel="noopener noreferrer"
-                    title="Open LinkedIn profile in a new tab"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 5,
-                      fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.stamp,
-                      textDecoration: 'none', letterSpacing: '.04em',
-                    }}>in · View LinkedIn ↗</a>
-                )}
-              </div>
-            </div>
-            {personFacts.length > 0 && (
-              <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {personFacts.map((f) => (
-                  <span key={f} style={{
-                    padding: '4px 10px', background: p.paper, border: `1px solid ${p.ink}30`,
-                    fontFamily: PAPER_FONTS.sans, fontSize: 11.5, color: p.ink,
-                  }}>{f}</span>
-                ))}
-              </div>
-            )}
-            <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 6 }}>
-              {emailPrimary && (
-                <KV p={p} k="email" v={emailPrimary.email}
-                  chip={tierMeta(p, emailPrimary.tier).label}
-                  chipColor={tierMeta(p, emailPrimary.tier).color}/>
-              )}
-              {emailOthers.length > 0 && (
-                <EmailOptions p={p} candidates={emailOthers} subject={emailSubject} body={emailBody}
-                  header="other addresses · click to use"/>
-              )}
-              {personLinks.linkedin && <KV p={p} k="linkedin" v={personLinks.linkedin.replace(/^https?:\/\//, '')} href={withHttps(personLinks.linkedin)}/>}
-              {personLinks.x && <KV p={p} k="x" v={personLinks.x.replace(/^https?:\/\//, '')} href={withHttps(personLinks.x)}/>}
-              {personLinks.website && <KV p={p} k="website" v={personLinks.website.replace(/^https?:\/\//, '')} href={withHttps(personLinks.website)}/>}
-            </div>
-            <button onClick={() => go('people')} style={{
-              marginTop: 12, width: '100%', padding: '10px 12px', background: 'transparent',
-              border: `1.5px dashed ${p.ink}40`, color: p.ink,
-              fontFamily: PAPER_FONTS.mono, fontSize: 11.5, letterSpacing: '.08em',
-              textTransform: 'uppercase', cursor: 'pointer',
-            }}>Save to People ↗</button>
-          </>
-        ) : (
-          <div style={{
-            marginTop: 12, fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
-            fontSize: 13, color: p.inkMute,
-          }}>
-            The crew couldn&apos;t pin down a specific hiring manager for this role.
-            {searched && <> Searched <span style={{ fontStyle: 'normal', color: p.ink }}>&ldquo;{searched}&rdquo;</span>.</>}
-            {' '}Try pasting the team name in the intent box, or a LinkedIn profile.
-          </div>
-        )}
-
-        {/* shortlist → re-pick the hiring manager the cold email is drafted to.
-            Only on the hiring-manager slot (the poster is fixed). */}
-        {(!hasDual || activeKey === 'hiring_manager') && candidates.length > (personName ? 1 : 0) && (
-          <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1.5px dashed ${p.ink}24` }}>
-            <button onClick={() => setPicking(!picking)} style={{
-              background: 'transparent', border: 'none', color: p.inkSoft, padding: 0,
-              fontFamily: PAPER_FONTS.mono, fontSize: 11, letterSpacing: '.06em',
-              textTransform: 'uppercase', cursor: 'pointer',
-            }}>{picking ? '× close' : `↓ other matches (${candidates.length})`}</button>
-            {picking && (
-              <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {candidates.map((c, i) => {
-                  const isCurrent = !!personName && c.name === personName;
-                  const li = c.linkedin
-                    ? (c.linkedin.match(/^https?:\/\//) ? c.linkedin : `https://${c.linkedin}`)
-                    : null;
-                  return (
-                    <div
-                      key={c.name || i}
-                      style={{
-                        position: 'relative', background: p.paper,
-                        border: `1.5px solid ${p.ink}${isCurrent ? '12' : '24'}`,
-                        opacity: isCurrent ? 0.6 : 1,
-                      }}>
-                      <button
-                        disabled={isCurrent}
-                        onClick={() => { if (!isCurrent) { pickCandidate(run.id, c); setPicking(false); } }}
-                        style={{
-                          display: 'block', width: '100%', textAlign: 'left',
-                          padding: `10px ${li ? '58px' : '12px'} 10px 12px`,
-                          background: 'transparent', border: 'none',
-                          cursor: isCurrent ? 'default' : 'pointer',
-                        }}>
-                        <div style={{ fontFamily: PAPER_FONTS.sans, fontSize: 13.5, color: p.ink }}>
-                          {c.name}{isCurrent ? ' · current' : ''}
-                        </div>
-                        {(c.role || c.company) && (
-                          <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute, letterSpacing: '.02em' }}>
-                            {[c.role, c.company].filter(Boolean).join(' · ')}
-                          </div>
-                        )}
-                        {c.why && (
-                          <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 11.5, color: p.inkSoft, marginTop: 2 }}>
-                            {c.why}
-                          </div>
-                        )}
-                      </button>
-                      {li && (
-                        <a
-                          href={li}
-                          target="_blank" rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          title="Open LinkedIn profile in a new tab"
-                          style={{
-                            position: 'absolute', top: 8, right: 8, padding: '3px 8px',
-                            fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.stamp,
-                            border: `1px solid ${p.stamp}40`, background: p.paper,
-                            textDecoration: 'none', letterSpacing: '.04em',
-                          }}>in ↗</a>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-      </PaperCard>
-    </div>
-  );
 }
 
 // Full-size, readable view of the tailored resume. The card preview is
@@ -2345,12 +2387,6 @@ function emailTier(source, confidence) {
   return 'medium';
 }
 
-function tierMeta(p, tier) {
-  if (tier === 'high') return { label: 'verified', color: p.leaf };
-  if (tier === 'medium') return { label: 'plausible', color: p.marigoldDeep };
-  return { label: 'guess', color: p.inkMute };
-}
-
 // Rank discovered/guessed emails into tiers, best first. Any email Apollo
 // returned leads (high or medium); the format guesses follow as low. De-duped.
 function buildEmailCandidates(enrichment) {
@@ -2374,86 +2410,9 @@ function buildEmailCandidates(enrichment) {
   return out;
 }
 
-// Inline tier tag for the "To" line — "· verified" / "· plausible" / "· guess".
-function TierBadge({ p, tier }) {
-  const tm = tierMeta(p, tier);
-  return <span style={{ color: tm.color, marginLeft: 8 }}>· {tm.label}</span>;
-}
-
-// A list of candidate addresses, each a clickable chip (opens Gmail to it) with
-// its confidence tier. Shared by the cold-email card and the hiring-manager panel.
-function EmailOptions({ p, candidates, subject, body, header }) {
-  if (!candidates?.length) return null;
-  return (
-    <div style={{ marginTop: 6 }}>
-      {header && (
-        <div style={{
-          fontFamily: PAPER_FONTS.mono, fontSize: 10, color: p.inkMute,
-          letterSpacing: '.04em', marginBottom: 4,
-        }}>{header}</div>
-      )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {candidates.map((c) => {
-          const tm = tierMeta(p, c.tier);
-          return (
-            <button
-              key={c.email}
-              title={`Open Gmail to ${c.email}${c.pattern ? ` (${c.pattern})` : ''}`}
-              onClick={() => openGmailCompose({ to: c.email, subject, body })}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-                width: '100%', textAlign: 'left', padding: '4px 8px',
-                background: p.paper, border: `1px solid ${p.ink}24`, cursor: 'pointer',
-              }}>
-              <span style={{
-                flex: 1, minWidth: 0,
-                fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.ink,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>{c.email}</span>
-              <span style={{
-                fontFamily: PAPER_FONTS.mono, fontSize: 9, color: tm.color,
-                background: tm.color + '1f', padding: '2px 6px', letterSpacing: '.06em',
-                whiteSpace: 'nowrap', textTransform: 'uppercase',
-              }}>{tm.label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function withHttps(url) {
   if (!url) return url;
   return /^https?:\/\//.test(url) ? url : `https://${url}`;
-}
-
-function KV({ p, k, v, chip, chipColor, href }) {
-  const cc = chipColor || p.stamp;
-  const valueStyle = {
-    // minWidth:0 lets this flex child shrink below its content width so a long
-    // email truncates with an ellipsis instead of overflowing the card.
-    flex: 1, minWidth: 0, fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.ink,
-    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-  };
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-      padding: '6px 10px', background: p.paper, border: `1px solid ${p.ink}20`,
-    }}>
-      <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, color: p.inkMute, letterSpacing: '.04em', width: 64 }}>{k}</span>
-      {href ? (
-        <a href={href} target="_blank" rel="noopener noreferrer"
-          title={`Open ${k} in a new tab`}
-          style={{ ...valueStyle, color: p.stamp, textDecoration: 'underline', textUnderlineOffset: 2 }}>
-          {v}
-        </a>
-      ) : (
-        <span style={valueStyle}>{v}</span>
-      )}
-      {chip && <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10, color: cc, padding: '2px 6px', background: cc + '14', whiteSpace: 'nowrap', letterSpacing: '.04em' }}>{chip}</span>}
-    </div>
-  );
 }
 
 export default function ComposePage() {

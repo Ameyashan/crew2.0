@@ -14,6 +14,22 @@ import {
   PENDING_RUN_KEY,
   serializePendingRun,
   parsePendingRun,
+  RUN_AGENT_CHIPS,
+  RUN_STEP_ORDER,
+  buildRunSteps,
+  runViewTitle,
+  truncateIntent,
+  ANGLE_PILLS,
+  CHANNEL_NAMES,
+  SENT_CHANNEL_WORD,
+  handoffCta,
+  handoffQuestion,
+  sentLine,
+  sentSub,
+  altsLabel,
+  GATE_CHIP_LABEL,
+  GATE_BUTTON_LABEL,
+  GATE_FOOTNOTE,
 } from "./run-view-logic.ts";
 
 // ── Status chip relabel ──────────────────────────────────────────────────────
@@ -179,4 +195,218 @@ test("parsePendingRun sanitizes bad field types", () => {
 
 test("PENDING_RUN_KEY is a stable versioned key", () => {
   assert.equal(PENDING_RUN_KEY, "crew.pendingRun.v1");
+});
+
+// ── Steps list ───────────────────────────────────────────────────────────────
+test("RUN_AGENT_CHIPS maps every pipeline step to a prototype chip", () => {
+  assert.equal(RUN_AGENT_CHIPS.parse, "TRACKER");
+  assert.equal(RUN_AGENT_CHIPS.resume, "RESUME");
+  assert.equal(RUN_AGENT_CHIPS.person, "PERSON KHOJI");
+  assert.equal(RUN_AGENT_CHIPS.email, "EMAIL WALLAH");
+  assert.equal(RUN_AGENT_CHIPS.outreach, "OUTREACH");
+});
+
+test("RUN_STEP_ORDER: job includes resume, person flow doesn't", () => {
+  assert.deepEqual(RUN_STEP_ORDER.job, ["parse", "resume", "person", "email", "outreach"]);
+  assert.deepEqual(RUN_STEP_ORDER.person, ["parse", "person", "email", "outreach"]);
+});
+
+test("buildRunSteps: parsing → single active TRACKER row", () => {
+  const rows = buildRunSteps({ stage: "parsing", kind: "job", progress: {} });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, "parse");
+  assert.equal(rows[0].state, "active");
+  assert.equal(rows[0].title, "Parsing…");
+  assert.equal(rows[0].agent, "TRACKER");
+  // screenshot variant
+  const shot = buildRunSteps({ stage: "parsing", kind: "job", screenshot: true });
+  assert.equal(shot[0].title, "Reading your screenshot…");
+});
+
+test("buildRunSteps: working shows done rows then exactly one active row", () => {
+  const rows = buildRunSteps({
+    stage: "working",
+    kind: "person",
+    progress: { person: 100, email: 40 },
+  });
+  assert.deepEqual(rows.map((r) => r.id), ["parse", "person", "email"]);
+  assert.deepEqual(rows.map((r) => r.state), ["done", "done", "active"]);
+  assert.equal(rows[2].title, "Verifying emails…");
+  // outreach (queued, untouched) is hidden
+  assert.ok(!rows.some((r) => r.id === "outreach"));
+});
+
+test("buildRunSteps: done marks every selected step done with real subs", () => {
+  const rows = buildRunSteps({
+    stage: "done",
+    kind: "job",
+    progress: { resume: 100, person: 100, email: 100, outreach: 100 },
+    ats: { before: 61, after: 88 },
+    peopleCount: 3,
+    personLabel: "Anika Mehta",
+    emailVerdict: "96% verified",
+    draftCount: 3,
+  });
+  assert.equal(rows.length, 5);
+  assert.ok(rows.every((r) => r.state === "done"));
+  const resume = rows.find((r) => r.id === "resume");
+  assert.equal(resume.title, "Resume woven from your Story");
+  assert.match(resume.sub, /ATS 61 → 88/);
+  const person = rows.find((r) => r.id === "person");
+  assert.equal(person.title, "3 people found — ranked by who decides");
+  assert.match(person.sub, /Anika Mehta first/);
+  const email = rows.find((r) => r.id === "email");
+  assert.match(email.sub, /96% verified/);
+  const outreach = rows.find((r) => r.id === "outreach");
+  assert.match(outreach.title, /email, LinkedIn, X/);
+});
+
+test("buildRunSteps: selectedAgents filters agent rows (parse always stays)", () => {
+  const rows = buildRunSteps({
+    stage: "done",
+    kind: "person",
+    progress: {},
+    selectedAgents: ["person", "outreach"],
+  });
+  assert.deepEqual(rows.map((r) => r.id), ["parse", "person", "outreach"]);
+});
+
+test("buildRunSteps: thin story flavors resume + outreach rows", () => {
+  const rows = buildRunSteps({
+    stage: "done",
+    kind: "job",
+    progress: {},
+    thin: true,
+    ats: { after: 71 },
+  });
+  const resume = rows.find((r) => r.id === "resume");
+  assert.equal(resume.title, "Resume woven — but your Story is thin");
+  assert.match(resume.sub, /add your resume/);
+  const outreach = rows.find((r) => r.id === "outreach");
+  assert.match(outreach.sub, /generic/);
+});
+
+test("buildRunSteps: pulling flips the active resume row to the pull title", () => {
+  const rows = buildRunSteps({
+    stage: "working",
+    kind: "job",
+    progress: { resume: 10 },
+    pulling: true,
+    thin: true,
+  });
+  const resume = rows.find((r) => r.id === "resume");
+  assert.equal(resume.state, "active");
+  assert.equal(resume.title, "Choosing what to pull from your Story");
+});
+
+test("buildRunSteps: a stepError renders an error row and doesn't block later rows", () => {
+  const rows = buildRunSteps({
+    stage: "done",
+    kind: "job",
+    progress: { person: 100, email: 100, outreach: 100 },
+    stepErrors: { resume: "resume branch failed" },
+  });
+  const resume = rows.find((r) => r.id === "resume");
+  assert.equal(resume.state, "error");
+  assert.equal(resume.sub, "resume branch failed");
+  assert.equal(rows.filter((r) => r.state === "done").length, 4); // parse + 3 agents
+});
+
+test("buildRunSteps: done person step with nothing found says so honestly", () => {
+  const rows = buildRunSteps({
+    stage: "done",
+    kind: "person",
+    progress: {},
+    peopleCount: 0,
+    personLabel: null,
+  });
+  const person = rows.find((r) => r.id === "person");
+  assert.equal(person.title, "No specific person pinned down");
+  assert.match(person.sub, /LinkedIn or X link/);
+});
+
+test("buildRunSteps: single person found uses the name as the title", () => {
+  const rows = buildRunSteps({
+    stage: "done",
+    kind: "person",
+    progress: {},
+    peopleCount: 1,
+    personLabel: "Dev Raghavan",
+    personSub: "Design manager · Razorpay",
+  });
+  const person = rows.find((r) => r.id === "person");
+  assert.equal(person.title, "Dev Raghavan found");
+  assert.equal(person.sub, "Design manager · Razorpay");
+});
+
+// ── Run title ────────────────────────────────────────────────────────────────
+test("runViewTitle: job with parsed role/company", () => {
+  assert.equal(
+    runViewTitle({ kind: "job", role: "Staff Product Designer", company: "Stripe" }),
+    "Apply — Staff Product Designer, Stripe",
+  );
+  assert.equal(runViewTitle({ kind: "job", role: "Staff PD" }), "Apply — Staff PD");
+  assert.equal(
+    runViewTitle({ kind: "job", fallback: "stripe.com" }),
+    "Apply — stripe.com",
+  );
+});
+
+test("runViewTitle: person flow uses Reach/Find", () => {
+  assert.equal(
+    runViewTitle({ kind: "person", personName: "Anika Mehta", company: "Stripe" }),
+    "Reach — Anika Mehta, Stripe",
+  );
+  assert.equal(
+    runViewTitle({ kind: "person", fallback: "design leads at Razorpay" }),
+    "Find — design leads at Razorpay",
+  );
+  assert.equal(runViewTitle({ kind: "person" }), "Find — your request");
+});
+
+test("truncateIntent caps long inputs with an ellipsis", () => {
+  assert.equal(truncateIntent("short"), "short");
+  const long = "x".repeat(100);
+  const t = truncateIntent(long, 64);
+  assert.equal(t.length, 64);
+  assert.ok(t.endsWith("…"));
+});
+
+// ── Angle pills ──────────────────────────────────────────────────────────────
+test("ANGLE_PILLS are the prototype's three inline pills with directives", () => {
+  assert.deepEqual(ANGLE_PILLS.map((a) => a.label), ["warmer", "shorter", "lead with metrics"]);
+  for (const a of ANGLE_PILLS) assert.ok(a.directive.length > 20);
+});
+
+// ── Handoff / sent copy ──────────────────────────────────────────────────────
+test("channel naming: CTA says Gmail, sent line says email", () => {
+  assert.equal(CHANNEL_NAMES.email, "Gmail");
+  assert.equal(SENT_CHANNEL_WORD.email, "email");
+  assert.equal(handoffCta("email"), "Open in Gmail →");
+  assert.equal(handoffCta("linkedin"), "Open in LinkedIn →");
+  assert.equal(handoffCta("x"), "Open in X →");
+  assert.equal(handoffQuestion("email"), "Opened Gmail in a new tab.");
+});
+
+test("sentLine / sentSub personalize when a first name exists", () => {
+  assert.equal(
+    sentLine("Anika", "email"),
+    "Sent to Anika via email. The crew takes it from here.",
+  );
+  assert.equal(sentLine(null, "x"), "Sent. The crew takes it from here.");
+  assert.match(sentSub("Anika"), /^Anika is in your tracker/);
+  assert.match(sentSub(null), /^They is in your tracker|^They/);
+});
+
+test("altsLabel toggles between count and hide", () => {
+  assert.equal(altsLabel(false, 3), "3 more patterns if this bounces ▸");
+  assert.equal(altsLabel(false, 1), "1 more pattern if this bounces ▸");
+  assert.equal(altsLabel(true, 3), "hide alternate patterns ▾");
+});
+
+// ── Gate copy ────────────────────────────────────────────────────────────────
+test("gate copy matches the prototype (amber chip, Google outline button)", () => {
+  assert.equal(GATE_CHIP_LABEL.toUpperCase(), "CREW FINISHED · YOU'RE SIGNED OUT");
+  assert.equal(GATE_BUTTON_LABEL, "Continue with Google");
+  assert.ok(GATE_FOOTNOTE.startsWith("Free"));
 });
