@@ -1,38 +1,93 @@
-// @ts-nocheck — matches the loose-any style used across the rest of /app pages.
+// @ts-nocheck — repurposed run-history: "view all runs" + per-run detail (jugaadu reskin).
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PAPER_FONTS } from "@/components/paper/fonts";
-import { usePaperTheme } from "@/components/paper/use-paper-theme";
+import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
+import { TOKENS, RADII, SHADOWS } from "@/components/paper/tokens";
 import {
-  Eyebrow,
-  InkButton,
-  PageHead,
-  PaperEmpty,
-  Stamp,
-} from "@/components/paper/primitives";
+  composeOutcomeChip,
+  resumeRowChip,
+  runDetailTitle,
+  runDetailSubline,
+  runOutcomeRows,
+  runDownloadTiles,
+  relativeWhen,
+} from "@/components/paper/phase5-logic";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { hydrateRun } from "@/lib/runs-store";
 
 type Filter = "all" | "compose" | "resume";
 
-function fmtWhen(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const t = new Date(iso).getTime();
-  const diff = Date.now() - t;
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d === 1) return "1d ago";
-  if (d < 30) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString();
+// Chip tone → token colors (shared by the feed rows and the detail view).
+const TONE: Record<string, { color: string; bg: string }> = {
+  done: { color: TOKENS.green, bg: TOKENS.greenBg },
+  progress: { color: TOKENS.amber, bg: TOKENS.amberBg },
+  attention: { color: TOKENS.amber, bg: TOKENS.amberBg },
+  error: { color: TOKENS.red, bg: "#f6e9e6" },
+};
+
+function toneStyle(tone: string) {
+  return TONE[tone] || TONE.done;
 }
 
-function HistoryV3({ p }) {
+// Mono uppercase section label.
+function MonoLabel({ children, color = TOKENS.muted, size = 10.5, style }) {
+  return (
+    <span
+      style={{
+        fontFamily: PAPER_FONTS_V2.mono,
+        fontSize: size,
+        fontWeight: 500,
+        letterSpacing: ".12em",
+        textTransform: "uppercase",
+        color,
+        ...style,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+// Real résumé download (replicates the composer's util so the detail tiles work
+// in place, without navigating away).
+async function downloadResumeBlob(resume, fmt) {
+  if (!resume) return;
+  const dl = await fetch(`/api/resume/${fmt}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ resume }),
+  });
+  if (!dl.ok) throw new Error(`download failed: ${dl.status}`);
+  const blob = await dl.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const base = (resume?.header?.full_name || "resume").replace(/[^\w.-]+/g, "_");
+  const role = (resume?.meta?.target_role || "").replace(/[^\w.-]+/g, "_");
+  a.download = [base, role || null].filter(Boolean).join("-").toLowerCase() + `.${fmt}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// The all-✓ step list shown on a completed run's detail.
+function detailSteps(run: { kind?: string | null }) {
+  if (run?.kind === "job") {
+    return [
+      "Read your input",
+      "Resolved the opening",
+      "Tailored your résumé",
+      "Found the hiring manager",
+      "Drafted your outreach",
+    ];
+  }
+  return ["Read your input", "Verified the person", "Found contact details", "Drafted your outreach"];
+}
+
+function HistoryV3() {
   const router = useRouter();
   const isMobile = useIsMobile();
   const [composeRuns, setComposeRuns] = useState([]);
@@ -41,6 +96,9 @@ function HistoryV3({ p }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
+  // The currently-open per-run detail (compose runs only). null = the list view.
+  const [detail, setDetail] = useState<any | null>(null);
+  const [detailLoading, setDetailLoading] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -54,9 +112,7 @@ function HistoryV3({ p }) {
         ]);
         if (!alive) return;
         setComposeRuns(Array.isArray(composeRes?.runs) ? composeRes.runs : []);
-        setResumeRuns(
-          Array.isArray(resumeRes?.generations) ? resumeRes.generations : []
-        );
+        setResumeRuns(Array.isArray(resumeRes?.generations) ? resumeRes.generations : []);
       } catch (e) {
         if (alive) setError(String(e?.message || e));
       } finally {
@@ -69,39 +125,40 @@ function HistoryV3({ p }) {
     };
   }, []);
 
-  // Merge into a single feed sorted by created_at desc. Each entry keeps the
-  // agent of origin so the row renders the right title + actions.
   const feed = useMemo(() => {
-    const items: Array<{
-      key: string;
-      agent: "compose" | "resume";
-      created_at: string;
-      row: any;
-    }> = [];
+    const items: Array<{ key: string; agent: "compose" | "resume"; created_at: string; row: any }> = [];
     for (const r of composeRuns) {
       items.push({ key: `c:${r.id}`, agent: "compose", created_at: r.created_at, row: r });
     }
     for (const r of resumeRuns) {
       items.push({ key: `r:${r.id}`, agent: "resume", created_at: r.created_at, row: r });
     }
-    items.sort(
-      (a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
+    items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     return items.filter((it) => filter === "all" || it.agent === filter);
   }, [composeRuns, resumeRuns, filter]);
 
-  async function openCompose(id: string) {
-    setOpening(id);
+  // Open a compose run's detail view in place (fetch full persisted run).
+  async function openDetail(id: string) {
+    setDetailLoading(id);
+    setError(null);
     try {
       const res = await fetch(`/api/compose/history/${id}`);
       if (!res.ok) throw new Error(`load failed: ${res.status}`);
       const json = await res.json();
-      const run = json?.run;
-      if (!run) throw new Error("run not found");
-      // Hydrate the ephemeral store with this persisted run, then send the user
-      // to /app/compose where the existing PackageV3 card renders it and the
-      // regenerate/steer/Gmail buttons keep working.
+      if (!json?.run) throw new Error("run not found");
+      setDetail(json.run);
+    } catch (e) {
+      setError(String(e?.message || e));
+    } finally {
+      setDetailLoading(null);
+    }
+  }
+
+  // Send the run into the ephemeral store and jump to the composer, where the
+  // full package card (regenerate / steer / Gmail) renders it.
+  async function openInComposer(run: any) {
+    setOpening(run.id);
+    try {
       hydrateRun({
         id: run.id,
         kind: run.kind,
@@ -121,40 +178,238 @@ function HistoryV3({ p }) {
     }
   }
 
-  function composeTitle(r: any): { eyebrow: string; title: string } {
-    const person = r.person; // joined people row (may be null)
-    if (r.kind === "job") {
-      const parsed = r.output?.parsed;
-      const role = parsed?.target_role || parsed?.role || "Job application";
-      const company =
-        parsed?.target_company || parsed?.company || personHost(r.input);
-      return { eyebrow: company || "Job", title: role };
-    }
-    const name = person?.name || r.output?.person?.name || r.input;
-    const company = person?.company || r.output?.person?.company || "";
-    return { eyebrow: company || "Person", title: name };
+  function composeTitleRow(r: any): { eyebrow: string; title: string } {
+    const t = runDetailTitle(r);
+    return { eyebrow: t.company, title: t.title };
   }
 
-  function resumeTitle(r: any): { eyebrow: string; title: string } {
+  function resumeTitleRow(r: any): { eyebrow: string; title: string } {
     return {
       eyebrow: r.target_company || "—",
-      title:
-        r.target_role ||
-        (r.status === "in_flight" ? "Tailoring…" : "Tailored resume"),
+      title: r.target_role || (r.status === "in_flight" ? "Tailoring…" : "Tailored resume"),
     };
   }
 
-  function outcomeChip(outcome: string | null | undefined): {
-    label: string;
-    color: string;
-  } {
-    if (outcome === "complete") return { label: "ready", color: p.leaf };
-    if (outcome === "in_flight") return { label: "in progress…", color: p.stamp };
-    if (outcome === "needs_disambiguation")
-      return { label: "needs pick", color: p.marigoldDeep };
-    return { label: "error", color: p.stamp };
+  // ── Per-run detail view ────────────────────────────────────────────────────
+  if (detail) {
+    const { title, company } = runDetailTitle(detail);
+    const rows = runOutcomeRows(detail);
+    const tiles = runDownloadTiles(detail);
+    const resume = detail?.output?.resume;
+    return (
+      <div
+        className="scroll"
+        style={{
+          flex: 1,
+          overflow: "auto",
+          padding: isMobile ? "24px 16px 64px" : "40px 56px 80px",
+          background: TOKENS.paper,
+          color: TOKENS.ink,
+        }}
+      >
+        <div style={{ maxWidth: 720, margin: "0 auto" }}>
+          <button
+            onClick={() => setDetail(null)}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: TOKENS.muted,
+              fontFamily: PAPER_FONTS_V2.mono,
+              fontSize: 12,
+              letterSpacing: ".04em",
+              cursor: "pointer",
+              padding: 0,
+              marginBottom: 22,
+            }}
+          >
+            ← all runs
+          </button>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <MonoLabel>{company}</MonoLabel>
+            <span
+              style={{
+                padding: "3px 10px",
+                borderRadius: RADII.pill,
+                background: TOKENS.greenBg,
+                color: TOKENS.green,
+                fontFamily: PAPER_FONTS_V2.mono,
+                fontSize: 10,
+                fontWeight: 500,
+                letterSpacing: ".1em",
+                textTransform: "uppercase",
+              }}
+            >
+              Done
+            </span>
+          </div>
+          <h1
+            style={{
+              margin: "6px 0 0",
+              fontFamily: PAPER_FONTS_V2.serif,
+              fontWeight: 400,
+              fontSize: isMobile ? 26 : 30,
+              lineHeight: 1.05,
+              letterSpacing: "-.01em",
+              color: TOKENS.ink,
+            }}
+          >
+            {title}
+          </h1>
+          <div
+            style={{
+              marginTop: 8,
+              fontFamily: PAPER_FONTS_V2.serif,
+              fontStyle: "italic",
+              fontSize: 15,
+              color: TOKENS.muted,
+            }}
+          >
+            {runDetailSubline(detail)}
+          </div>
+
+          {/* Steps — all done */}
+          <div style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 10 }}>
+            {detailSteps(detail).map((label, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: RADII.pill,
+                    background: TOKENS.green,
+                    color: TOKENS.paper,
+                    display: "grid",
+                    placeItems: "center",
+                    fontSize: 11,
+                    flexShrink: 0,
+                  }}
+                >
+                  ✓
+                </span>
+                <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 14.5, color: TOKENS.ink }}>
+                  {label}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* WHAT CAME OF IT */}
+          <div
+            style={{
+              marginTop: 28,
+              background: TOKENS.card,
+              border: `1px solid ${TOKENS.lineSoft}`,
+              borderRadius: RADII.card,
+              boxShadow: SHADOWS.card,
+              padding: "20px 22px",
+            }}
+          >
+            <MonoLabel>What came of it</MonoLabel>
+            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+              {rows.map((row, i) => {
+                const ts = toneStyle(row.tone);
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 14, color: TOKENS.ink }}
+                      >
+                        {row.label}
+                      </div>
+                      <div
+                        style={{
+                          fontFamily: PAPER_FONTS_V2.mono,
+                          fontSize: 11,
+                          color: TOKENS.muted,
+                          marginTop: 2,
+                        }}
+                      >
+                        {row.detail}
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        padding: "3px 10px",
+                        borderRadius: RADII.pill,
+                        background: ts.bg,
+                        color: ts.color,
+                        fontFamily: PAPER_FONTS_V2.mono,
+                        fontSize: 10,
+                        fontWeight: 500,
+                        letterSpacing: ".08em",
+                        textTransform: "uppercase",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      ✓ done
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Download tiles */}
+            {tiles.length > 0 && (
+              <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {tiles.map((tile) => (
+                  <button
+                    key={tile.kind}
+                    onClick={() => downloadResumeBlob(resume, tile.kind).catch(() => {})}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "10px 16px",
+                      background: TOKENS.cardWarm,
+                      border: `1px solid ${TOKENS.line}`,
+                      borderRadius: RADII.panelTight,
+                      color: TOKENS.ink,
+                      fontFamily: PAPER_FONTS_V2.sans,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span style={{ fontFamily: PAPER_FONTS_V2.mono }}>↓</span> {tile.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: 20 }}>
+            <button
+              onClick={() => openInComposer(detail)}
+              disabled={opening === detail.id}
+              style={{
+                background: TOKENS.ink,
+                color: TOKENS.paper,
+                border: "none",
+                borderRadius: RADII.button,
+                padding: "10px 18px",
+                fontFamily: PAPER_FONTS_V2.sans,
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              {opening === detail.id ? "opening…" : "Open full run in composer →"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
+  // ── List view — every run, everywhere ──────────────────────────────────────
   return (
     <div
       className="scroll"
@@ -162,31 +417,45 @@ function HistoryV3({ p }) {
         flex: 1,
         overflow: "auto",
         padding: isMobile ? "24px 16px 64px" : "40px 56px 80px",
-        background: p.paper,
-        color: p.ink,
+        background: TOKENS.paper,
+        color: TOKENS.ink,
       }}
     >
-      <PageHead
-        p={p}
-        eyebrow="History · all your runs"
-        title="Every run, everywhere "
-        italic="you signed in."
-        sub="Anything Jugaadu does — a tailored résumé, a screenshot the crew read, a person you reached out to — shows up here, on any device."
-      />
-
-      {/* Filter chips */}
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4 }}>
-        <span
+      <div style={{ marginBottom: 20 }}>
+        <MonoLabel>History · all your runs</MonoLabel>
+        <h1
           style={{
-            fontFamily: PAPER_FONTS.mono,
-            fontSize: 10.5,
-            letterSpacing: ".16em",
-            color: p.inkMute,
-            textTransform: "uppercase",
+            margin: "8px 0 0",
+            fontFamily: PAPER_FONTS_V2.serif,
+            fontWeight: 400,
+            fontSize: isMobile ? 30 : 34,
+            lineHeight: 1.05,
+            letterSpacing: "-.01em",
+            color: TOKENS.ink,
           }}
         >
-          Show:
-        </span>
+          Every run, everywhere{" "}
+          <span style={{ fontStyle: "italic", color: TOKENS.muted2 }}>you signed in.</span>
+        </h1>
+        <p
+          style={{
+            margin: "10px 0 0",
+            fontFamily: PAPER_FONTS_V2.serif,
+            fontStyle: "italic",
+            fontSize: 15.5,
+            lineHeight: 1.5,
+            color: TOKENS.muted,
+            maxWidth: 620,
+          }}
+        >
+          Anything Jugaadu does — a tailored résumé, a screenshot the crew read, a person you reached
+          out to — shows up here, on any device.
+        </p>
+      </div>
+
+      {/* Filter chips */}
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <MonoLabel>Show:</MonoLabel>
         {(["all", "compose", "resume"] as Filter[]).map((k) => {
           const on = filter === k;
           return (
@@ -195,12 +464,12 @@ function HistoryV3({ p }) {
               onClick={() => setFilter(k)}
               style={{
                 padding: "5px 14px",
-                borderRadius: 999,
+                borderRadius: RADII.pill,
                 cursor: "pointer",
-                background: on ? p.ink : "transparent",
-                color: on ? p.paper : p.ink,
-                border: `1.5px solid ${on ? p.ink : p.ink + "30"}`,
-                fontFamily: PAPER_FONTS.mono,
+                background: on ? TOKENS.ink : "transparent",
+                color: on ? TOKENS.paper : TOKENS.ink,
+                border: `1px solid ${on ? TOKENS.ink : TOKENS.line}`,
+                fontFamily: PAPER_FONTS_V2.mono,
                 fontSize: 11.5,
                 letterSpacing: ".02em",
               }}
@@ -216,10 +485,11 @@ function HistoryV3({ p }) {
           style={{
             marginTop: 16,
             padding: "10px 14px",
-            background: p.card,
-            border: `1.5px solid ${p.stamp}`,
-            color: p.stamp,
-            fontFamily: PAPER_FONTS.mono,
+            background: TOKENS.card,
+            border: `1px solid ${TOKENS.red}`,
+            borderRadius: RADII.panelTight,
+            color: TOKENS.red,
+            fontFamily: PAPER_FONTS_V2.mono,
             fontSize: 12,
           }}
         >
@@ -233,9 +503,9 @@ function HistoryV3({ p }) {
             style={{
               padding: 24,
               textAlign: "center",
-              fontFamily: PAPER_FONTS.mono,
+              fontFamily: PAPER_FONTS_V2.mono,
               fontSize: 12,
-              color: p.inkMute,
+              color: TOKENS.muted,
             }}
           >
             reading the archive…
@@ -243,26 +513,39 @@ function HistoryV3({ p }) {
         )}
 
         {!loading && feed.length === 0 && (
-          <PaperEmpty
-            p={p}
-            hindi="अभी कुछ नहीं"
-            title="No runs yet."
-            sub="Kick off something from Compose or Resume and it'll land here — on every device you sign in on."
-          />
+          <div
+            style={{
+              padding: "40px 24px",
+              textAlign: "center",
+              background: TOKENS.card,
+              border: `1px solid ${TOKENS.lineSoft}`,
+              borderRadius: RADII.card,
+              boxShadow: SHADOWS.card,
+            }}
+          >
+            <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 22, color: TOKENS.ink }}>
+              No runs yet.
+            </div>
+            <div
+              style={{
+                marginTop: 8,
+                fontFamily: PAPER_FONTS_V2.serif,
+                fontStyle: "italic",
+                fontSize: 14,
+                color: TOKENS.muted,
+              }}
+            >
+              Kick off something from the Desk and it&apos;ll land here — on every device you sign in
+              on.
+            </div>
+          </div>
         )}
 
         {feed.map((it) => {
           const r = it.row;
-          const meta =
-            it.agent === "compose" ? composeTitle(r) : resumeTitle(r);
-          const chip =
-            it.agent === "compose"
-              ? outcomeChip(r.outcome)
-              : r.status === "in_flight"
-                ? { label: "in progress…", color: p.stamp }
-                : r.status === "error"
-                  ? { label: "error", color: p.stamp }
-                  : { label: r.ats_score != null ? `ATS ${r.ats_score}` : "tailored", color: p.leaf };
+          const meta = it.agent === "compose" ? composeTitleRow(r) : resumeTitleRow(r);
+          const chip = it.agent === "compose" ? composeOutcomeChip(r.outcome) : resumeRowChip(r);
+          const ts = toneStyle(chip.tone);
           const kindBadge =
             it.agent === "compose"
               ? r.kind === "job"
@@ -274,8 +557,10 @@ function HistoryV3({ p }) {
             <div
               key={it.key}
               style={{
-                background: p.card,
-                border: `1.5px solid ${p.ink}30`,
+                background: TOKENS.card,
+                border: `1px solid ${TOKENS.lineSoft}`,
+                borderRadius: RADII.card,
+                boxShadow: SHADOWS.card,
                 padding: "14px 18px",
                 display: isMobile ? "flex" : "grid",
                 gridTemplateColumns: "1fr auto auto auto",
@@ -285,22 +570,14 @@ function HistoryV3({ p }) {
               }}
             >
               <div style={{ minWidth: 0, flex: isMobile ? "1 1 100%" : undefined }}>
-                <div
-                  style={{
-                    fontFamily: PAPER_FONTS.mono,
-                    fontSize: 10.5,
-                    letterSpacing: ".14em",
-                    textTransform: "uppercase",
-                    color: p.inkMute,
-                  }}
-                >
+                <MonoLabel size={10.5} style={{ letterSpacing: ".14em" }}>
                   {kindBadge} · {meta.eyebrow}
-                </div>
+                </MonoLabel>
                 <div
                   style={{
-                    fontFamily: PAPER_FONTS.display,
+                    fontFamily: PAPER_FONTS_V2.serif,
                     fontSize: 19,
-                    color: p.ink,
+                    color: TOKENS.ink,
                     lineHeight: 1.15,
                     marginTop: 2,
                     overflow: "hidden",
@@ -314,9 +591,10 @@ function HistoryV3({ p }) {
               <span
                 style={{
                   padding: "3px 10px",
-                  background: chip.color + "14",
-                  color: chip.color,
-                  fontFamily: PAPER_FONTS.mono,
+                  borderRadius: RADII.pill,
+                  background: ts.bg,
+                  color: ts.color,
+                  fontFamily: PAPER_FONTS_V2.mono,
                   fontSize: 11,
                   letterSpacing: ".04em",
                   whiteSpace: "nowrap",
@@ -326,34 +604,50 @@ function HistoryV3({ p }) {
               </span>
               <span
                 style={{
-                  fontFamily: PAPER_FONTS.mono,
+                  fontFamily: PAPER_FONTS_V2.mono,
                   fontSize: 11,
-                  color: p.inkMute,
+                  color: TOKENS.muted,
                   letterSpacing: ".04em",
                   whiteSpace: "nowrap",
                 }}
               >
-                {fmtWhen(it.created_at)}
+                {relativeWhen(it.created_at)}
               </span>
               {it.agent === "compose" ? (
-                <InkButton
-                  p={p}
-                  kind="outline"
-                  size="sm"
-                  onClick={() => openCompose(r.id)}
-                  disabled={opening === r.id}
+                <button
+                  onClick={() => openDetail(r.id)}
+                  disabled={detailLoading === r.id}
+                  style={{
+                    background: "transparent",
+                    color: TOKENS.ink,
+                    border: `1px solid ${TOKENS.faint}`,
+                    borderRadius: RADII.buttonTight,
+                    padding: "7px 14px",
+                    fontFamily: PAPER_FONTS_V2.sans,
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
                 >
-                  {opening === r.id ? "opening…" : "Open →"}
-                </InkButton>
+                  {detailLoading === r.id ? "opening…" : "View →"}
+                </button>
               ) : (
-                <InkButton
-                  p={p}
-                  kind="outline"
-                  size="sm"
+                <button
                   onClick={() => router.push("/app/resume")}
+                  style={{
+                    background: "transparent",
+                    color: TOKENS.ink,
+                    border: `1px solid ${TOKENS.faint}`,
+                    borderRadius: RADII.buttonTight,
+                    padding: "7px 14px",
+                    fontFamily: PAPER_FONTS_V2.sans,
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
                 >
                   Open →
-                </InkButton>
+                </button>
               )}
             </div>
           );
@@ -363,20 +657,6 @@ function HistoryV3({ p }) {
   );
 }
 
-function personHost(s: string | null | undefined): string {
-  const t = (s || "").trim();
-  if (!t) return "";
-  try {
-    return new URL(t.match(/^https?:\/\//) ? t : `https://${t}`).hostname.replace(
-      /^www\./,
-      ""
-    );
-  } catch {
-    return t;
-  }
-}
-
 export default function HistoryPage() {
-  const { p } = usePaperTheme();
-  return <HistoryV3 p={p} />;
+  return <HistoryV3 />;
 }

@@ -2,30 +2,23 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PAPER_FONTS } from "@/components/paper/fonts";
-import { usePaperTheme } from "@/components/paper/use-paper-theme";
-import { PageHead, PaperCard, InkButton, Eyebrow, Stamp, Marginalia, PaperEmpty } from "@/components/paper/primitives";
-import type { Palette } from "@/components/paper/palette";
+import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
+import { TOKENS, RADII, SHADOWS } from "@/components/paper/tokens";
+import { InkButton2 } from "@/components/paper/primitives2";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { relativePosted, visaBadge, sizeLabel, scoreTier } from "@/lib/jobs/format";
 import type { FeedItem } from "@/lib/jobs/types";
 
-const CARD_COLORS = ["marigold", "leaf", "tea", "stamp"] as const;
-
-function scoreColor(p: Palette, score: number): string {
+function scoreColor(score: number): string {
   const tier = scoreTier(score);
-  return tier === "high" ? p.leaf : tier === "mid" ? p.marigold : p.stamp;
+  return tier === "high" ? TOKENS.green : tier === "mid" ? TOKENS.gold : TOKENS.red;
 }
 
 function JobCard({
-  p,
   item,
-  color,
   onOpen,
 }: {
-  p: Palette;
   item: FeedItem;
-  color: string;
   onOpen: () => void;
 }) {
   const posted = relativePosted(item.posted_date, item.posted_date_approx);
@@ -45,9 +38,10 @@ function JobCard({
         }
       }}
       style={{
-        background: p.card,
-        border: `1.5px solid ${p.ink}`,
-        boxShadow: `4px 4px 0 ${color}`,
+        background: TOKENS.card,
+        border: `1px solid ${TOKENS.lineSoft}`,
+        borderRadius: RADII.card,
+        boxShadow: SHADOWS.card,
         padding: "18px 20px",
         cursor: "pointer",
         display: "grid",
@@ -58,16 +52,27 @@ function JobCard({
     >
       <div style={{ minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Eyebrow p={p} en={item.company} color={p.stamp} />
+          <span
+            style={{
+              fontFamily: PAPER_FONTS_V2.mono,
+              fontSize: 10.5,
+              color: TOKENS.red,
+              letterSpacing: ".1em",
+              textTransform: "uppercase",
+            }}
+          >
+            {item.company}
+          </span>
           {item.is_new && (
             <span
               style={{
-                fontFamily: PAPER_FONTS.mono,
+                fontFamily: PAPER_FONTS_V2.mono,
                 fontSize: 8.5,
                 letterSpacing: ".14em",
-                padding: "1px 6px",
-                border: `1px solid ${p.stamp}`,
-                color: p.stamp,
+                padding: "2px 8px",
+                borderRadius: RADII.pill,
+                border: `1px solid ${TOKENS.red}`,
+                color: TOKENS.red,
                 whiteSpace: "nowrap",
               }}
             >
@@ -77,9 +82,9 @@ function JobCard({
         </div>
         <div
           style={{
-            fontFamily: PAPER_FONTS.display,
+            fontFamily: PAPER_FONTS_V2.serif,
             fontSize: 22,
-            color: p.ink,
+            color: TOKENS.ink,
             lineHeight: 1.1,
             marginTop: 4,
           }}
@@ -89,9 +94,9 @@ function JobCard({
         {meta && (
           <div
             style={{
-              fontFamily: PAPER_FONTS.mono,
+              fontFamily: PAPER_FONTS_V2.mono,
               fontSize: 11,
-              color: p.inkMute,
+              color: TOKENS.muted,
               marginTop: 6,
               letterSpacing: ".02em",
             }}
@@ -100,10 +105,17 @@ function JobCard({
           </div>
         )}
         {item.reasons && (
-          <div style={{ marginTop: 8 }}>
-            <Marginalia p={p} rotate={-0.5}>
-              {item.reasons}
-            </Marginalia>
+          <div
+            style={{
+              marginTop: 8,
+              fontFamily: PAPER_FONTS_V2.serif,
+              fontStyle: "italic",
+              fontSize: 14,
+              lineHeight: 1.4,
+              color: TOKENS.muted2,
+            }}
+          >
+            {item.reasons}
           </div>
         )}
         {visa && (
@@ -111,27 +123,42 @@ function JobCard({
             style={{
               marginTop: 8,
               display: "inline-block",
-              fontFamily: PAPER_FONTS.mono,
+              fontFamily: PAPER_FONTS_V2.mono,
               fontSize: 10,
               letterSpacing: ".06em",
-              color: p.leaf,
-              border: `1px solid ${p.leaf}`,
-              padding: "2px 8px",
+              textTransform: "uppercase",
+              color: TOKENS.green,
+              background: TOKENS.greenBg,
+              borderRadius: RADII.pill,
+              padding: "3px 10px",
             }}
           >
             ✓ {visa}
           </div>
         )}
       </div>
-      <Stamp color={scoreColor(p, item.score)} rotate={3}>
+      <span
+        style={{
+          display: "inline-block",
+          fontFamily: PAPER_FONTS_V2.mono,
+          fontWeight: 600,
+          fontSize: 15,
+          letterSpacing: ".04em",
+          color: scoreColor(item.score),
+          border: `1px solid ${scoreColor(item.score)}`,
+          borderRadius: RADII.buttonTight,
+          padding: "6px 11px",
+          background: TOKENS.card,
+          whiteSpace: "nowrap",
+        }}
+      >
         {item.score}
-      </Stamp>
+      </span>
     </div>
   );
 }
 
 export default function JobsFeedPage() {
-  const { p } = usePaperTheme();
   const isMobile = useIsMobile();
   const router = useRouter();
   const [jobs, setJobs] = useState<FeedItem[] | null>(null);
@@ -211,34 +238,78 @@ export default function JobsFeedPage() {
   return (
     <div
       className="scroll"
-      style={{ flex: 1, overflow: "auto", padding: isMobile ? "24px 16px 64px" : "48px 56px 80px" }}
+      style={{ flex: 1, overflow: "auto", padding: isMobile ? "24px 16px 64px" : "48px 56px 80px", background: TOKENS.paper }}
     >
-      <PageHead
-        p={p}
-        eyebrow="Jobs · picked for you"
-        title="Today's jobs,"
-        italic="picked for you."
-        sub={summary}
-        right={
-          <div style={{ display: "flex", gap: 8 }}>
-            <InkButton p={p} color={p.marigold} size="sm" onClick={refresh} disabled={refreshing}>
-              {refreshing ? "Refreshing…" : "Refresh"}
-            </InkButton>
-            <InkButton p={p} kind="outline" size="sm" onClick={() => router.push("/app/jobs/preferences")}>
-              Edit preferences
-            </InkButton>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 24,
+          flexWrap: "wrap",
+          marginBottom: 24,
+        }}
+      >
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div
+            style={{
+              fontFamily: PAPER_FONTS_V2.mono,
+              fontSize: 10.5,
+              color: TOKENS.muted,
+              letterSpacing: ".1em",
+              textTransform: "uppercase",
+              marginBottom: 8,
+            }}
+          >
+            Jobs · picked for you
           </div>
-        }
-      />
+          <h1
+            style={{
+              margin: 0,
+              fontFamily: PAPER_FONTS_V2.serif,
+              fontWeight: 400,
+              fontSize: "clamp(40px, 4.8vw, 64px)",
+              lineHeight: 0.95,
+              letterSpacing: "-.02em",
+              color: TOKENS.ink,
+              textWrap: "balance",
+            }}
+          >
+            Today&apos;s jobs, <span style={{ fontStyle: "italic", color: TOKENS.red }}>picked for you.</span>
+          </h1>
+          <p
+            style={{
+              margin: "14px 0 0",
+              fontFamily: PAPER_FONTS_V2.serif,
+              fontStyle: "italic",
+              fontSize: 18,
+              lineHeight: 1.45,
+              color: TOKENS.inkSoft,
+              maxWidth: 720,
+            }}
+          >
+            {summary}
+          </p>
+        </div>
+        <div style={{ flexShrink: 0, display: "flex", gap: 8 }}>
+          <InkButton2 kind="solid" size="sm" onClick={refresh} disabled={refreshing}>
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </InkButton2>
+          <InkButton2 kind="outline" size="sm" onClick={() => router.push("/app/jobs/preferences")}>
+            Edit preferences
+          </InkButton2>
+        </div>
+      </div>
 
       {note && (
         <div
           style={{
-            fontFamily: PAPER_FONTS.mono,
+            fontFamily: PAPER_FONTS_V2.mono,
             fontSize: 12,
-            color: p.ink,
-            border: `1px solid ${p.ink}`,
-            background: `${p.marigold}33`,
+            color: TOKENS.ink,
+            border: `1px solid ${TOKENS.amberLine}`,
+            background: TOKENS.amberWash,
+            borderRadius: RADII.panelTight,
             padding: "8px 12px",
             marginBottom: 16,
           }}
@@ -261,11 +332,12 @@ export default function JobsFeedPage() {
                 onClick={() => setOnlyNew(o.v)}
                 style={{
                   padding: "6px 14px",
-                  fontFamily: PAPER_FONTS.mono,
+                  fontFamily: PAPER_FONTS_V2.mono,
                   fontSize: 12,
-                  background: active ? p.ink : "transparent",
-                  color: active ? p.paper : p.ink,
-                  border: `1.5px solid ${p.ink}`,
+                  background: active ? TOKENS.ink : "transparent",
+                  color: active ? TOKENS.paper : TOKENS.ink,
+                  border: `1px solid ${active ? TOKENS.ink : TOKENS.line}`,
+                  borderRadius: RADII.pill,
                   cursor: "pointer",
                 }}
               >
@@ -277,51 +349,100 @@ export default function JobsFeedPage() {
       )}
 
       {error ? (
-        <PaperCard p={p} color={p.stamp} hardShadow>
-          <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 20, color: p.ink }}>
+        <div
+          style={{
+            background: TOKENS.card,
+            border: `1px solid ${TOKENS.lineSoft}`,
+            borderRadius: RADII.card,
+            boxShadow: SHADOWS.card,
+            padding: "20px 22px",
+          }}
+        >
+          <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 20, color: TOKENS.ink }}>
             Couldn&apos;t load your feed
           </div>
-          <p style={{ fontFamily: PAPER_FONTS.mono, fontSize: 12, color: p.stamp, marginTop: 6 }}>{error}</p>
-        </PaperCard>
+          <p style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 12, color: TOKENS.red, marginTop: 6 }}>{error}</p>
+        </div>
       ) : jobs === null ? (
-        <PaperEmpty
-          p={p}
-          title="Warming up…"
-          sub="We're scanning the boards that match your interests. New matches land here every morning — check back shortly."
-        />
-      ) : jobs.length === 0 ? (
-        <PaperEmpty
-          p={p}
-          title={onlyNew ? "No new matches today" : "No matches yet"}
-          sub={
-            onlyNew
-              ? "Nothing new since your last visit. Switch to All matches to see everything."
-              : "Pick the sectors you care about and we'll fill this feed with roles that fit."
-          }
+        <div
+          style={{
+            padding: "48px 32px",
+            textAlign: "center",
+            border: `1px dashed ${TOKENS.dashed}`,
+            borderRadius: RADII.card,
+            background: "transparent",
+          }}
         >
-          {onlyNew ? (
-            <InkButton p={p} color={p.marigold} onClick={() => setOnlyNew(false)}>
-              See all matches
-            </InkButton>
-          ) : (
-            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-              <InkButton p={p} color={p.marigold} onClick={refresh} disabled={refreshing}>
-                {refreshing ? "Refreshing…" : "Refresh feed"}
-              </InkButton>
-              <InkButton p={p} kind="outline" onClick={() => router.push("/app/jobs/preferences")}>
-                Set your interests
-              </InkButton>
-            </div>
-          )}
-        </PaperEmpty>
+          <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 26, color: TOKENS.ink, lineHeight: 1.1 }}>
+            Warming up…
+          </div>
+          <p
+            style={{
+              margin: "8px auto 0",
+              maxWidth: 480,
+              fontFamily: PAPER_FONTS_V2.serif,
+              fontStyle: "italic",
+              fontSize: 16,
+              color: TOKENS.inkSoft,
+              lineHeight: 1.4,
+            }}
+          >
+            We&apos;re scanning the boards that match your interests. New matches land here every morning — check back shortly.
+          </p>
+        </div>
+      ) : jobs.length === 0 ? (
+        <div
+          style={{
+            padding: "48px 32px",
+            textAlign: "center",
+            border: `1px dashed ${TOKENS.dashed}`,
+            borderRadius: RADII.card,
+            background: "transparent",
+          }}
+        >
+          <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 26, color: TOKENS.ink, lineHeight: 1.1 }}>
+            {onlyNew ? "No new matches today" : "No matches yet"}
+          </div>
+          <p
+            style={{
+              margin: "8px auto 0",
+              maxWidth: 480,
+              fontFamily: PAPER_FONTS_V2.serif,
+              fontStyle: "italic",
+              fontSize: 16,
+              color: TOKENS.inkSoft,
+              lineHeight: 1.4,
+            }}
+          >
+            {onlyNew
+              ? "Nothing new since your last visit. Switch to All matches to see everything."
+              : "Pick the sectors you care about and we'll fill this feed with roles that fit."}
+          </p>
+          <div style={{ marginTop: 18 }}>
+            {onlyNew ? (
+              <div style={{ display: "inline-flex" }}>
+                <InkButton2 kind="solid" onClick={() => setOnlyNew(false)}>
+                  See all matches
+                </InkButton2>
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                <InkButton2 kind="solid" onClick={refresh} disabled={refreshing}>
+                  {refreshing ? "Refreshing…" : "Refresh feed"}
+                </InkButton2>
+                <InkButton2 kind="outline" onClick={() => router.push("/app/jobs/preferences")}>
+                  Set your interests
+                </InkButton2>
+              </div>
+            )}
+          </div>
+        </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {jobs.map((item, i) => (
+          {jobs.map((item) => (
             <JobCard
               key={item.match_id || item.job_id}
-              p={p}
               item={item}
-              color={p[CARD_COLORS[i % CARD_COLORS.length]]}
               onOpen={() => router.push(`/app/jobs/${item.job_id}`)}
             />
           ))}

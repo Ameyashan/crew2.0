@@ -2,16 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { PAPER_FONTS } from "@/components/paper/fonts";
-import { usePaperTheme } from "@/components/paper/use-paper-theme";
-import { PageHead, PaperCard, InkButton, Stamp } from "@/components/paper/primitives";
+import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
+import { TOKENS, RADII, SHADOWS } from "@/components/paper/tokens";
+import { InkButton2 } from "@/components/paper/primitives2";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { startRun } from "@/lib/runs-store";
 import { relativePosted, visaLabelFull, sizeLabel, scoreTier } from "@/lib/jobs/format";
 import type { JobDetail } from "@/lib/jobs/types";
 
 export default function JobDetailPage() {
-  const { p } = usePaperTheme();
   const isMobile = useIsMobile();
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -69,20 +68,20 @@ export default function JobDetailPage() {
   }
 
   const tierColor = (s: number) =>
-    scoreTier(s) === "high" ? p.leaf : scoreTier(s) === "mid" ? p.marigold : p.stamp;
+    scoreTier(s) === "high" ? TOKENS.green : scoreTier(s) === "mid" ? TOKENS.gold : TOKENS.red;
 
   return (
     <div
       className="scroll"
-      style={{ flex: 1, overflow: "auto", padding: isMobile ? "24px 16px 64px" : "48px 56px 80px" }}
+      style={{ flex: 1, overflow: "auto", padding: isMobile ? "24px 16px 64px" : "48px 56px 80px", background: TOKENS.paper }}
     >
       <button
         onClick={() => router.push("/app/jobs")}
         style={{
           background: "transparent",
           border: "none",
-          color: p.inkMute,
-          fontFamily: PAPER_FONTS.mono,
+          color: TOKENS.muted,
+          fontFamily: PAPER_FONTS_V2.mono,
           fontSize: 11,
           letterSpacing: ".1em",
           textTransform: "uppercase",
@@ -95,21 +94,96 @@ export default function JobDetailPage() {
       </button>
 
       {error ? (
-        <PaperCard p={p} color={p.stamp} hardShadow>
-          <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 20 }}>Couldn&apos;t load this job</div>
-          <p style={{ fontFamily: PAPER_FONTS.mono, fontSize: 12, color: p.stamp, marginTop: 6 }}>{error}</p>
-        </PaperCard>
+        <div
+          style={{
+            background: TOKENS.card,
+            border: `1px solid ${TOKENS.lineSoft}`,
+            borderRadius: RADII.card,
+            boxShadow: SHADOWS.card,
+            padding: "20px 22px",
+          }}
+        >
+          <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 20, color: TOKENS.ink }}>Couldn&apos;t load this job</div>
+          <p style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 12, color: TOKENS.red, marginTop: 6 }}>{error}</p>
+        </div>
       ) : !job ? (
-        <p style={{ fontFamily: PAPER_FONTS.mono, fontSize: 13, color: p.inkMute }}>Loading…</p>
+        <p style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 13, color: TOKENS.muted }}>Loading…</p>
       ) : (
         <>
-          <PageHead
-            p={p}
-            eyebrow={job.company}
-            title={job.title}
-            sub={job.reasons || undefined}
-            right={<Stamp color={tierColor(job.score)} rotate={3}>{`${job.score} fit`}</Stamp>}
-          />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: 24,
+              flexWrap: "wrap",
+              marginBottom: 24,
+            }}
+          >
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div
+                style={{
+                  fontFamily: PAPER_FONTS_V2.mono,
+                  fontSize: 10.5,
+                  color: TOKENS.muted,
+                  letterSpacing: ".1em",
+                  textTransform: "uppercase",
+                  marginBottom: 8,
+                }}
+              >
+                {job.company}
+              </div>
+              <h1
+                style={{
+                  margin: 0,
+                  fontFamily: PAPER_FONTS_V2.serif,
+                  fontWeight: 400,
+                  fontSize: "clamp(40px, 4.8vw, 64px)",
+                  lineHeight: 0.95,
+                  letterSpacing: "-.02em",
+                  color: TOKENS.ink,
+                  textWrap: "balance",
+                }}
+              >
+                {job.title}
+              </h1>
+              {job.reasons && (
+                <p
+                  style={{
+                    margin: "14px 0 0",
+                    fontFamily: PAPER_FONTS_V2.serif,
+                    fontStyle: "italic",
+                    fontSize: 18,
+                    lineHeight: 1.45,
+                    color: TOKENS.inkSoft,
+                    maxWidth: 720,
+                  }}
+                >
+                  {job.reasons}
+                </p>
+              )}
+            </div>
+            <div style={{ flexShrink: 0 }}>
+              <span
+                style={{
+                  display: "inline-block",
+                  fontFamily: PAPER_FONTS_V2.mono,
+                  fontWeight: 600,
+                  fontSize: 14,
+                  letterSpacing: ".04em",
+                  textTransform: "uppercase",
+                  color: tierColor(job.score),
+                  border: `1px solid ${tierColor(job.score)}`,
+                  borderRadius: RADII.buttonTight,
+                  padding: "7px 12px",
+                  background: TOKENS.card,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {`${job.score} fit`}
+              </span>
+            </div>
+          </div>
 
           {/* Meta strip */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>
@@ -126,12 +200,13 @@ export default function JobDetailPage() {
                 <span
                   key={i}
                   style={{
-                    fontFamily: PAPER_FONTS.mono,
+                    fontFamily: PAPER_FONTS_V2.mono,
                     fontSize: 11,
-                    color: p.inkSoft,
-                    border: `1px solid ${p.ink}24`,
-                    padding: "4px 10px",
-                    background: p.card,
+                    color: TOKENS.inkSoft,
+                    border: `1px solid ${TOKENS.line}`,
+                    borderRadius: RADII.pill,
+                    padding: "4px 12px",
+                    background: TOKENS.card,
                   }}
                 >
                   {chip}
@@ -141,27 +216,35 @@ export default function JobDetailPage() {
 
           {/* Actions */}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
-            <InkButton p={p} size="lg" color={p.stamp} disabled={busy} onClick={runOutreach}>
-              {busy ? "Starting…" : "Run outreach"} <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 16 }}>→</span>
-            </InkButton>
-            <InkButton p={p} kind="outline" disabled={busy} onClick={dismiss}>
+            <InkButton2 kind="solid" disabled={busy} onClick={runOutreach} style={{ padding: "12px 20px", fontSize: 15 }}>
+              {busy ? "Starting…" : "Run outreach"} <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 16 }}>→</span>
+            </InkButton2>
+            <InkButton2 kind="outline" disabled={busy} onClick={dismiss} style={{ padding: "12px 20px", fontSize: 15 }}>
               Dismiss
-            </InkButton>
+            </InkButton2>
             <a href={job.url} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
-              <InkButton p={p} kind="ghost">
+              <InkButton2 kind="ghost" style={{ padding: "12px 20px", fontSize: 15 }}>
                 View original ↗
-              </InkButton>
+              </InkButton2>
             </a>
           </div>
 
           {/* JD */}
-          <PaperCard p={p}>
+          <div
+            style={{
+              background: TOKENS.card,
+              border: `1px solid ${TOKENS.lineSoft}`,
+              borderRadius: RADII.card,
+              boxShadow: SHADOWS.card,
+              padding: "20px 22px",
+            }}
+          >
             <div
               style={{
-                fontFamily: PAPER_FONTS.mono,
+                fontFamily: PAPER_FONTS_V2.mono,
                 fontSize: 10,
-                color: p.inkMute,
-                letterSpacing: ".16em",
+                color: TOKENS.muted,
+                letterSpacing: ".1em",
                 textTransform: "uppercase",
                 marginBottom: 12,
               }}
@@ -170,16 +253,16 @@ export default function JobDetailPage() {
             </div>
             <div
               style={{
-                fontFamily: PAPER_FONTS.serif,
+                fontFamily: PAPER_FONTS_V2.serif,
                 fontSize: 15,
                 lineHeight: 1.6,
-                color: p.ink,
+                color: TOKENS.ink,
                 whiteSpace: "pre-wrap",
               }}
             >
               {job.description || "No description available from the source board. Open the original posting for details."}
             </div>
-          </PaperCard>
+          </div>
         </>
       )}
     </div>
