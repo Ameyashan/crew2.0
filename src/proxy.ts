@@ -1,10 +1,15 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
+import { isAnonAllowedPath } from "@/components/paper/run-view-logic";
 
 // Edge routing + session refresh for the auth boundary.
 //
 //   /                        → /app/compose for a signed-in visitor
-//   /app/** and /onboarding  → / when there's no (valid) Supabase session
+//   /app/** and /onboarding  → / when there's no (valid) Supabase session,
+//                              EXCEPT the try-before-sign-in Desk (/app/compose),
+//                              which anonymous visitors may reach (Phase 4 blur
+//                              gate). Every other /app route and /onboarding stay
+//                              hard-gated; the /app layout re-checks server-side.
 //
 // Anonymous traffic stays zero-network: we only talk to Supabase when an
 // auth-token cookie is present. When one is, getUser() validates it AND
@@ -15,6 +20,18 @@ import { NextRequest, NextResponse } from "next/server";
 // and users get bounced back to the landing page mid-session.
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  // App Router layouts can't read the request path; forward it so the /app
+  // layout can apply the same anon allow-list (see run-view-logic
+  // .isAnonAllowedPath + src/app/app/layout.tsx). Derive a fresh, mutable
+  // Headers each time (req.headers is immutable) that carries x-pathname plus
+  // any cookies the caller has since set — the Supabase refresh below mutates
+  // req.cookies, and new Headers(req.headers) picks those up.
+  const forwardHeaders = () => {
+    const h = new Headers(req.headers);
+    h.set("x-pathname", pathname);
+    return h;
+  };
 
   // Match both the single cookie (sb-<ref>-auth-token) and the chunked
   // variants Supabase writes for large OAuth sessions (…-auth-token.0, .1, …)
@@ -30,7 +47,7 @@ export async function proxy(req: NextRequest) {
         !c.name.includes("code-verifier"),
     );
 
-  let res = NextResponse.next({ request: { headers: req.headers } });
+  let res = NextResponse.next({ request: { headers: forwardHeaders() } });
   let signedIn = false;
 
   if (hasAuthCookie) {
@@ -46,7 +63,7 @@ export async function proxy(req: NextRequest) {
               // tokens on THIS request, then rebuild the response and mirror
               // the cookies onto it for the browser.
               for (const { name, value } of toSet) req.cookies.set(name, value);
-              res = NextResponse.next({ request: { headers: req.headers } });
+              res = NextResponse.next({ request: { headers: forwardHeaders() } });
               for (const { name, value, options } of toSet) res.cookies.set(name, value, options);
             },
           },
@@ -79,7 +96,9 @@ export async function proxy(req: NextRequest) {
 
   const isProtected =
     pathname.startsWith("/app") || pathname.startsWith("/onboarding");
-  if (isProtected && !signedIn) {
+  // Anonymous visitors may reach only the try-before-sign-in Desk; everything
+  // else protected still bounces to the landing page.
+  if (isProtected && !signedIn && !isAnonAllowedPath(pathname)) {
     return redirectPreservingCookies("/");
   }
 
