@@ -1,0 +1,1530 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#efe9dd}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+input,textarea{font-family:inherit}
+input:focus,textarea:focus{outline:none}
+::placeholder{color:#bdb4a3;font-style:italic}
+</style>
+</helmet>
+
+<div data-screen-label="Jugaadu prototype" style="min-height:100vh;background:#faf8f3;color:#211e19;font-family:'Newsreader',Georgia,serif;display:flex;flex-direction:column">
+
+<!-- ══════════ TOP BAR ══════════ -->
+<sc-if value="{{ showChrome }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:20px 44px 0">
+  <div style="display:flex;align-items:baseline;gap:10px;cursor:pointer" onClick="{{ goDesk }}">
+    <span style="font:500 21px/1 'Newsreader',Georgia,serif">Jugaadu</span>
+    <sc-if value="{{ hindi }}" hint-placeholder-val="{{ false }}"><span style="font:400 11px/1 'Newsreader',serif;color:#a49a88">जुगाडू</span></sc-if>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;font:400 13px/1 system-ui,sans-serif">
+    <sc-if value="{{ signedIn }}" hint-placeholder-val="{{ false }}">
+    <span onClick="{{ goDesk }}" style="cursor:pointer;padding:8px 12px;border-radius:99px;color:{{ deskNavColor }};background:{{ deskNavBg }}">Desk</span>
+    <span onClick="{{ goJobs }}" style="cursor:pointer;padding:8px 12px;border-radius:99px;color:{{ jobsNavColor }};background:{{ jobsNavBg }}">Jobs</span>
+    <span onClick="{{ goStory }}" style="cursor:pointer;padding:8px 12px;border-radius:99px;color:{{ storyNavColor }};background:{{ storyNavBg }}">Story</span>
+    <span onClick="{{ goPeople }}" style="cursor:pointer;padding:8px 12px;border-radius:99px;color:{{ peopleNavColor }};background:{{ peopleNavBg }}">People</span>
+    </sc-if>
+    <sc-if value="{{ crewChip }}" hint-placeholder-val="{{ false }}">
+      <span onClick="{{ goRun }}" style="cursor:pointer;margin-left:10px;font:500 10.5px/1 'IBM Plex Mono',monospace;color:#3d7a4f;background:#e9f1e9;border-radius:99px;padding:7px 11px;animation:pulse 2s infinite">● crew running</span>
+    </sc-if>
+    <sc-if value="{{ signedOut }}" hint-placeholder-val="{{ false }}">
+      <span onClick="{{ signIn }}" style="cursor:pointer;margin-left:10px;font:500 13px/1 system-ui,sans-serif;color:#faf8f3;background:#211e19;border-radius:99px;padding:9px 16px" style-hover="background:#3a352c">Sign in</span>
+    </sc-if>
+    <sc-if value="{{ signedIn }}" hint-placeholder-val="{{ false }}">
+    <div style="position:relative;margin-left:10px;display:flex">
+      <div onClick="{{ toggleAcct }}" title="{{ userEmail }}" style="width:30px;height:30px;border-radius:99px;background:{{ userBg }};color:#fff;display:flex;align-items:center;justify-content:center;font:500 12px/1 system-ui,sans-serif;cursor:pointer">{{ userInitial }}</div>
+      <sc-if value="{{ acctOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;top:38px;right:0;width:228px;background:#fff;border:1px solid #e3ddd0;border-radius:12px;box-shadow:0 6px 24px rgba(60,50,30,.12);padding:14px 16px;z-index:40;text-align:left;animation:fadeUp .2s ease">
+          <div style="font:500 13px/1.35 system-ui,sans-serif;color:#211e19">{{ userName }}</div>
+          <div style="font:400 11.5px/1.5 system-ui,sans-serif;color:#8b8171;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ userEmail }}</div>
+          <div style="font:500 9.5px/1 'IBM Plex Mono',monospace;color:#b0a692;margin-top:6px">SIGNED IN WITH GOOGLE</div>
+          <div onClick="{{ signOut }}" style="font:400 12.5px/1 system-ui,sans-serif;color:#8b8171;border-top:1px solid #eee7d6;margin-top:12px;padding-top:12px;cursor:pointer" style-hover="color:#211e19">Sign out</div>
+        </div>
+      </sc-if>
+    </div>
+    </sc-if>
+  </div>
+</div>
+</sc-if>
+
+<!-- ══════════ AUTH ══════════ -->
+<sc-if value="{{ isAuth }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px 24px;position:relative">
+
+  <sc-if value="{{ authChooser }}" hint-placeholder-val="{{ true }}">
+  <div style="width:400px;background:#fff;border:1px solid #dadce0;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.14);padding:36px 40px 28px;font-family:system-ui,sans-serif;animation:fadeUp .25s ease">
+    <div style="display:flex;justify-content:center;margin-bottom:14px"><svg width="26" height="26" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path></svg></div>
+    <div style="font:400 21px/1.3 system-ui,sans-serif;color:#202124;text-align:center">Choose an account</div>
+    <div style="font:400 13px/1.5 system-ui,sans-serif;color:#5f6368;text-align:center;margin:6px 0 22px">to continue to <span style="color:#1a73e8;font-weight:500">Jugaadu</span></div>
+    <div style="display:flex;flex-direction:column">
+      <sc-for list="{{ googleAccounts }}" as="a" hint-placeholder-count="2">
+        <div onClick="{{ a.pick }}" style="display:flex;align-items:center;gap:14px;padding:12px 8px;border-top:1px solid #e8eaed;cursor:pointer;border-radius:6px" style-hover="background:#f7f8f8">
+          <div style="width:32px;height:32px;border-radius:99px;background:{{ a.bg }};color:#fff;display:flex;align-items:center;justify-content:center;font:500 13px/1 system-ui,sans-serif;flex:none">{{ a.initial }}</div>
+          <div style="min-width:0">
+            <div style="font:500 13.5px/1.35 system-ui,sans-serif;color:#202124">{{ a.name }}</div>
+            <div style="font:400 12px/1.4 system-ui,sans-serif;color:#5f6368">{{ a.email }}</div>
+          </div>
+        </div>
+      </sc-for>
+      <div onClick="{{ cancelGoogle }}" style="display:flex;align-items:center;gap:14px;padding:12px 8px;border-top:1px solid #e8eaed;cursor:pointer;border-radius:6px" style-hover="background:#f7f8f8">
+        <div style="width:32px;height:32px;border-radius:99px;border:1px solid #dadce0;color:#5f6368;display:flex;align-items:center;justify-content:center;font:400 14px/1 system-ui,sans-serif;flex:none">←</div>
+        <div style="font:400 13.5px/1.35 system-ui,sans-serif;color:#202124">Not now — take me back</div>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ authLoading }}" hint-placeholder-val="{{ false }}">
+  <div style="text-align:center;animation:fadeUp .3s ease">
+    <div style="width:44px;height:44px;border-radius:99px;background:{{ userBg }};color:#fff;display:flex;align-items:center;justify-content:center;font:500 17px/1 system-ui,sans-serif;margin:0 auto 16px">{{ userInitial }}</div>
+    <div style="font:400 20px/1.4 'Newsreader',Georgia,serif">Setting up your Desk, {{ userFirst }}…</div>
+    <div style="font:500 10.5px/1 'IBM Plex Mono',monospace;color:#b0a692;margin-top:10px;animation:pulse 1.4s infinite">SIGNED IN WITH GOOGLE</div>
+  </div>
+  </sc-if>
+
+</div>
+</sc-if>
+
+<!-- ══════════ ONBOARDING ══════════ -->
+<sc-if value="{{ isOnboarding }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px 24px">
+<div style="width:600px;background:#fff;border:1px solid #e8e2d5;border-radius:16px;box-shadow:0 4px 24px rgba(60,50,30,.07);padding:44px 52px 40px;animation:fadeUp .4s ease">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:26px">
+    <div style="display:flex;align-items:baseline;gap:8px">
+      <span style="font:500 18px/1 'Newsreader',Georgia,serif">Jugaadu</span>
+      <sc-if value="{{ hindi }}" hint-placeholder-val="{{ false }}"><span style="font:400 10px/1 'Newsreader',serif;color:#a49a88">जुगाडू</span></sc-if>
+    </div>
+    <span style="font:500 10.5px/1 'IBM Plex Mono',monospace;color:#b0a692">STEP {{ obStep }} OF 3</span>
+  </div>
+  <sc-if value="{{ isOb1 }}" hint-placeholder-val="{{ true }}">
+    <div style="font:400 30px/1.25 'Newsreader',Georgia,serif;letter-spacing:-.01em">You bring the ambition. The crew does the boring half.</div>
+    <div style="font:400 14px/1.7 system-ui,sans-serif;color:#6f6656;margin:16px 0 24px">Four agents work behind one box: they weave your resume from your real work, find the people who decide, verify their emails, and draft outreach in your voice. You review everything before it goes out.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:30px">
+      <span style="font:500 11px/1 'IBM Plex Mono',monospace;color:#6f6656;background:#f2eee4;border-radius:99px;padding:8px 13px">resume</span>
+      <span style="font:500 11px/1 'IBM Plex Mono',monospace;color:#6f6656;background:#f2eee4;border-radius:99px;padding:8px 13px">person khoji</span>
+      <span style="font:500 11px/1 'IBM Plex Mono',monospace;color:#6f6656;background:#f2eee4;border-radius:99px;padding:8px 13px">email wallah</span>
+      <span style="font:500 11px/1 'IBM Plex Mono',monospace;color:#6f6656;background:#f2eee4;border-radius:99px;padding:8px 13px">outreach</span>
+    </div>
+  </sc-if>
+  <sc-if value="{{ isOb2 }}" hint-placeholder-val="{{ false }}">
+    <div style="font:400 30px/1.25 'Newsreader',Georgia,serif;letter-spacing:-.01em">Give the crew your story.</div>
+    <div style="font:400 14px/1.7 system-ui,sans-serif;color:#6f6656;margin:16px 0 24px">Drop in your current resume — it becomes the first entries in your <em>Story</em>, the living record of your work. Everything you add later makes every future resume sharper.</div>
+    <div onClick="{{ obUpload }}" style="border:1.5px dashed {{ uploadBorder }};border-radius:12px;padding:32px 24px;text-align:center;background:{{ uploadBg }};margin-bottom:30px;cursor:pointer">
+      <div style="font:400 16px/1.4 'Newsreader',Georgia,serif;color:#6f6656">{{ uploadLabel }}</div>
+      <div style="font:400 12px/1.6 system-ui,sans-serif;color:#b0a692;margin-top:6px">{{ uploadSub }}</div>
+    </div>
+  </sc-if>
+  <sc-if value="{{ isOb3 }}" hint-placeholder-val="{{ false }}">
+    <div style="font:400 30px/1.25 'Newsreader',Georgia,serif;letter-spacing:-.01em">What are you after right now?</div>
+    <div style="font:400 14px/1.7 system-ui,sans-serif;color:#6f6656;margin:16px 0 24px">One line is enough. The crew uses it to rank roles and people for you.</div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:30px">
+      <sc-for list="{{ goals }}" as="g" hint-placeholder-count="3">
+        <div onClick="{{ g.pick }}" style="border:1px solid {{ g.border }};border-radius:10px;padding:14px 18px;background:#fff;display:flex;justify-content:space-between;align-items:center;cursor:pointer">
+          <span style="font:400 15px/1.4 'Newsreader',Georgia,serif;color:{{ g.color }};font-style:{{ g.fontStyle }}">{{ g.label }}</span>
+          <span style="font:500 12px/1 system-ui,sans-serif;color:#211e19">{{ g.check }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+  <div style="display:flex;align-items:center;justify-content:space-between">
+    <div style="display:flex;gap:6px">
+      <span style="width:18px;height:4px;border-radius:2px;background:{{ dot1 }}"></span>
+      <span style="width:18px;height:4px;border-radius:2px;background:{{ dot2 }}"></span>
+      <span style="width:18px;height:4px;border-radius:2px;background:{{ dot3 }}"></span>
+    </div>
+    <div style="display:flex;gap:16px;align-items:center">
+      <sc-if value="{{ isOb2 }}" hint-placeholder-val="{{ false }}"><span onClick="{{ obNext }}" style="font:400 13px/1 system-ui,sans-serif;color:#a89e8c;cursor:pointer">Skip for now</span></sc-if>
+      <span onClick="{{ obNext }}" style="font:500 13px/1 system-ui,sans-serif;color:#faf8f3;background:#211e19;border-radius:9px;padding:12px 20px;cursor:pointer" style-hover="background:#3a352c">{{ obNextLabel }}</span>
+    </div>
+  </div>
+</div>
+</div>
+</sc-if>
+
+<!-- ══════════ DESK ══════════ -->
+<sc-if value="{{ isDesk }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;display:flex;flex-direction:column;animation:fadeUp .4s ease">
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 44px 32px">
+    <div style="font:400 34px/1.25 'Newsreader',Georgia,serif;letter-spacing:-.01em">{{ deskHeadline }}</div>
+    <sc-if value="{{ isFirstTime }}" hint-placeholder-val="{{ false }}">
+      <div style="font:400 17px/1.5 'Newsreader',Georgia,serif;font-style:italic;color:#8b8171;margin-top:10px;max-width:520px;text-align:center">You say what you want. The crew does the boring half.</div>
+    </sc-if>
+    <div onDragOver="{{ onDragOver }}" onDragLeave="{{ onDragLeave }}" onDrop="{{ onDrop }}" style="width:640px;max-width:100%;background:#fff;border:1px solid {{ composerBorder }};border-radius:14px;box-shadow:{{ composerShadow }};padding:20px 22px 16px;margin-top:30px">
+      <sc-if value="{{ hasShot }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:10px;background:#faf8f3;border:1px solid #e8e2d5;border-radius:10px;padding:8px 10px;margin-bottom:12px;max-width:360px;animation:fadeUp .25s ease">
+          {{ shotThumb }}
+          <div style="flex:1;min-width:0;text-align:left">
+            <div style="font:500 11.5px/1.3 'IBM Plex Mono',monospace;color:#3a352c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ shotLabel }}</div>
+            <div style="font:400 11px/1.4 system-ui,sans-serif;color:#b0a692;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ shotMeta }}</div>
+          </div>
+          <span onClick="{{ removeShot }}" style="cursor:pointer;color:#b0a692;font:400 15px/1 system-ui,sans-serif;padding:2px 4px" style-hover="color:#211e19">×</span>
+        </div>
+      </sc-if>
+      <textarea value="{{ input }}" onChange="{{ onInput }}" onKeyDown="{{ onInputKey }}" onPaste="{{ onPaste }}" placeholder="Paste a job link or a screenshot, log what you shipped, or just say it…" rows="2" style="width:100%;border:none;resize:none;font:400 17px/1.5 'Newsreader',Georgia,serif;color:#211e19;background:transparent;padding:0;box-sizing:border-box"></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <div style="position:relative;display:flex">
+            <span onClick="{{ toggleAttach }}" title="Attach a screenshot — a job posting, a profile, a recruiter DM" style="width:28px;height:28px;border:1px solid #e3ddd0;border-radius:99px;display:flex;align-items:center;justify-content:center;font:400 16px/1 system-ui,sans-serif;color:#8b8171;cursor:pointer" style-hover="border-color:#b0a692;color:#211e19">+</span>
+            <sc-if value="{{ attachOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;bottom:38px;left:0;width:322px;background:#fff;border:1px solid #e3ddd0;border-radius:12px;box-shadow:0 6px 24px rgba(60,50,30,.12);padding:14px 14px 8px;z-index:30;text-align:left;animation:fadeUp .2s ease">
+                <div style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#b0a692;margin-bottom:5px">ATTACH A SCREENSHOT</div>
+                <div style="font:400 11.5px/1.5 system-ui,sans-serif;color:#8b8171;margin-bottom:8px">Drop an image on the box, paste it (⌘V), or try a sample:</div>
+                <sc-for list="{{ sampleShots }}" as="s" hint-placeholder-count="3">
+                  <div onClick="{{ s.pick }}" style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;cursor:pointer" style-hover="background:#f7f4ec">
+                    <div style="width:40px;height:30px;flex-shrink:0;border-radius:4px;border:1px solid #e3ddd0;background:repeating-linear-gradient(-45deg,#f2eee4,#f2eee4 4px,#faf8f3 4px,#faf8f3 8px)"></div>
+                    <div style="min-width:0">
+                      <div style="font:500 12.5px/1.3 system-ui,sans-serif;color:#211e19">{{ s.title }}</div>
+                      <div style="font:400 11px/1.4 system-ui,sans-serif;color:#8b8171;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.sub }}</div>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+          <span onClick="{{ fillApply }}" style="font:400 11.5px/1 system-ui,sans-serif;color:#8b8171;border:1px solid #e3ddd0;border-radius:99px;padding:7px 12px;cursor:pointer" style-hover="border-color:#b0a692;color:#211e19">Apply to a role</span>
+          <span onClick="{{ fillResume }}" style="font:400 11.5px/1 system-ui,sans-serif;color:#8b8171;border:1px solid #e3ddd0;border-radius:99px;padding:7px 12px;cursor:pointer" style-hover="border-color:#b0a692;color:#211e19">Just a resume</span>
+          <span onClick="{{ fillFind }}" style="font:400 11.5px/1 system-ui,sans-serif;color:#8b8171;border:1px solid #e3ddd0;border-radius:99px;padding:7px 12px;cursor:pointer" style-hover="border-color:#b0a692;color:#211e19">Find the right person</span>
+        </div>
+        <div onClick="{{ submit }}" style="width:34px;height:34px;border-radius:99px;background:#211e19;color:#faf8f3;display:flex;align-items:center;justify-content:center;font:400 15px/1 system-ui,sans-serif;cursor:pointer" style-hover="background:#3a352c">↑</div>
+      </div>
+    </div>
+    <sc-if value="{{ storyNudge }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:12px;margin-top:14px;background:#fdf6e8;border:1px solid #ecdfc0;border-radius:99px;padding:7px 9px 7px 18px;animation:fadeUp .3s ease">
+        <span style="font:400 12.5px/1.4 system-ui,sans-serif;color:#6f6656">Your Story is empty — the crew is working from guesses.</span>
+        <span onClick="{{ addStoryNow }}" style="font:500 12px/1 system-ui,sans-serif;color:#faf8f3;background:#211e19;border-radius:99px;padding:8px 13px;cursor:pointer" style-hover="background:#3a352c">Add your resume</span>
+        <span onClick="{{ dismissStoryNudge }}" style="cursor:pointer;color:#b0a692;font:400 14px/1 system-ui,sans-serif;padding:2px 6px" style-hover="color:#211e19">×</span>
+      </div>
+    </sc-if>
+    <sc-if value="{{ deskNote }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ goStory }}" style="margin-top:14px;font:400 13px/1 system-ui,sans-serif;color:#3d7a4f;cursor:pointer;animation:fadeUp .3s ease">✓ {{ deskNote }} — view your Story →</div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{ isFirstTime }}" hint-placeholder-val="{{ false }}">
+  <div style="padding:0 44px 44px;max-width:1060px;margin:0 auto;width:100%;box-sizing:border-box">
+    <div style="font:500 11px/1 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#b0a692;margin-bottom:16px">Things your crew can do — tap one to see it</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+      <div onClick="{{ startApply }}" style="background:#fff;border:1px solid #e8e2d5;border-radius:12px;padding:18px 20px;cursor:pointer" style-hover="border-color:#b0a692;box-shadow:0 2px 12px rgba(60,50,30,.07)">
+        <div style="font:400 17px/1.35 'Newsreader',Georgia,serif;margin-bottom:8px">"Apply to this job link"</div>
+        <div style="font:400 12px/1.6 system-ui,sans-serif;color:#8b8171">Weaves a resume from your Story, finds 3 people who could say yes, drafts email + LinkedIn + X for each.</div>
+        <div style="display:flex;gap:5px;margin-top:12px;flex-wrap:wrap">
+          <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:#8b8171;background:#f2eee4;border-radius:4px;padding:4px 7px">resume</span>
+          <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:#8b8171;background:#f2eee4;border-radius:4px;padding:4px 7px">person</span>
+          <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:#8b8171;background:#f2eee4;border-radius:4px;padding:4px 7px">email</span>
+          <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:#8b8171;background:#f2eee4;border-radius:4px;padding:4px 7px">outreach</span>
+        </div>
+      </div>
+      <div onClick="{{ startLog }}" style="background:#fff;border:1px solid #e8e2d5;border-radius:12px;padding:18px 20px;cursor:pointer" style-hover="border-color:#b0a692;box-shadow:0 2px 12px rgba(60,50,30,.07)">
+        <div style="font:400 17px/1.35 'Newsreader',Georgia,serif;margin-bottom:8px">"Log: the quarterly review greenlit 3 of my projects"</div>
+        <div style="font:400 12px/1.6 system-ui,sans-serif;color:#8b8171">Everything you do, captured in your own words. Your Story is what resumes get woven from.</div>
+        <div style="display:flex;gap:5px;margin-top:12px">
+          <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:#8b8171;background:#f2eee4;border-radius:4px;padding:4px 7px">story</span>
+          <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:#8b8171;background:#f2eee4;border-radius:4px;padding:4px 7px">resume</span>
+        </div>
+      </div>
+      <div onClick="{{ startFind }}" style="background:#fff;border:1px solid #e8e2d5;border-radius:12px;padding:18px 20px;cursor:pointer" style-hover="border-color:#b0a692;box-shadow:0 2px 12px rgba(60,50,30,.07)">
+        <div style="font:400 17px/1.35 'Newsreader',Georgia,serif;margin-bottom:8px">"Find me people at Stripe who run design"</div>
+        <div style="font:400 12px/1.6 system-ui,sans-serif;color:#8b8171">Scans the team, ranks by who actually decides, drafts outreach for every channel.</div>
+        <div style="display:flex;gap:5px;margin-top:12px">
+          <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:#8b8171;background:#f2eee4;border-radius:4px;padding:4px 7px">person</span>
+          <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:#8b8171;background:#f2eee4;border-radius:4px;padding:4px 7px">email</span>
+          <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:#8b8171;background:#f2eee4;border-radius:4px;padding:4px 7px">outreach</span>
+        </div>
+      </div>
+    </div>
+    <div style="font:400 12px/1.6 system-ui,sans-serif;color:#b0a692;margin-top:18px;text-align:center">These cards disappear once you've run your first thread.</div>
+  </div>
+  </sc-if>
+
+  <div style="padding:0 44px 44px;max-width:1060px;margin:0 auto;width:100%;box-sizing:border-box">
+    <div style="font:500 11px/1 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#b0a692;margin-bottom:14px">Earlier runs</div>
+    <div style="display:flex;flex-direction:column">
+      <sc-if value="{{ hasThreads }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ goRun }}" style="display:flex;align-items:center;gap:16px;padding:15px 0;border-top:1px solid #eae4d7;cursor:pointer">
+          <div style="flex:1;font:400 16px/1.3 'Newsreader',Georgia,serif">{{ threadTitle }}</div>
+          <div style="display:flex;gap:6px">
+            <sc-for list="{{ threadChips }}" as="c" hint-placeholder-count="2">
+              <span style="font:500 10.5px/1 'IBM Plex Mono',monospace;color:{{ c.color }};background:{{ c.bg }};border-radius:5px;padding:4px 8px">{{ c.label }}</span>
+            </sc-for>
+          </div>
+          <div style="font:400 12px/1 system-ui,sans-serif;color:#a89e8c">today</div>
+        </div>
+      </sc-if>
+      <sc-for list="{{ histRuns }}" as="h" hint-placeholder-count="2">
+        <div onClick="{{ h.open }}" style="display:flex;align-items:center;gap:16px;padding:15px 8px;margin:0 -8px;border-top:1px solid #eae4d7;cursor:pointer;border-radius:8px" style-hover="background:#f7f4ec">
+          <div style="flex:1;font:400 16px/1.3 'Newsreader',Georgia,serif;color:#3a352c">{{ h.title }}</div>
+          <div style="display:flex;gap:6px">
+            <sc-for list="{{ h.chips }}" as="c" hint-placeholder-count="2">
+              <span style="font:500 10.5px/1 'IBM Plex Mono',monospace;color:{{ c.color }};background:{{ c.bg }};border-radius:5px;padding:4px 8px">{{ c.label }}</span>
+            </sc-for>
+          </div>
+          <div style="font:400 12px/1 system-ui,sans-serif;color:#a89e8c">{{ h.when }}</div>
+          <span style="font:400 13px/1 system-ui,sans-serif;color:#b0a692">→</span>
+        </div>
+      </sc-for>
+      <div style="border-top:1px solid #eae4d7"></div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<!-- ══════════ PAST RUN DETAIL ══════════ -->
+<sc-if value="{{ isHist }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;max-width:1100px;margin:0 auto;width:100%;box-sizing:border-box;padding:40px 44px 60px;animation:fadeUp .4s ease">
+  <div onClick="{{ backFromHist }}" style="font:400 13px/1 system-ui,sans-serif;color:#8b8171;cursor:pointer;margin-bottom:18px" style-hover="color:#211e19">← Back to Desk</div>
+  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">
+    <div style="font:400 26px/1.3 'Newsreader',Georgia,serif;letter-spacing:-.01em">{{ histTitle }}</div>
+    <span style="font:500 10.5px/1 'IBM Plex Mono',monospace;color:#3d7a4f;background:#e9f1e9;border-radius:5px;padding:5px 8px">DONE</span>
+  </div>
+  <div style="font:400 13px/1.6 system-ui,sans-serif;color:#8b8171;margin-bottom:28px">from "{{ histIntent }}" · {{ histWhen }}</div>
+
+  <div style="display:flex;flex-direction:column;max-width:820px">
+    <sc-for list="{{ histSteps }}" as="s" hint-placeholder-count="3">
+      <div style="display:flex;gap:16px;padding:15px 0;border-top:1px solid #eae4d7">
+        <div style="width:20px;height:20px;border-radius:99px;background:#3d7a4f;color:#fff;display:flex;align-items:center;justify-content:center;font:600 10px/1 system-ui,sans-serif;flex:none">✓</div>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font:500 14.5px/1.35 system-ui,sans-serif">{{ s.title }}</span>
+            <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:#8b8171;background:#f2eee4;border-radius:4px;padding:3px 6px">{{ s.agent }}</span>
+          </div>
+          <div style="font:400 12.5px/1.55 system-ui,sans-serif;color:#8b8171;margin-top:3px">{{ s.sub }}</div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="margin-top:20px;max-width:820px;background:#fff;border:1px solid #e8e2d5;border-radius:14px;box-shadow:0 3px 16px rgba(60,50,30,.07);padding:24px 26px">
+    <div style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#b0a692;margin-bottom:14px">WHAT CAME OF IT</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <sc-for list="{{ histOutcomes }}" as="o" hint-placeholder-count="2">
+        <div style="display:flex;align-items:center;gap:14px;background:#fdfcf8;border:1px solid #eee7d6;border-radius:10px;padding:13px 16px">
+          <div style="flex:1">
+            <div style="font:500 13.5px/1.35 system-ui,sans-serif">{{ o.title }}</div>
+            <div style="font:400 12px/1.5 system-ui,sans-serif;color:#8b8171;margin-top:2px">{{ o.sub }}</div>
+          </div>
+          <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:{{ o.chipColor }};background:{{ o.chipBg }};border-radius:5px;padding:4px 8px;flex:none">{{ o.chipLabel }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <sc-if value="{{ histHasFiles }}" hint-placeholder-val="{{ false }}">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
+        <sc-for list="{{ histFiles }}" as="f" hint-placeholder-count="2">
+          <div style="border:1px solid #e8e2d5;border-radius:12px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer" style-hover="border-color:#b0a692">
+            <div>
+              <div style="font:500 13px/1.3 system-ui,sans-serif">{{ f.name }}</div>
+              <div style="font:400 11px/1.5 system-ui,sans-serif;color:#b0a692">{{ f.sub }}</div>
+            </div>
+            <span style="font:400 15px/1 system-ui,sans-serif;color:#6f6656">↓</span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</sc-if>
+
+<!-- ══════════ STORY ══════════ -->
+<sc-if value="{{ isStory }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;max-width:820px;margin:0 auto;width:100%;box-sizing:border-box;padding:44px 44px 60px;animation:fadeUp .4s ease">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px">
+    <div style="font:400 30px/1.25 'Newsreader',Georgia,serif;letter-spacing:-.01em">Your Story</div>
+    <div style="display:flex;gap:2px;background:#f2eee4;border-radius:99px;padding:3px">
+      <span onClick="{{ viewTimeline }}" style="font:500 12px/1 system-ui,sans-serif;padding:7px 14px;border-radius:99px;cursor:pointer;color:{{ tlColor }};background:{{ tlBg }}">Timeline</span>
+      <span onClick="{{ viewThemes }}" style="font:500 12px/1 system-ui,sans-serif;padding:7px 14px;border-radius:99px;cursor:pointer;color:{{ thColor }};background:{{ thBg }}">By theme</span>
+    </div>
+  </div>
+  <div style="font:400 14px/1.7 system-ui,sans-serif;color:#8b8171;max-width:540px;margin-bottom:26px">The living record behind every resume. Write it raw — the crew polishes each entry into resume-ready lines you approve.</div>
+  <div style="background:#fff;border:1px solid #e3ddd0;border-radius:14px;box-shadow:0 2px 10px rgba(60,50,30,.05);padding:16px 20px 12px;margin-bottom:34px">
+    <textarea value="{{ quickAdd }}" onChange="{{ onQuickAdd }}" onKeyDown="{{ onQuickAddKey }}" placeholder="What did you do? Say it however it comes out…" rows="1" style="width:100%;border:none;resize:none;font:400 16px/1.5 'Newsreader',Georgia,serif;background:transparent;padding:0;box-sizing:border-box"></textarea>
+    <div style="display:flex;justify-content:flex-end;margin-top:8px">
+      <span onClick="{{ addEntry }}" style="font:500 12px/1 system-ui,sans-serif;color:#faf8f3;background:#211e19;border-radius:8px;padding:9px 14px;cursor:pointer">Add to Story</span>
+    </div>
+  </div>
+  <sc-if value="{{ isTimeline }}" hint-placeholder-val="{{ true }}">
+  <div style="display:flex;flex-direction:column">
+    <sc-for list="{{ entries }}" as="e" hint-placeholder-count="4">
+      <div style="border-top:1px solid #eae4d7;padding:20px 0;animation:fadeUp .3s ease">
+        <sc-if value="{{ e.isEditing }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fff;border:1px solid #e3ddd0;border-radius:10px;padding:14px 16px">
+            <textarea value="{{ editText }}" onChange="{{ onEditText }}" rows="2" style="width:100%;border:none;resize:none;font:400 16px/1.5 'Newsreader',Georgia,serif;background:transparent;padding:0;box-sizing:border-box"></textarea>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+              <span onClick="{{ e.saveEdit }}" style="font:500 12px/1 system-ui,sans-serif;color:#faf8f3;background:#211e19;border-radius:7px;padding:8px 13px;cursor:pointer">Save</span>
+              <span onClick="{{ e.cancelEdit }}" style="font:500 12px/1 system-ui,sans-serif;color:#6f6656;border:1px solid #e3ddd0;border-radius:7px;padding:7px 12px;cursor:pointer">Cancel</span>
+              <span onClick="{{ e.deleteEntry }}" style="margin-left:auto;font:400 12px/1 system-ui,sans-serif;color:#a03d2e;cursor:pointer">delete</span>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ e.notEditing }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;gap:16px;align-items:baseline">
+            <div style="flex:1;font:400 17px/1.45 'Newsreader',Georgia,serif">{{ e.raw }}</div>
+            <span onClick="{{ e.startEdit }}" style="font:400 11.5px/1 system-ui,sans-serif;color:#b0a692;cursor:pointer;flex:none" style-hover="color:#211e19">edit</span>
+            <div style="font:400 11.5px/1 system-ui,sans-serif;color:#b0a692;flex:none">{{ e.when }}</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ e.isPending }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:10px;font:500 11px/1 'IBM Plex Mono',monospace;color:#8a6d2f;animation:pulse 1.4s infinite">resume agent is polishing this…</div>
+        </sc-if>
+        <sc-if value="{{ e.isProposed }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:12px;background:#fdfcf8;border:1px solid #ecdfc0;border-radius:10px;padding:14px 16px">
+            <div style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#8a6d2f;margin-bottom:8px">RESUME-READY VERSION</div>
+            <div style="font:400 13.5px/1.55 system-ui,sans-serif;color:#211e19">{{ e.bullet }}</div>
+            <div style="display:flex;gap:8px;margin-top:12px">
+              <span onClick="{{ e.approve }}" style="font:500 12px/1 system-ui,sans-serif;color:#faf8f3;background:#211e19;border-radius:7px;padding:8px 13px;cursor:pointer">Approve</span>
+              <span onClick="{{ e.keepRaw }}" style="font:500 12px/1 system-ui,sans-serif;color:#6f6656;border:1px solid #e3ddd0;border-radius:7px;padding:7px 12px;cursor:pointer">Keep it raw</span>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ e.isPolished }}" hint-placeholder-val="{{ true }}">
+          <div style="margin-top:9px;font:400 13px/1.55 system-ui,sans-serif;color:#6f6656">↳ {{ e.bullet }}</div>
+        </sc-if>
+        <div style="display:flex;gap:5px;margin-top:10px">
+          <sc-for list="{{ e.tagList }}" as="t" hint-placeholder-count="2">
+            <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:#8b8171;background:#f2eee4;border-radius:4px;padding:4px 7px">{{ t.name }}</span>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+  </sc-if>
+  <sc-if value="{{ isThemes }}" hint-placeholder-val="{{ false }}">
+  <div style="display:flex;flex-direction:column;gap:26px">
+    <sc-for list="{{ themes }}" as="th" hint-placeholder-count="3">
+      <div>
+        <div style="font:500 11px/1 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#b0a692;margin-bottom:10px">{{ th.name }}</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <sc-for list="{{ th.items }}" as="e" hint-placeholder-count="2">
+            <div style="background:#fff;border:1px solid #e8e2d5;border-radius:10px;padding:14px 18px">
+              <div style="font:400 15px/1.45 'Newsreader',Georgia,serif">{{ e.raw }}</div>
+              <sc-if value="{{ e.isPolished }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:6px;font:400 12.5px/1.5 system-ui,sans-serif;color:#8b8171">↳ {{ e.bullet }}</div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+  </sc-if>
+</div>
+</sc-if>
+
+<!-- ══════════ JOBS ══════════ -->
+<sc-if value="{{ isJobs }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;max-width:920px;margin:0 auto;width:100%;box-sizing:border-box;padding:44px 44px 60px;animation:fadeUp .4s ease">
+
+  <!-- list -->
+  <sc-if value="{{ jobListOpen }}" hint-placeholder-val="{{ true }}">
+    <div style="font:400 30px/1.25 'Newsreader',Georgia,serif;letter-spacing:-.01em;margin-bottom:8px">Today's jobs, picked for you</div>
+    <div style="font:400 14px/1.7 system-ui,sans-serif;color:#8b8171;max-width:560px;margin-bottom:24px">{{ jobsCount }} roles posted in the last 24 hours, ranked against your Story and what you said you're after: <em>a staff design role at a product-led company</em>.</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:26px">
+      <sc-for list="{{ visaChips }}" as="f" hint-placeholder-count="4">
+        <span onClick="{{ f.pick }}" style="font:400 11.5px/1 system-ui,sans-serif;color:{{ f.color }};background:{{ f.bg }};border:1px solid {{ f.borderColor }};border-radius:99px;padding:8px 13px;cursor:pointer">{{ f.label }}</span>
+      </sc-for>
+      <span style="width:1px;height:18px;background:#e3ddd0;margin:0 4px"></span>
+      <span onClick="{{ toggleRemote }}" style="font:400 11.5px/1 system-ui,sans-serif;color:{{ remoteColor }};background:{{ remoteBg }};border:1px solid {{ remoteBorder }};border-radius:99px;padding:8px 13px;cursor:pointer">Remote-friendly</span>
+      <span onClick="{{ toggleComp }}" style="font:400 11.5px/1 system-ui,sans-serif;color:{{ compColor }};background:{{ compBg }};border:1px solid {{ compBorder }};border-radius:99px;padding:8px 13px;cursor:pointer">Comp listed</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <sc-for list="{{ jobs }}" as="j" hint-placeholder-count="4">
+        <div onClick="{{ j.open }}" style="background:#fff;border:1px solid #e8e2d5;border-radius:14px;padding:20px 24px;display:flex;gap:20px;cursor:pointer;animation:fadeUp .3s ease" style-hover="border-color:#b0a692;box-shadow:0 2px 12px rgba(60,50,30,.07)">
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+              <span style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#8b8171">{{ j.company }}</span>
+              <span style="font:400 11px/1 system-ui,sans-serif;color:#b0a692">posted {{ j.posted }}</span>
+            </div>
+            <div style="font:400 20px/1.3 'Newsreader',Georgia,serif;margin-bottom:5px">{{ j.title }}</div>
+            <div style="font:400 12.5px/1.5 system-ui,sans-serif;color:#8b8171">{{ j.loc }} · <span style="color:{{ j.compColor }}">{{ j.compLabel }}</span></div>
+            <div style="font:400 14px/1.55 'Newsreader',Georgia,serif;font-style:italic;color:#6f6656;margin-top:9px">{{ j.why }}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex:none">
+            <div style="border:1px solid {{ j.fitBorder }};color:{{ j.fitColor }};border-radius:9px;padding:9px 11px;text-align:center">
+              <div style="font:500 17px/1 'IBM Plex Mono',monospace">{{ j.fit }}</div>
+              <div style="font:500 8.5px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;margin-top:4px">FIT</div>
+            </div>
+            <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:{{ j.visaColor }};background:{{ j.visaBg }};border-radius:4px;padding:5px 8px">{{ j.visaLabel }}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="font:400 12px/1.6 system-ui,sans-serif;color:#b0a692;margin-top:18px;text-align:center">Refreshes every morning · fit re-ranks as your Story grows</div>
+  </sc-if>
+
+  <!-- detail -->
+  <sc-if value="{{ jobDetailOpen }}" hint-placeholder-val="{{ false }}">
+    <span onClick="{{ backToJobs }}" style="display:inline-block;font:400 13px/1 system-ui,sans-serif;color:#8b8171;cursor:pointer;margin-bottom:22px" style-hover="color:#211e19">← All jobs</span>
+    <div style="display:flex;gap:20px;align-items:flex-start;margin-bottom:6px">
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <span style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#8b8171">{{ jdCompany }}</span>
+          <span style="font:400 11px/1 system-ui,sans-serif;color:#b0a692">posted {{ jdPosted }}</span>
+          <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:{{ jdVisaColor }};background:{{ jdVisaBg }};border-radius:4px;padding:5px 8px">{{ jdVisaLabel }}</span>
+        </div>
+        <div style="font:400 28px/1.25 'Newsreader',Georgia,serif;letter-spacing:-.01em">{{ jdTitle }}</div>
+        <div style="font:400 13px/1.6 system-ui,sans-serif;color:#8b8171;margin-top:8px">{{ jdLoc }} · <span style="color:{{ jdCompColor }}">{{ jdCompLabel }}</span> · <span style="color:#8a6d2f;cursor:pointer">{{ jdLink }} ↗</span></div>
+      </div>
+      <div style="border:1px solid {{ jdFitBorder }};color:{{ jdFitColor }};border-radius:9px;padding:10px 13px;text-align:center;flex:none">
+        <div style="font:500 19px/1 'IBM Plex Mono',monospace">{{ jdFit }}</div>
+        <div style="font:500 8.5px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;margin-top:4px">FIT</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:22px;align-items:start">
+      <div style="background:#fff;border:1px solid #e8e2d5;border-radius:14px;padding:20px 22px">
+        <div style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#b0a692;margin-bottom:12px">WHAT THE ROLE IS</div>
+        <div style="font:400 13.5px/1.7 system-ui,sans-serif;color:#3a352c">{{ jdSummary }}</div>
+      </div>
+      <div style="background:#fdfcf8;border:1px solid #ecdfc0;border-radius:14px;padding:20px 22px">
+        <div style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#8a6d2f;margin-bottom:12px">WHY IT MATTERS TO YOU</div>
+        <div style="display:flex;flex-direction:column;gap:10px;font:400 13px/1.6 system-ui,sans-serif;color:#3a352c">
+          <sc-for list="{{ jdWhy }}" as="w" hint-placeholder-count="3">
+            <div style="display:flex;gap:9px"><span style="color:#8a6d2f;flex:none">→</span><span>{{ w.text }}</span></div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:20px;background:#fff;border:1px solid #e8e2d5;border-radius:14px;padding:18px 22px">
+      <span style="font:400 13px/1.6 system-ui,sans-serif;color:#8b8171;max-width:440px">Interested? The crew runs the full apply: resume woven from your Story, likely hiring manager found, outreach drafted for every channel.</span>
+      <div style="display:flex;gap:10px;flex:none">
+        <span onClick="{{ jobDismiss }}" style="font:500 13px/1 system-ui,sans-serif;color:#6f6656;border:1px solid #e3ddd0;border-radius:9px;padding:12px 16px;cursor:pointer" style-hover="color:#a03d2e;border-color:#d9b8ae">Not for me</span>
+        <span onClick="{{ jobApply }}" style="font:500 13px/1 system-ui,sans-serif;color:#faf8f3;background:#211e19;border-radius:9px;padding:13px 20px;cursor:pointer" style-hover="background:#3a352c">Interested — run the crew →</span>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</sc-if>
+
+<!-- ══════════ PEOPLE ══════════ -->
+<sc-if value="{{ isPeople }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;max-width:920px;margin:0 auto;width:100%;box-sizing:border-box;padding:44px 44px 60px;animation:fadeUp .4s ease">
+  <div style="font:400 30px/1.25 'Newsreader',Georgia,serif;letter-spacing:-.01em;margin-bottom:8px">People</div>
+  <div style="font:400 14px/1.7 system-ui,sans-serif;color:#8b8171;max-width:540px;margin-bottom:30px">Everyone you've reached out to. The crew watches for replies and queues the follow-ups — you'll be nudged, not spammed.</div>
+  <div style="display:grid;grid-template-columns:2.2fr 1fr 1.1fr 1.3fr auto;gap:14px;padding:0 14px 10px;font:500 10.5px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#b0a692">
+    <span>PERSON</span><span>COMPANY</span><span>LAST TOUCH</span><span>NEXT</span><span>STATUS</span>
+  </div>
+  <div style="display:flex;flex-direction:column">
+    <sc-for list="{{ peopleRows }}" as="p" hint-placeholder-count="3">
+      <div style="display:grid;grid-template-columns:2.2fr 1fr 1.1fr 1.3fr auto;gap:14px;padding:16px 14px;border-top:1px solid #eae4d7;align-items:center;background:{{ p.rowBg }}">
+        <div>
+          <div style="font:500 15px/1.3 'Newsreader',Georgia,serif">{{ p.name }}</div>
+          <div style="font:400 11.5px/1.5 system-ui,sans-serif;color:#8b8171">{{ p.role }}</div>
+        </div>
+        <span style="font:400 13px/1 system-ui,sans-serif;color:#3a352c">{{ p.company }}</span>
+        <span style="font:400 12.5px/1 system-ui,sans-serif;color:#8b8171">{{ p.last }}</span>
+        <span style="font:400 12.5px/1.4 system-ui,sans-serif;color:{{ p.nextColor }}">{{ p.next }}</span>
+        <span style="font:500 10.5px/1 'IBM Plex Mono',monospace;color:{{ p.sColor }};background:{{ p.sBg }};border-radius:5px;padding:5px 8px;justify-self:start">{{ p.status }}</span>
+      </div>
+    </sc-for>
+    <div style="border-top:1px solid #eae4d7"></div>
+  </div>
+  <div style="font:400 12px/1.6 system-ui,sans-serif;color:#b0a692;margin-top:16px">Send something from any run and the person lands here automatically.</div>
+</div>
+</sc-if>
+
+<!-- ══════════ RUN ══════════ -->
+<sc-if value="{{ isRun }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;max-width:1100px;margin:0 auto;width:100%;box-sizing:border-box;padding:40px 44px 60px;animation:fadeUp .4s ease">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">
+    <div style="font:400 26px/1.3 'Newsreader',Georgia,serif;letter-spacing:-.01em">{{ runTitle }}</div>
+    <span style="font:500 10.5px/1 'IBM Plex Mono',monospace;color:{{ runBadgeColor }};background:{{ runBadgeBg }};border-radius:5px;padding:5px 8px">{{ runBadge }}</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:28px;flex-wrap:wrap">
+    <div style="font:400 13px/1.6 system-ui,sans-serif;color:#8b8171">from "{{ runIntent }}" · crew assembled automatically</div>
+    <sc-if value="{{ runShot }}" hint-placeholder-val="{{ false }}">
+      <span style="display:inline-flex;align-items:center;gap:6px;font:500 10.5px/1 'IBM Plex Mono',monospace;color:#6f6656;background:#f2eee4;border-radius:5px;padding:4px 8px"><span style="width:12px;height:9px;border-radius:2px;background:repeating-linear-gradient(-45deg,#cfc6b2,#cfc6b2 2px,#f2eee4 2px,#f2eee4 4px);display:inline-block"></span>{{ runShotLabel }}</span>
+    </sc-if>
+  </div>
+
+  <div style="display:flex;flex-direction:column;max-width:820px">
+    <sc-for list="{{ runSteps }}" as="s" hint-placeholder-count="2">
+      <div style="display:flex;gap:16px;padding:15px 0;border-top:1px solid #eae4d7;animation:fadeUp .35s ease">
+        <sc-if value="{{ s.done }}" hint-placeholder-val="{{ true }}">
+          <div style="width:20px;height:20px;border-radius:99px;background:#3d7a4f;color:#fff;display:flex;align-items:center;justify-content:center;font:600 10px/1 system-ui,sans-serif;flex:none">✓</div>
+        </sc-if>
+        <sc-if value="{{ s.active }}" hint-placeholder-val="{{ false }}">
+          <div style="width:20px;height:20px;border-radius:99px;border:2px solid #d9a13c;flex:none;box-sizing:border-box;animation:pulse 1.4s infinite"></div>
+        </sc-if>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font:500 14.5px/1.35 system-ui,sans-serif">{{ s.title }}</span>
+            <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:#8b8171;background:#f2eee4;border-radius:4px;padding:3px 6px">{{ s.agent }}</span>
+          </div>
+          <div style="font:400 12.5px/1.55 system-ui,sans-serif;color:#8b8171;margin-top:3px">{{ s.sub }}</div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="position:relative">
+  <div style="filter:{{ lockFilter }};pointer-events:{{ lockEvents }};user-select:none">
+  <!-- resume pull panel -->
+  <sc-if value="{{ showPull }}" hint-placeholder-val="{{ false }}">
+  <div style="margin-top:6px;max-width:820px;background:#fff;border:1px solid #ecdfc0;border-radius:14px;box-shadow:0 3px 16px rgba(60,50,30,.07);padding:24px 26px;animation:fadeUp .35s ease">
+    <div style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#8a6d2f;margin-bottom:6px">RESUME AGENT · NEEDS YOUR EYES</div>
+    <div style="font:400 20px/1.3 'Newsreader',Georgia,serif;margin-bottom:4px">Pulling these from your Story</div>
+    <div style="font:400 13px/1.6 system-ui,sans-serif;color:#8b8171;margin-bottom:18px">Picked for what Stripe's posting asks for. Remove anything, or add something else.</div>
+    <sc-if value="{{ thinStory }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:12px;background:#fdf6e8;border:1px solid #ecdfc0;border-radius:10px;padding:12px 16px;margin-bottom:14px">
+        <span style="font:500 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#8a6d2f;background:#f4ecda;border-radius:4px;padding:4px 7px;flex:none">THIN STORY</span>
+        <span style="flex:1;font:400 12.5px/1.5 system-ui,sans-serif;color:#6f6656">Your Story only has these entries — the resume will be generic. Add your resume to give the crew real material.</span>
+        <span onClick="{{ addStoryNow }}" style="font:500 12px/1 system-ui,sans-serif;color:#faf8f3;background:#211e19;border-radius:8px;padding:9px 13px;cursor:pointer;flex:none" style-hover="background:#3a352c">Add resume</span>
+      </div>
+    </sc-if>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <sc-for list="{{ pulledList }}" as="p" hint-placeholder-count="3">
+        <div style="display:flex;gap:14px;align-items:flex-start;background:#fdfcf8;border:1px solid #eee7d6;border-radius:10px;padding:13px 16px">
+          <div style="flex:1">
+            <div style="font:400 14.5px/1.45 'Newsreader',Georgia,serif">{{ p.raw }}</div>
+            <div style="font:400 11.5px/1.5 system-ui,sans-serif;color:#8a6d2f;margin-top:4px;font-style:italic">why: {{ p.why }}</div>
+          </div>
+          <span onClick="{{ p.remove }}" style="font:400 14px/1 system-ui,sans-serif;color:#b0a692;cursor:pointer;padding:4px" style-hover="color:#a03d2e">✕</span>
+        </div>
+      </sc-for>
+    </div>
+    <sc-if value="{{ hasAvailable }}" hint-placeholder-val="{{ false }}">
+      <div style="font:500 11px/1 system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#b0a692;margin:18px 0 8px">Also in your Story — tap to include</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <sc-for list="{{ availableList }}" as="a" hint-placeholder-count="1">
+          <div onClick="{{ a.add }}" style="display:flex;gap:12px;align-items:center;border:1px dashed #ddd5c4;border-radius:10px;padding:11px 16px;cursor:pointer" style-hover="border-color:#b0a692;background:#fdfcf8">
+            <span style="font:400 14px/1 system-ui,sans-serif;color:#8b8171">＋</span>
+            <span style="flex:1;font:400 14px/1.45 'Newsreader',Georgia,serif;color:#6f6656">{{ a.raw }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+    <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
+      <input value="{{ pullAdd }}" onChange="{{ onPullAdd }}" onKeyDown="{{ onPullAddKey }}" placeholder="…or add something new, in your own words" style="flex:1;border:1px solid #e3ddd0;border-radius:9px;padding:11px 14px;font:400 14px/1.4 'Newsreader',Georgia,serif;background:#fff;box-sizing:border-box">
+      <span onClick="{{ addPullEntry }}" style="font:500 12px/1 system-ui,sans-serif;color:#6f6656;border:1px solid #e3ddd0;border-radius:8px;padding:10px 14px;cursor:pointer;flex:none">Add</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px">
+      <span style="font:400 12px/1.5 system-ui,sans-serif;color:#b0a692">{{ pulledCount }} entries → 1 page</span>
+      <span onClick="{{ confirmPull }}" style="font:500 13px/1 system-ui,sans-serif;color:#faf8f3;background:#211e19;border-radius:9px;padding:12px 20px;cursor:pointer" style-hover="background:#3a352c">Looks right — generate resume →</span>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- resume output (3b) -->
+  <sc-if value="{{ showResume }}" hint-placeholder-val="{{ false }}">
+  <div style="margin-top:6px;max-width:560px;background:#fff;border:1px solid #e8e2d5;border-radius:14px;box-shadow:0 3px 16px rgba(60,50,30,.07);padding:24px 26px;animation:fadeUp .35s ease">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+      <span style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#b0a692">{{ atsHead }}</span>
+      <span style="font:400 13px/1 system-ui,sans-serif;color:{{ atsDeltaColor }}"><span style="font:500 22px/1 'Newsreader',serif;color:#211e19">{{ atsScore }}</span> {{ atsDelta }}</span>
+    </div>
+    <div style="position:relative;height:8px;border-radius:99px;background:#f2eee4;margin-bottom:14px">
+      <div style="position:absolute;left:0;top:0;height:8px;width:{{ atsBar }};border-radius:99px;background:linear-gradient(90deg,#ddd5c4 60%,#3d7a4f)"></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;font:400 12.5px/1.55 system-ui,sans-serif;color:#6f6656;margin-bottom:18px">
+      <sc-for list="{{ atsGains }}" as="g" hint-placeholder-count="3">
+        <div style="display:flex;gap:8px"><span style="color:{{ g.color }}">{{ g.plus }}</span><span>{{ g.text }}</span></div>
+      </sc-for>
+    </div>
+    <sc-if value="{{ thinStory }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:12px;background:#fdf6e8;border:1px solid #ecdfc0;border-radius:10px;padding:12px 16px;margin-bottom:14px">
+        <span style="flex:1;font:400 12.5px/1.5 system-ui,sans-serif;color:#6f6656">Built from just {{ pulledCount }} entries. Add your resume and the crew reweaves it with real material.</span>
+        <span onClick="{{ addStoryNow }}" style="font:500 12px/1 system-ui,sans-serif;color:#faf8f3;background:#211e19;border-radius:8px;padding:9px 13px;cursor:pointer;flex:none" style-hover="background:#3a352c">Add resume</span>
+      </div>
+    </sc-if>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div style="border:1px solid #e8e2d5;border-radius:12px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer" style-hover="border-color:#b0a692">
+        <div>
+          <div style="font:500 13px/1.3 system-ui,sans-serif">Resume — Stripe v1.pdf</div>
+          <div style="font:400 11px/1.5 system-ui,sans-serif;color:#b0a692">1 page · for humans</div>
+        </div>
+        <span style="font:400 15px/1 system-ui,sans-serif;color:#6f6656">↓</span>
+      </div>
+      <div style="border:1px solid #e8e2d5;border-radius:12px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer" style-hover="border-color:#b0a692">
+        <div>
+          <div style="font:500 13px/1.3 system-ui,sans-serif">Resume — Stripe v1.docx</div>
+          <div style="font:400 11px/1.5 system-ui,sans-serif;color:#b0a692">editable · for portals</div>
+        </div>
+        <span style="font:400 15px/1 system-ui,sans-serif;color:#6f6656">↓</span>
+      </div>
+    </div>
+    <sc-if value="{{ resumeOfferPeople }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;align-items:center;justify-content:space-between;background:#fdfcf8;border:1px dashed #e3ddd0;border-radius:10px;padding:13px 16px;gap:12px">
+      <span style="font:400 12.5px/1.5 system-ui,sans-serif;color:#8b8171">Want the rest? The crew can find who decides and draft the outreach.</span>
+      <span onClick="{{ continueToPeople }}" style="font:500 12px/1 system-ui,sans-serif;color:#faf8f3;background:#211e19;border-radius:8px;padding:9px 13px;white-space:nowrap;cursor:pointer">Find the person →</span>
+    </div>
+    </sc-if>
+  </div>
+  </sc-if>
+
+  <!-- people panel (3a) -->
+  <sc-if value="{{ showPeople }}" hint-placeholder-val="{{ false }}">
+  <div style="margin-top:20px;animation:fadeUp .35s ease">
+    <div style="font:400 20px/1.3 'Newsreader',Georgia,serif;margin-bottom:4px">Who to reach out to</div>
+    <div style="font:400 13px/1.6 system-ui,sans-serif;color:#8b8171;margin-bottom:20px">Likely hiring manager first, ranked by who decides · pick a person — email, LinkedIn and X drafts are already written for each</div>
+    <sc-if value="{{ thinStory }}" hint-placeholder-val="{{ false }}">
+      <div style="font:400 12.5px/1.6 system-ui,sans-serif;color:#8a6d2f;margin:-10px 0 20px">⚠ Drafts are running generic — the crew has almost no Story to hook from. <span onClick="{{ addStoryNow }}" style="cursor:pointer;text-decoration:underline">Add your resume</span> for sharper openers.</div>
+    </sc-if>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:24px">
+      <sc-for list="{{ candidates }}" as="c" hint-placeholder-count="3">
+        <div onClick="{{ c.select }}" style="background:#fff;border:{{ c.border }};border-radius:14px;padding:20px 22px;position:relative;cursor:pointer;box-shadow:{{ c.shadow }}">
+          <div style="position:absolute;top:-9px;left:20px;font:500 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:{{ c.badgeColor }};background:{{ c.badgeBg }};border-radius:4px;padding:4px 7px">{{ c.badge }}</div>
+          <div style="display:flex;gap:12px;align-items:center;margin:6px 0 12px">
+            <div style="width:42px;height:42px;border-radius:99px;background:#e8e2d5;display:flex;align-items:center;justify-content:center;font:500 14px/1 'Newsreader',serif;color:#6f6656">{{ c.initials }}</div>
+            <div>
+              <div style="font:500 17px/1.2 'Newsreader',Georgia,serif">{{ c.name }}</div>
+              <div style="font:400 12px/1.4 system-ui,sans-serif;color:#8b8171">{{ c.role }}</div>
+            </div>
+          </div>
+          <div style="font:400 12.5px/1.6 system-ui,sans-serif;color:#6f6656">{{ c.blurb }}</div>
+          <div style="display:flex;gap:6px;margin-top:12px">
+            <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:{{ c.confChipColor }};background:{{ c.confChipBg }};border-radius:4px;padding:4px 7px">{{ c.confChip }}</span>
+            <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:#8b8171;background:#f2eee4;border-radius:4px;padding:4px 7px">linkedin</span>
+            <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:#8b8171;background:#f2eee4;border-radius:4px;padding:4px 7px">x</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:grid;grid-template-columns:380px 1fr;gap:20px;align-items:start">
+      <!-- left: who / why / email -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="background:#fff;border:1px solid #e8e2d5;border-radius:14px;padding:20px 22px">
+          <div style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#b0a692;margin-bottom:12px">WHO {{ selPronoun }} IS</div>
+          <div style="font:400 13.5px/1.65 system-ui,sans-serif;color:#3a352c">{{ selWho }}</div>
+          <div style="font:400 11.5px/1.5 system-ui,sans-serif;color:#b0a692;margin-top:10px">sources: {{ selSources }}</div>
+        </div>
+        <div style="background:#fdfcf8;border:1px solid #ecdfc0;border-radius:14px;padding:20px 22px">
+          <div style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#8a6d2f;margin-bottom:12px">WHY {{ selPronoun }}'LL CARE ABOUT YOU</div>
+          <div style="display:flex;flex-direction:column;gap:10px;font:400 13px/1.6 system-ui,sans-serif;color:#3a352c">
+            <sc-for list="{{ selWhy }}" as="w" hint-placeholder-count="3">
+              <div style="display:flex;gap:9px"><span style="color:#8a6d2f;flex:none">→</span><span>{{ w.text }}</span></div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="background:#fff;border:1px solid #e8e2d5;border-radius:14px;padding:18px 22px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#b0a692;margin-bottom:8px">EMAIL</div>
+              <div style="font:400 13.5px/1 'IBM Plex Mono',monospace;color:#211e19">{{ selEmail }}</div>
+            </div>
+            <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:{{ selConfColor }};background:{{ selConfBg }};border-radius:4px;padding:4px 7px">{{ selConf }}</span>
+          </div>
+          <div onClick="{{ toggleAlts }}" style="font:400 12px/1.5 system-ui,sans-serif;color:#8b8171;margin-top:12px;cursor:pointer">{{ altsLabel }}</div>
+          <sc-if value="{{ altsOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+              <sc-for list="{{ selAlts }}" as="a" hint-placeholder-count="3">
+                <div onClick="{{ a.use }}" style="display:flex;justify-content:space-between;align-items:center;border:1px solid #eee7d6;border-radius:8px;padding:9px 12px;cursor:pointer" style-hover="border-color:#b0a692">
+                  <span style="font:400 12.5px/1 'IBM Plex Mono',monospace;color:#6f6656">{{ a.addr }}</span>
+                  <span style="font:500 9.5px/1 'IBM Plex Mono',monospace;color:#8b8171;background:#f2eee4;border-radius:4px;padding:3px 6px">GUESS</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+
+      <!-- right: drafts -->
+      <div style="background:#fff;border:1px solid #e8e2d5;border-radius:14px;overflow:hidden">
+        <div style="display:flex;border-bottom:1px solid #eee7d6;padding:0 22px;align-items:center">
+          <div onClick="{{ chanEmail }}" style="font:500 13px/1 system-ui,sans-serif;padding:16px 14px;cursor:pointer;color:{{ tabEmailColor }};border-bottom:2px solid {{ tabEmailLine }};margin-bottom:-1px">Email</div>
+          <div onClick="{{ chanLinkedin }}" style="font:500 13px/1 system-ui,sans-serif;padding:16px 14px;cursor:pointer;color:{{ tabLiColor }};border-bottom:2px solid {{ tabLiLine }};margin-bottom:-1px">LinkedIn</div>
+          <div onClick="{{ chanX }}" style="font:500 13px/1 system-ui,sans-serif;padding:16px 14px;cursor:pointer;color:{{ tabXColor }};border-bottom:2px solid {{ tabXLine }};margin-bottom:-1px">X</div>
+          <div style="margin-left:auto;font:400 11.5px/1 system-ui,sans-serif;color:#b0a692">all three drafted · pick your channel</div>
+        </div>
+        <div style="padding:22px">
+          <div style="font:400 12px/1.5 system-ui,sans-serif;color:#b0a692;margin-bottom:12px">{{ draftMeta }}</div>
+          <div style="font:400 15px/1.75 'Newsreader',Georgia,serif;color:#3a352c;white-space:pre-line">{{ draftBody }}</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:22px;padding-top:18px;border-top:1px solid #f2eee4;gap:12px;flex-wrap:wrap">
+            <div style="display:flex;gap:7px;align-items:center">
+              <span style="font:400 11.5px/1 system-ui,sans-serif;color:#8b8171">↻ Another angle:</span>
+              <sc-for list="{{ angles }}" as="ang" hint-placeholder-count="3">
+                <span onClick="{{ ang.pick }}" style="font:400 11px/1 system-ui,sans-serif;color:{{ ang.color }};background:{{ ang.bg }};border:1px solid {{ ang.borderColor }};border-radius:99px;padding:6px 11px;cursor:pointer">{{ ang.label }}</span>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:9px">
+              <span style="font:500 13px/1 system-ui,sans-serif;color:#6f6656;border:1px solid #e3ddd0;border-radius:9px;padding:11px 15px;cursor:pointer">Edit</span>
+              <span onClick="{{ handoff }}" style="font:500 13px/1 system-ui,sans-serif;color:#faf8f3;background:#211e19;border-radius:9px;padding:12px 18px;cursor:pointer" style-hover="background:#3a352c">{{ ctaLabel }}</span>
+            </div>
+          </div>
+          <sc-if value="{{ showHandoff }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:10px;margin-top:16px;background:#fdfcf8;border:1px dashed #ecdfc0;border-radius:10px;padding:12px 16px;animation:fadeUp .3s ease">
+            <span style="font:400 13px/1.5 system-ui,sans-serif;color:#3a352c;flex:1">Opened {{ chanName }} in a new tab. <em>Did it go out?</em></span>
+            <span onClick="{{ confirmSent }}" style="font:500 12px/1 system-ui,sans-serif;color:#faf8f3;background:#3d7a4f;border-radius:99px;padding:9px 14px;cursor:pointer">Sent ✓</span>
+            <span onClick="{{ dismissHandoff }}" style="font:500 12px/1 system-ui,sans-serif;color:#8b8171;background:#f2eee4;border-radius:99px;padding:9px 14px;cursor:pointer">Not yet</span>
+          </div>
+          </sc-if>
+          <sc-if value="{{ noHandoff }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:16px;font:400 12px/1.6 system-ui,sans-serif;color:#b0a692">When you come back we'll ask <em>"did it go out?"</em> — one tap and {{ selFirst }} lands in your tracker with the follow-up queued.</div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  </div>
+  <sc-if value="{{ runLocked }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;padding-top:44px;z-index:20">
+      <div style="width:410px;background:#fff;border:1px solid #e3ddd0;border-radius:16px;box-shadow:0 16px 48px rgba(60,50,30,.2);padding:34px 38px 28px;text-align:center;animation:fadeUp .35s ease">
+        <div style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#8a6d2f;background:#f4ecda;border-radius:5px;padding:5px 9px;display:inline-block;margin-bottom:14px">CREW FINISHED · YOU'RE SIGNED OUT</div>
+        <div style="font:400 24px/1.3 'Newsreader',Georgia,serif;letter-spacing:-.01em;margin-bottom:10px">The work is done. It's waiting behind the blur.</div>
+        <div style="font:400 13px/1.65 system-ui,sans-serif;color:#8b8171;margin-bottom:24px">{{ lockSummary }}</div>
+        <div onClick="{{ signIn }}" style="display:flex;align-items:center;justify-content:center;gap:12px;border:1px solid #dcd5c6;border-radius:10px;padding:13px 18px;cursor:pointer;background:#fff" style-hover="background:#faf8f3;border-color:#b0a692">
+          <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path></svg>
+          <span style="font:500 14px/1 system-ui,sans-serif;color:#211e19">Continue with Google</span>
+        </div>
+        <div style="font:400 11px/1.7 system-ui,sans-serif;color:#b0a692;margin-top:18px">Free — this run is saved to your account the moment you're in.</div>
+      </div>
+    </div>
+  </sc-if>
+  </div>
+
+  <!-- draft (apply flow simple) replaced by people panel; sent state -->
+  <sc-if value="{{ isSent }}" hint-placeholder-val="{{ false }}">
+  <div style="margin-top:20px;max-width:820px;border-top:1px solid #eae4d7;padding:22px 0;animation:fadeUp .35s ease">
+    <div style="display:flex;gap:16px;align-items:flex-start">
+      <div style="width:20px;height:20px;border-radius:99px;background:#3d7a4f;color:#fff;display:flex;align-items:center;justify-content:center;font:600 10px/1 system-ui,sans-serif;flex:none">✓</div>
+      <div>
+        <div style="font:500 14.5px/1.35 system-ui,sans-serif">{{ sentLine }}</div>
+        <div style="font:400 12.5px/1.6 system-ui,sans-serif;color:#8b8171;margin-top:3px">{{ selFirst }} is in your tracker · follow-up auto-queued for Monday if no reply. You'll be nudged, not spammed.</div>
+        <span onClick="{{ goDesk }}" style="display:inline-block;margin-top:14px;font:500 13px/1 system-ui,sans-serif;color:#6f6656;border:1px solid #e3ddd0;border-radius:9px;padding:11px 16px;cursor:pointer" style-hover="border-color:#b0a692;color:#211e19">← Back to the Desk</span>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+</div>
+</sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;skipOnboarding&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Prototype&quot; },
+  &quot;hindiAccent&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Brand&quot; }
+}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.candidateData = [
+      {
+        id: 'anika', initials: 'AM', name: 'Anika Mehta', first: 'Anika', pronoun: 'SHE', label: 'LIKELY HIRING MANAGER',
+        role: 'Staff PD · design systems · 4y at Stripe', score: 92, best: true,
+        blurb: 'Owns the design-systems charter. Spoke at Config 2026 on tokens at scale; hired 3 of the last 4 systems designers.',
+        who: "Runs Stripe's design-system team (8 designers). Mid-migration to a new token architecture — wrote about the pain of cross-team adoption in her Config 2026 talk. Reviews every staff-level systems hire herself.",
+        sources: 'LinkedIn · Config 2026 talk · stripe.design blog',
+        why: [
+          "She's mid-migration to new tokens — you just moved 4 teams onto one architecture (from your Story)",
+          'Her talk stressed proving systems ROI — your pricing redesign has a 62% number attached',
+          'She mentors publicly — your two-promotions mentoring line will land'
+        ],
+        email: 'anika@stripe.com', conf: '96% · verified', verified: true,
+        alts: ['a.mehta@stripe.com', 'anika.mehta@stripe.com', 'amehta@stripe.com'],
+        drafts: {
+          email: {
+            meta: 'Subject: Your Config talk, and the staff systems role',
+            base: "Anika — your Config talk on token adoption described exactly what I just lived: I moved four product teams onto a unified token architecture this spring, and shipped a pricing redesign on top of it that lifted conversion 62%.\n\nI've applied for the staff systems role. Would 15 minutes on where adoption breaks at scale be useful? Happy to share the migration playbook either way.\n\n— Sam",
+            warmer: "Anika — I've watched your Config talk twice; the part about adoption stalling at team #3 was uncomfortably accurate. I just lived it: four product teams, one token architecture, plus a pricing redesign on top that lifted conversion 62%.\n\nI've applied for the staff systems role — would love to swap notes on what finally made your teams adopt.\n\n— Sam",
+            shorter: "Anika — I just did what your Config talk described: 4 teams onto one token architecture, 62% conversion lift on top. Applied for the staff systems role — worth 15 minutes?\n\n— Sam",
+            metrics: "Anika — numbers first: 62% conversion lift, 4 teams migrated to one token architecture, 40+ WCAG issues closed on checkout surfaces. All this year.\n\nYour Config talk says you care about proving systems ROI — that's my whole case for the staff systems role. 15 minutes?\n\n— Sam"
+          },
+          linkedin: { meta: 'LinkedIn connection note · 290 characters', base: "Anika — your Config talk on token adoption mirrored a migration I just led (4 teams, one token system). I've applied for the staff systems role — open to a quick chat on where adoption breaks?" },
+          x: { meta: 'X direct message', base: "Loved your Config talk on tokens at scale. Just wrapped a 4-team token migration myself — and applied for your staff systems role. Up for a 15-min chat?" }
+        }
+      },
+      {
+        id: 'rohan', initials: 'RD', name: 'Rohan Desai', first: 'Rohan', pronoun: 'HE', label: 'ADJACENT MANAGER',
+        role: 'Design Manager · money movement', score: 78, best: false,
+        blurb: 'Manages the adjacent team; the role reports into his org per the posting. Ex-Razorpay — overlaps your market.',
+        who: 'Manages the money-movement design team — the staff systems role partners with his org from day one. Ex-Razorpay, so he knows the India fintech design world you came from. Posted in May about hiring "systems thinkers who ship."',
+        sources: 'LinkedIn · Stripe Sessions panel',
+        why: [
+          'The posting says the role partners with money movement — his team is your first customer',
+          'Ex-Razorpay — your Razorpay outreach thread gives you shared context',
+          'He asked for "systems thinkers who ship" — your migration + 62% lift is exactly that'
+        ],
+        email: 'rohan.desai@stripe.com', conf: '81% · likely', verified: false,
+        alts: ['rohan@stripe.com', 'rdesai@stripe.com', 'rohan_desai@stripe.com'],
+        drafts: {
+          email: { meta: 'Subject: Staff systems role — your team is the first customer', base: "Rohan — the staff systems posting partners with your money-movement team, so I wanted your read before anything else. I've spent the spring moving 4 product teams onto one token architecture, and shipped a 62%-lift pricing redesign on top of it.\n\nWhat does your team actually need from systems? 15 minutes would save me from guessing.\n\n— Sam" },
+          linkedin: { meta: 'LinkedIn connection note · 280 characters', base: "Rohan — applying for the staff systems role that partners with your team. Just led a 4-team token migration; would value your read on what money movement needs from systems. Quick chat?" },
+          x: { meta: 'X direct message', base: "Your team's the first customer of the staff systems role I applied for — I just ran a 4-team token migration. Worth a quick DM?" }
+        }
+      },
+      {
+        id: 'claire', initials: 'CF', name: 'Claire Fontaine', first: 'Claire', pronoun: 'SHE', label: 'RECRUITER · FAST LANE',
+        role: 'Recruiter · product design', score: 64, best: false,
+        blurb: 'Posted the role on LinkedIn last week. Fastest path to a screen, least pull on the hiring decision.',
+        who: 'Recruits for product design at Stripe; posted this role last week. Fast to respond, but routes rather than decides — best used to get a screen on the calendar while you work the hiring manager in parallel.',
+        sources: 'LinkedIn',
+        why: [
+          'She posted the role — a direct, on-topic note gets a same-week screen',
+          'Your ATS-ready resume is exactly the format she forwards',
+          'Recruiters index on clarity — your one-line pitch has real numbers in it'
+        ],
+        email: 'claire.fontaine@stripe.com', conf: '94% · verified', verified: true,
+        alts: ['claire@stripe.com', 'cfontaine@stripe.com'],
+        drafts: {
+          email: { meta: 'Subject: Staff Product Designer (design systems) — applied', base: "Claire — I applied for the Staff Product Designer (design systems) role you posted. The short version: 4-team token migration, 62% conversion lift on the pricing redesign built on it, two designers mentored to promotion.\n\nResume attached in ATS-friendly format — happy to walk through it in a screen whenever works.\n\n— Sam" },
+          linkedin: { meta: 'LinkedIn message · 260 characters', base: "Claire — just applied to the staff systems role you posted. 4-team token migration + 62% pricing-page lift, resume already in the portal. Would love to find time for a screen." },
+          x: { meta: 'X direct message', base: "Applied to the staff PD role you posted — token migration + measurable growth work. Happy to chat whenever suits." }
+        }
+      }
+    ];
+    this.state = {
+      screen: 'desk',
+      signedIn: !!(props && props.skipOnboarding),
+      authStage: 'chooser', acctOpen: false, storyNudgeGone: false,
+      user: { name: 'Sam Kapoor', email: 'sam.kapoor@gmail.com', bg: '#7a5c9e' },
+      obUploaded: !!(props && props.skipOnboarding), goalIdx: 0,
+      input: '', deskNote: '', hasRun: false,
+      storyView: 'timeline', quickAdd: '', pullAdd: '', nextId: 100,
+      entries: [
+        { id: 1, raw: 'Shipped the pricing page redesign. Conversion went from 2.1% to 3.4% in six weeks.', when: 'May 2026', tags: ['design', 'growth'], bullet: 'Redesigned pricing page end-to-end, lifting conversion 62% (2.1% → 3.4%) in six weeks', status: 'polished', why: "Stripe's posting asks for commerce-surface design with measurable impact" },
+        { id: 2, raw: 'Been running the design-system migration — got 4 product teams onto the new tokens.', when: 'Apr 2026', tags: ['systems'], bullet: 'Led design-system migration, moving 4 product teams to a unified token architecture', status: 'polished', why: 'the role owns the design-systems charter — direct match' },
+        { id: 3, raw: 'Mentored Priya and Aditya this half. Both got promoted.', when: 'Mar 2026', tags: ['leadership'], bullet: 'Mentored two designers to promotion within a single review cycle', status: 'polished', why: 'staff roles expect multiplier behavior, not just output' },
+        { id: 4, raw: 'Won the internal hackathon — built a working onboarding prototype in one weekend.', when: 'Feb 2026', tags: ['prototyping'], bullet: 'Won company hackathon with a working onboarding prototype built in one weekend', status: 'polished', why: '' },
+        { id: 5, raw: 'Ran the accessibility audit on checkout. Fixed 40+ WCAG issues.', when: 'Jan 2026', tags: ['craft', 'a11y'], bullet: 'Drove checkout accessibility audit, resolving 40+ WCAG issues', status: 'polished', why: 'Stripe checkout is an accessibility-critical surface' }
+      ],
+      run: null, pulled: [],
+      shot: null, attachOpen: false, dragOver: false,
+      selIdx: 0, channel: 'email', angle: 'base', altsOpen: false, handoffOpen: false, emailPick: {},
+      editingId: null, editText: '',
+      jobId: null, visaFilter: 'all', remoteOnly: false, compOnly: false, dismissedJobs: [],
+      people: [
+        { name: 'Dev Raghavan', role: 'Design manager · growth', company: 'Razorpay', last: 'reply · yesterday', next: 'you: schedule the call', nextColor: '#211e19', status: 'REPLIED', sColor: '#3d7a4f', sBg: '#e9f1e9', rowBg: '#fdfcf8' },
+        { name: 'Sara Iyer', role: 'Recruiter · product design', company: 'Notion', last: 'linkedin · 4d ago', next: 'auto follow-up · Fri', nextColor: '#8b8171', status: 'SENT', sColor: '#8a6d2f', sBg: '#f4ecda', rowBg: 'transparent' },
+        { name: 'Maya Chen', role: 'Head of design', company: 'Figma', last: 'email · 9d ago', next: 'closed', nextColor: '#b0a692', status: 'NO REPLY ×3', sColor: '#8b8171', sBg: '#f2eee4', rowBg: 'transparent' }
+      ]
+    };
+    this.jobsData = [
+      { id: 'stripe', company: 'STRIPE', title: 'Staff Product Designer, Design Systems', posted: '6h ago', loc: 'SF or remote', comp: '$210K – $260K + equity', fit: 92, visa: 'yes', remote: true, link: 'stripe.com/jobs/staff-product-designer',
+        why: 'Their JD reads like your April Story entry — token architecture, cross-team adoption, measurable impact.',
+        summary: 'Own the design-systems charter across payments surfaces: tokens, component library, and the adoption program for 12 product teams. Partners with the money-movement org first. Staff level, reports to the design-systems lead.',
+        whyBullets: ['The core ask is a multi-team token migration — you just did one (4 teams, from your Story)', 'Matches your goal exactly: staff design role at a product-led company', 'Sponsors visa · comp listed and above your floor'] },
+      { id: 'linear', company: 'LINEAR', title: 'Staff Designer, Design Systems', posted: '3h ago', loc: 'Remote (US/EU)', comp: '$180K – $230K', fit: 87, visa: 'tbd', remote: true, link: 'linear.app/careers/staff-designer',
+        why: 'First dedicated systems hire — your migration playbook would be the whole job.',
+        summary: 'First dedicated design-systems hire. Define the token architecture from scratch, own component quality across web + desktop, and set the craft bar for a 9-person design team.',
+        whyBullets: ['Greenfield token architecture — your 4-team migration is the exact playbook they lack', 'Small senior team that ships fast — your weekend-hackathon Story entry signals the pace', 'Visa policy not stated — the crew can ask the recruiter in the first email'] },
+      { id: 'figma', company: 'FIGMA', title: 'Senior Product Designer, Growth', posted: '11h ago', loc: 'San Francisco', comp: '$165K – $210K', fit: 81, visa: 'yes', remote: false, link: 'figma.com/careers/growth-designer',
+        why: 'Growth surfaces with revenue targets — your 62% pricing-page lift is the headline.',
+        summary: 'Own pricing, upgrade, and onboarding surfaces. Heavy experimentation culture — every project ships with a metric attached. Senior level with a stated staff path.',
+        whyBullets: ['Your pricing redesign (2.1% → 3.4% conversion) is precisely their kind of win', 'Senior, not staff — but the posting names a staff path within 2 cycles', 'Sponsors visa · SF only, no remote'] },
+      { id: 'notion', company: 'NOTION', title: 'Staff Designer, Platform', posted: '18h ago', loc: 'NYC or SF', comp: '', fit: 76, visa: 'no', remote: false, link: 'notion.so/careers/staff-platform',
+        why: 'Platform primitives at staff level — strong fit, but no visa sponsorship.',
+        summary: 'Design the primitives third-party builders use: embeds, API surfaces, integration UX. Staff level, high ambiguity, partner-facing.',
+        whyBullets: ['Systems thinking at platform scale — one level up from component systems', 'Sara Iyer (Notion recruiter) is already in your People list — warm path in', 'No visa sponsorship — worth confirming before investing time'] },
+      { id: 'razorpay', company: 'RAZORPAY', title: 'Design Lead, Payments', posted: '9h ago', loc: 'Bangalore or remote (India)', comp: '₹90L – ₹1.2Cr', fit: 74, visa: 'tbd', remote: true, link: 'razorpay.com/jobs/design-lead',
+        why: 'Lead scope in a market you know — and Dev Raghavan already replied to you yesterday.',
+        summary: 'Lead a 6-designer payments pod. Owns checkout and merchant onboarding end-to-end. Lead level with people responsibility.',
+        whyBullets: ['Dev Raghavan (replied · yesterday) works here — a warm intro, not a cold apply', 'Your checkout accessibility audit maps directly onto their surface', 'People-lead scope — your two-promotions mentoring entry carries this'] },
+      { id: 'airbnb', company: 'AIRBNB', title: 'Senior Designer, Design Language', posted: '22h ago', loc: 'San Francisco', comp: '$170K – $215K', fit: 68, visa: 'no', remote: false, link: 'airbnb.com/careers/design-language',
+        why: 'Design-language craft role — beautiful work, but senior level and no sponsorship.',
+        summary: 'Evolve the Design Language System: motion, illustration integration, cross-platform components. Craft-heavy, senior level.',
+        whyBullets: ['Deep systems craft — your token + accessibility work fits the bar', 'Senior level — a lateral move against your staff goal', 'No visa sponsorship stated in the posting'] }
+    ];
+    this.histRuns = [
+      { id: 'razorpay-find', title: 'Find — design leads at Razorpay hiring for growth', when: 'last week',
+        intent: 'Find me design leads at Razorpay who are hiring for growth',
+        chips: [ { label: '6 people found', color: '#3d7a4f', bg: '#e9f1e9' }, { label: '2 emails sent', color: '#3d7a4f', bg: '#e9f1e9' } ],
+        steps: [
+          { title: 'Request parsed — Razorpay, design leads hiring for growth', sub: 'scanned the design org · 14 profiles considered', agent: 'TRACKER' },
+          { title: '6 people found — ranked by who decides', sub: 'two hiring leads first, three managers, one recruiter as the fast lane', agent: 'PERSON KHOJI' },
+          { title: 'Emails verified for all 6', sub: '4 verified, 2 high-confidence guesses · alternates held in reserve', agent: 'EMAIL WALLAH' },
+          { title: 'Outreach drafted for each — email, LinkedIn, X', sub: 'in your voice, angled to what each person cares about', agent: 'OUTREACH' }
+        ],
+        outcomes: [
+          { title: 'Dev Raghavan · Design manager, growth', sub: 'email sent · replied yesterday — your move: schedule the call', chipLabel: 'REPLIED', chipColor: '#3d7a4f', chipBg: '#e9f1e9' },
+          { title: 'Meera Nair · Design lead, merchant experience', sub: 'linkedin note sent · auto follow-up queued for Friday', chipLabel: 'SENT', chipColor: '#8a6d2f', chipBg: '#f4ecda' },
+          { title: '4 more ranked & drafted, not sent', sub: 'drafts saved — send any of them whenever you want', chipLabel: 'HELD', chipColor: '#8b8171', chipBg: '#f2eee4' }
+        ],
+        files: [] },
+      { id: 'fintech-resume', title: 'Resume — fintech PM roles', when: '2 weeks ago',
+        intent: 'Generate a resume I can use for fintech PM roles',
+        chips: [ { label: 'done', color: '#3d7a4f', bg: '#e9f1e9' } ],
+        steps: [
+          { title: 'Request parsed — general fintech PM target', sub: 'no single posting · optimized for portal parsers instead', agent: 'TRACKER' },
+          { title: '5 entries pulled from your Story', sub: 'you removed one, added the hackathon win', agent: 'RESUME' },
+          { title: 'Resume woven from your Story', sub: 'ATS 61 → 84 · PDF + Word below', agent: 'RESUME' }
+        ],
+        outcomes: [
+          { title: 'Resume generated · fintech PM angle', sub: 'growth numbers led, systems work framed as product impact', chipLabel: 'DONE', chipColor: '#3d7a4f', chipBg: '#e9f1e9' }
+        ],
+        files: [
+          { name: 'Resume — Fintech PM.pdf', sub: '1 page · for humans' },
+          { name: 'Resume — Fintech PM.docx', sub: 'editable · for portals' }
+        ] }
+    ];
+    this.timers = [];
+  }
+
+  componentWillUnmount() { this.timers.forEach(clearTimeout); }
+
+  attachFile(file) {
+    if (!file || !/^image\//.test(file.type || '')) return;
+    const reader = new FileReader();
+    reader.onload = () => this.setState({
+      shot: { kind: 'job', label: file.name || 'screenshot.png', img: reader.result, meta: 'attached · the crew reads it when you run' },
+      attachOpen: false, dragOver: false
+    });
+    reader.readAsDataURL(file);
+  }
+  later(ms, fn) { this.timers.push(setTimeout(fn, ms)); }
+  patchRun(patch) { this.setState({ run: Object.assign({}, this.state.run, patch) }); }
+
+  doConfirmPull() {
+    const r = this.state.run; if (!r || !r.showPull) return;
+    this.patchRun({ showPull: false, active: 'resume' });
+    this.later(1300, () => {
+      const doneR = ['parse', 'pull', 'resume'];
+      if (this.state.run.flow === 'resume') this.patchRun({ done: doneR, active: null, showResume: true });
+      else { this.patchRun({ done: doneR, active: 'people', showResume: true }); this.runPeopleSequence(doneR); }
+    });
+  }
+
+  startRun(flow, intent, titleOverride, shot) {
+    const titles = { apply: 'Apply — Staff Product Designer, Stripe', find: 'Find — people at Stripe who run design', resume: 'Resume — Staff Product Designer, Stripe' };
+    this.setState({
+      screen: 'run', input: '', shot: null, attachOpen: false, dragOver: false,
+      run: { flow: flow, intent: intent, shot: shot || null, title: titleOverride || titles[flow], done: [], active: 'parse', showPull: false, showResume: false, showPeople: false, sent: false, sentChannel: '' },
+      pulled: this.state.obUploaded ? [1, 2, 3, 5] : [1, 2], selIdx: (shot && shot.kind === 'recruiter') ? 2 : 0, channel: 'email', angle: 'base', altsOpen: false, handoffOpen: false, emailPick: {}
+    });
+    this.later(1100, () => {
+      if (!this.state.run) return;
+      if (flow === 'find') { this.patchRun({ done: ['parse'], active: 'people' }); this.runPeopleSequence(['parse']); }
+      else {
+        this.patchRun({ done: ['parse'], active: 'pull', showPull: true });
+        if (!this.state.signedIn) this.later(2200, () => this.doConfirmPull());
+      }
+    });
+  }
+
+  runPeopleSequence(doneSoFar) {
+    const d1 = doneSoFar.concat(['people']);
+    const d2 = d1.concat(['emails']);
+    const d3 = d2.concat(['drafts']);
+    this.later(1400, () => this.patchRun({ done: d1, active: 'emails' }));
+    this.later(2400, () => this.patchRun({ done: d2, active: 'drafts' }));
+    this.later(3300, () => this.patchRun({ done: d3, active: null, showPeople: true }));
+    this.later(3500, () => { try { window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }); } catch (e) {} });
+  }
+
+  schedulePolish(id, raw) {
+    this.later(1500, () => {
+      this.setState({
+        entries: this.state.entries.map(e => e.id === id ? Object.assign({}, e, {
+          status: 'proposed',
+          bullet: raw.charAt(0).toUpperCase() + raw.slice(1).replace(/[.…\s]+$/, '') + ' — tell me a number and I\u2019ll weave the impact in'
+        }) : e)
+      });
+    });
+  }
+
+  addStoryEntry(raw, opts) {
+    const id = this.state.nextId;
+    const entry = { id: id, raw: raw, when: 'Just now', tags: ['new'], bullet: '', status: 'pending', why: (opts && opts.why) || 'you added this yourself — always included' };
+    this.setState({ entries: [entry].concat(this.state.entries), nextId: id + 1 });
+    this.schedulePolish(id, raw);
+    return id;
+  }
+
+  doPullAdd() {
+    const text = this.state.pullAdd.trim();
+    if (!text) return;
+    const id = this.addStoryEntry(text, { why: 'you added this yourself — always included' });
+    this.setState({ pulled: this.state.pulled.concat([id]), pullAdd: '' });
+  }
+
+  angleBody(cand, channel, angle) {
+    const d = cand.drafts[channel];
+    if (d[angle]) return d[angle];
+    const base = d.base;
+    if (angle === 'base') return base;
+    const sentences = base.replace(/\n+/g, ' ').split(/(?<=[.?!])\s+/).filter(Boolean);
+    if (angle === 'shorter') return sentences[0] + '\n\nWorth 15 minutes?\n\n— Sam';
+    if (angle === 'warmer') return base.replace(cand.first + ' — ', cand.first + ' — hope the week\u2019s treating you well. ');
+    if (angle === 'metrics') return cand.first + ' — numbers first: 62% conversion lift on pricing, 4 product teams moved to one token architecture.\n\n' + sentences.slice(-2).join(' ');
+    return base;
+  }
+
+  renderVals() {
+    const st = this.state;
+    const props = this.props || {};
+    const hindi = props.hindiAccent != null ? !!props.hindiAccent : true;
+    const screen = st.screen;
+    const isOnboarding = screen === 'ob1' || screen === 'ob2' || screen === 'ob3';
+    const run = st.run;
+    const thin = !st.obUploaded;
+    const runLocked = !st.signedIn && !!(run && (run.showPull || run.showResume || run.showPeople));
+
+    // onboarding
+    const obStep = screen === 'ob1' ? 1 : screen === 'ob2' ? 2 : 3;
+    const goalLabels = ['A staff design role at a product-led company', 'My first PM job, ideally fintech', 'or write your own…'];
+    const goals = goalLabels.map((label, i) => ({
+      label: label,
+      border: st.goalIdx === i ? '#211e19' : '#e3ddd0',
+      color: st.goalIdx === i ? '#211e19' : '#a89e8c',
+      fontStyle: i === 2 ? 'italic' : 'normal',
+      check: st.goalIdx === i ? '✓' : '',
+      pick: () => this.setState({ goalIdx: i })
+    }));
+
+    // run steps
+    let runSteps = [], runBadge = '', runBadgeColor = '#8a6d2f', runBadgeBg = '#f4ecda';
+    let pulledList = [], availableList = [];
+    if (run) {
+      const pc = st.pulled.length;
+      const stepDefs = {
+        parse: run.shot
+          ? ({
+              job: { title: 'Screenshot read — role parsed & saved to tracker', sub: 'Staff Product Designer · design systems · Stripe · job link recovered from the image', agent: 'TRACKER' },
+              manager: { title: 'Screenshot read — Anika Mehta, Stripe', sub: 'LinkedIn profile · staff PD, design systems · reads as the hiring manager', agent: 'TRACKER' },
+              recruiter: { title: 'Screenshot read — DM from Claire Fontaine, Stripe recruiter', sub: 'role + team recovered from the message · saved to tracker', agent: 'TRACKER' }
+            })[run.shot.kind] || { title: 'Screenshot read & saved to tracker', sub: 'company, role and link recovered from the image', agent: 'TRACKER' }
+          : run.flow === 'find'
+          ? { title: 'Request parsed — Stripe, design leadership', sub: 'scanning the design org · titles, tenure, what they own', agent: 'TRACKER' }
+          : { title: 'Role parsed & saved to tracker', sub: 'stripe.com/jobs · Staff Product Designer · design systems · SF or remote', agent: 'TRACKER' },
+        pull: { title: 'Choosing what to pull from your Story', sub: thin ? 'your Story is nearly empty — pulling the little there is' : 'the resume gets woven from your record — review below', agent: 'RESUME' },
+        resume: thin
+          ? { title: 'Resume woven — but your Story is thin', sub: pc + ' entries in · ATS 71, no baseline · add your resume for real material', agent: 'RESUME' }
+          : { title: 'Resume woven from your Story', sub: pc + ' entries in · ATS 61 → 88 · PDF + Word below', agent: 'RESUME' },
+        people: { title: '3 people found — ranked by who decides', sub: 'hiring manager first, adjacent manager, recruiter as the fast lane', agent: 'PERSON KHOJI' },
+        emails: { title: 'Emails verified for all 3', sub: '2 verified, 1 high-confidence guess · alternates held in reserve', agent: 'EMAIL WALLAH' },
+        drafts: { title: 'Outreach drafted for each — email, LinkedIn, X', sub: thin ? 'drafted generic — a fuller Story would give each one a personal hook' : 'in your voice, angled to what each person cares about', agent: 'OUTREACH' }
+      };
+      const order = run.flow === 'find' ? ['parse', 'people', 'emails', 'drafts'] : ['parse', 'pull', 'resume', 'people', 'emails', 'drafts'];
+      order.forEach(id => {
+        const d = stepDefs[id];
+        if (run.done.indexOf(id) >= 0) {
+          if (id === 'pull') return;
+          runSteps.push({ title: d.title, sub: d.sub, agent: d.agent, done: true, active: false });
+        } else if (run.active === id) {
+          const activeTitles = { parse: run.shot ? 'Reading your screenshot…' : 'Parsing…', pull: d.title, resume: 'Weaving your resume…', people: 'Finding who could say yes…', emails: 'Verifying emails…', drafts: 'Drafting outreach…' };
+          runSteps.push({ title: activeTitles[id], sub: d.sub, agent: d.agent, done: false, active: true });
+        }
+      });
+      if (run.sent) { runBadge = 'DONE'; runBadgeColor = '#3d7a4f'; runBadgeBg = '#e9f1e9'; }
+      else if (run.showPull || run.showPeople || (run.showResume && run.flow === 'resume' && !run.showPeople)) runBadge = 'NEEDS YOU';
+      else runBadge = 'RUNNING';
+
+      pulledList = st.pulled.map(id => {
+        const e = st.entries.find(x => x.id === id);
+        return e && { raw: e.raw, why: e.why || 'broadens the craft picture', remove: () => this.setState({ pulled: st.pulled.filter(x => x !== id) }) };
+      }).filter(Boolean);
+      availableList = st.entries.filter(e => st.pulled.indexOf(e.id) < 0).map(e => ({
+        raw: e.raw, add: () => this.setState({ pulled: this.state.pulled.concat([e.id]) })
+      }));
+    }
+
+    // candidates
+    const sel = this.candidateData[st.selIdx];
+    const candidates = this.candidateData.map((c, i) => ({
+      initials: c.initials, name: c.name, role: c.role, blurb: c.blurb,
+      badge: c.label + ' · ' + c.score,
+      badgeColor: i === st.selIdx ? '#faf8f3' : '#6f6656',
+      badgeBg: i === st.selIdx ? '#211e19' : '#f2eee4',
+      border: i === st.selIdx ? '1.5px solid #211e19' : '1px solid #e8e2d5',
+      shadow: i === st.selIdx ? '0 3px 16px rgba(60,50,30,.08)' : 'none',
+      confChip: 'email · ' + c.conf.split(' ')[0],
+      confChipColor: c.verified ? '#3d7a4f' : '#8a6d2f',
+      confChipBg: c.verified ? '#e9f1e9' : '#f4ecda',
+      select: () => this.setState({ selIdx: i, angle: 'base', altsOpen: false, handoffOpen: false })
+    }));
+
+    const chanNames = { email: 'Gmail', linkedin: 'LinkedIn', x: 'X' };
+    const draft = sel.drafts[st.channel];
+    const body = this.angleBody(sel, st.channel, st.angle);
+    const emailShown = (st.emailPick[sel.id]) || sel.email;
+    const meta = st.channel === 'email' ? ('To: ' + emailShown + ' · ' + draft.meta) : draft.meta;
+    const angles = ['warmer', 'shorter', 'lead with metrics'].map(label => {
+      const key = label === 'lead with metrics' ? 'metrics' : label;
+      const on = st.angle === key;
+      return {
+        label: label,
+        color: on ? '#faf8f3' : '#6f6656',
+        bg: on ? '#211e19' : 'transparent',
+        borderColor: on ? '#211e19' : '#e3ddd0',
+        pick: () => this.setState({ angle: on ? 'base' : key })
+      };
+    });
+    const tabOn = '#211e19', tabOff = '#a89e8c';
+
+    // story
+    const decorate = (e) => ({
+      raw: e.raw, when: e.when, bullet: e.bullet,
+      isPending: e.status === 'pending', isProposed: e.status === 'proposed', isPolished: e.status === 'polished',
+      isEditing: st.editingId === e.id,
+      notEditing: st.editingId !== e.id,
+      startEdit: () => this.setState({ editingId: e.id, editText: e.raw }),
+      cancelEdit: () => this.setState({ editingId: null, editText: '' }),
+      saveEdit: () => {
+        const raw = this.state.editText.trim();
+        if (!raw) return;
+        this.setState({
+          editingId: null, editText: '',
+          entries: this.state.entries.map(x => x.id === e.id ? Object.assign({}, x, { raw: raw, status: 'pending', bullet: '' }) : x)
+        });
+        this.schedulePolish(e.id, raw);
+      },
+      deleteEntry: () => this.setState({ editingId: null, entries: this.state.entries.filter(x => x.id !== e.id), pulled: this.state.pulled.filter(x => x !== e.id) }),
+      tagList: e.tags.map(t => ({ name: t })),
+      approve: () => this.setState({ entries: this.state.entries.map(x => x.id === e.id ? Object.assign({}, x, { status: 'polished' }) : x) }),
+      keepRaw: () => this.setState({ entries: this.state.entries.map(x => x.id === e.id ? Object.assign({}, x, { status: 'raw', bullet: '' }) : x) })
+    });
+    const entries = st.entries.map(decorate);
+    const themeMap = { design: 'Growth & impact', growth: 'Growth & impact', systems: 'Systems & craft', craft: 'Systems & craft', a11y: 'Systems & craft', leadership: 'Leadership & multiplier', prototyping: 'Speed & prototyping', 'new': 'Recently added' };
+    const themeOrder = ['Recently added', 'Systems & craft', 'Growth & impact', 'Leadership & multiplier', 'Speed & prototyping'];
+    const grouped = {};
+    st.entries.forEach(e => { const n = themeMap[e.tags[0]] || 'More'; (grouped[n] = grouped[n] || []).push(decorate(e)); });
+    const themes = themeOrder.filter(n => grouped[n]).map(n => ({ name: n, items: grouped[n] }));
+
+    // desk submit
+    const doSubmit = () => {
+      const text = this.state.input.trim();
+      const shot = this.state.shot;
+      if (shot) {
+        const seeds = {
+          job: { flow: 'apply', title: 'Apply — Staff Product Designer, Stripe (from screenshot)' },
+          manager: { flow: 'find', title: 'Reach — Anika Mehta, hiring manager at Stripe (from screenshot)' },
+          recruiter: { flow: 'find', title: 'Reply — Claire Fontaine, Stripe recruiter (from screenshot)' }
+        };
+        const s = seeds[shot.kind] || seeds.job;
+        this.startRun(s.flow, text || 'run agents on this screenshot', s.title, shot);
+        return;
+      }
+      if (!text) return;
+      if (/^log\b[:\s]?/i.test(text)) {
+        const raw = text.replace(/^log\b[:\s]*/i, '');
+        if (raw) {
+          this.addStoryEntry(raw);
+          this.setState({ input: '', deskNote: 'Added to your Story' });
+          this.later(4000, () => this.setState({ deskNote: '' }));
+        }
+        return;
+      }
+      if (/resume|cv/i.test(text) && !/apply/i.test(text)) { this.startRun('resume', text); return; }
+      if (/find|people|who |manager|recruiter/i.test(text) && !/apply/i.test(text)) { this.startRun('find', text); return; }
+      this.startRun('apply', text);
+    };
+
+    const navOn = { color: '#211e19', bg: '#f2eee4' }, navOff = { color: '#6f6656', bg: 'transparent' };
+    const flowChips = run && run.sent
+      ? (run.flow === 'find' ? [] : [{ label: 'resume ✓', color: '#3d7a4f', bg: '#e9f1e9' }]).concat([{ label: 'sent → ' + sel.first, color: '#3d7a4f', bg: '#e9f1e9' }, { label: 'follow-up · Mon', color: '#8a6d2f', bg: '#f4ecda' }])
+      : [{ label: 'in progress', color: '#8a6d2f', bg: '#f4ecda' }];
+
+    return {
+      hindi: hindi,
+      showChrome: !isOnboarding && screen !== 'auth',
+
+      // auth
+      isAuth: screen === 'auth',
+      authChooser: st.authStage === 'chooser',
+      authLoading: st.authStage === 'loading',
+      cancelGoogle: () => this.setState({ screen: this.state.run ? 'run' : 'desk', authStage: 'chooser' }),
+      googleAccounts: [
+        { name: 'Sam Kapoor', email: 'sam.kapoor@gmail.com', bg: '#7a5c9e' },
+        { name: 'Sam Kapoor', email: 'sam@designfolk.studio', bg: '#3d7a4f' }
+      ].map(a => ({
+        name: a.name, email: a.email, bg: a.bg, initial: a.name[0],
+        pick: () => {
+          this.setState({ user: a, authStage: 'loading' });
+          this.later(1600, () => this.setState({ signedIn: true, authStage: 'chooser', screen: 'ob1' }));
+        }
+      })),
+      userName: st.user.name,
+      userEmail: st.user.email,
+      userBg: st.user.bg,
+      userInitial: st.user.name[0],
+      userFirst: st.user.name.split(' ')[0],
+      acctOpen: st.acctOpen,
+      toggleAcct: () => this.setState({ acctOpen: !st.acctOpen }),
+      signOut: () => this.setState({ signedIn: false, acctOpen: false, screen: 'desk', run: null, hasRun: false, deskNote: '' }),
+      signedIn: st.signedIn, signedOut: !st.signedIn,
+      signIn: () => this.setState({ screen: 'auth', authStage: 'chooser', acctOpen: false }),
+      runLocked: runLocked,
+      lockFilter: runLocked ? 'blur(9px)' : 'none',
+      lockEvents: runLocked ? 'none' : 'auto',
+      lockSummary: run ? (run.flow === 'find'
+        ? '3 people found and ranked, emails verified, outreach drafted in three channels — for you to review, not auto-sent.'
+        : run.flow === 'resume'
+        ? 'Your resume is woven and scored — PDF and Word, ready to download.'
+        : 'Resume woven and scored, 3 people found, emails verified, outreach drafted — for you to review, not auto-sent.') : '',
+      thinStory: thin,
+      atsHead: thin ? 'ATS SCORE · BUILT FROM A THIN STORY' : 'ATS SCORE · VS YOUR UPLOADED RESUME',
+      atsScore: thin ? '71' : '88',
+      atsDelta: thin ? 'passable, not sharp' : '↑ from 61',
+      atsDeltaColor: thin ? '#8a6d2f' : '#3d7a4f',
+      atsBar: thin ? '71%' : '88%',
+      atsGains: thin ? [
+        { plus: '+8', color: '#3d7a4f', text: 'role keywords matched from the posting itself' },
+        { plus: '+5', color: '#3d7a4f', text: 'single column, parseable headings, no tables' },
+        { plus: '−', color: '#a03d2e', text: 'only 1 of 2 bullets quantified — the crew had almost nothing to pull from' }
+      ] : [
+        { plus: '+11', color: '#3d7a4f', text: 'role keywords matched: "design tokens", "component library", "cross-functional adoption"' },
+        { plus: '+9', color: '#3d7a4f', text: 'quantified impact on 4 of 5 bullets (was 1 of 7)' },
+        { plus: '+7', color: '#3d7a4f', text: 'single column, parseable headings, no tables' }
+      ],
+      storyNudge: st.signedIn && !st.obUploaded && !st.storyNudgeGone,
+      dismissStoryNudge: () => this.setState({ storyNudgeGone: true }),
+      addStoryNow: () => {
+        const r = this.state.run;
+        this.setState({ obUploaded: true, storyNudgeGone: true, pulled: [1, 2, 3, 5], deskNote: '12 entries extracted from resume_sam_2026.pdf' });
+        if (r && r.showResume && !r.active) {
+          const prevDone = r.done;
+          this.patchRun({ done: prevDone.filter(d => d !== 'resume'), active: 'resume', showResume: false });
+          this.later(1400, () => this.patchRun({ done: prevDone, active: null, showResume: true }));
+        }
+      },
+
+      isOnboarding: isOnboarding,
+      isOb1: screen === 'ob1', isOb2: screen === 'ob2', isOb3: screen === 'ob3',
+      obStep: obStep,
+      dot1: obStep === 1 ? '#211e19' : '#e3ddd0', dot2: obStep === 2 ? '#211e19' : '#e3ddd0', dot3: obStep === 3 ? '#211e19' : '#e3ddd0',
+      obNextLabel: screen === 'ob3' ? 'Open the Desk →' : 'Next →',
+      obNext: () => {
+        if (screen === 'ob1') this.setState({ screen: 'ob2' });
+        else if (screen === 'ob2') this.setState({ screen: 'ob3' });
+        else this.setState({ screen: this.state.run ? 'run' : 'desk' });
+      },
+      obUpload: () => this.setState({ obUploaded: true }),
+      uploadBorder: st.obUploaded ? '#3d7a4f' : '#cfc6b2',
+      uploadBg: st.obUploaded ? '#f0f5f0' : '#fdfcf8',
+      uploadLabel: st.obUploaded ? '✓ resume_sam_2026.pdf' : 'Drop your resume here',
+      uploadSub: st.obUploaded ? '12 entries extracted into your Story — review them any time' : 'PDF or DOCX · or paste a LinkedIn URL',
+      goals: goals,
+
+      isDesk: screen === 'desk',
+      isFirstTime: !st.hasRun,
+      hasThreads: st.hasRun && !!run,
+      deskHeadline: !st.signedIn ? 'A crew of agents for your job hunt.' : st.hasRun ? 'What should the crew get done?' : 'Welcome, ' + st.user.name.split(' ')[0] + '.',
+      deskNote: st.deskNote,
+      input: st.input,
+      onInput: (ev) => this.setState({ input: ev.target.value }),
+      onInputKey: (ev) => { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); doSubmit(); } },
+      submit: doSubmit,
+
+      // screenshot attach
+      hasShot: !!st.shot,
+      shotLabel: st.shot ? st.shot.label : '',
+      shotMeta: st.shot ? st.shot.meta : '',
+      shotThumb: st.shot ? (st.shot.img
+        ? React.createElement('img', { src: st.shot.img, style: { width: 46, height: 34, objectFit: 'cover', borderRadius: 5, border: '1px solid #e3ddd0', flexShrink: 0 } })
+        : React.createElement('div', { style: { width: 46, height: 34, borderRadius: 5, border: '1px solid #e3ddd0', flexShrink: 0, background: 'repeating-linear-gradient(-45deg,#f2eee4,#f2eee4 4px,#faf8f3 4px,#faf8f3 8px)' } })) : null,
+      removeShot: () => this.setState({ shot: null }),
+      attachOpen: st.attachOpen,
+      toggleAttach: () => this.setState({ attachOpen: !st.attachOpen }),
+      sampleShots: [
+        { kind: 'job', label: 'stripe-posting.png', title: 'A job posting', sub: 'Stripe · Staff Product Designer, Design Systems' },
+        { kind: 'manager', label: 'linkedin-anika.png', title: "A hiring manager's LinkedIn", sub: 'Anika Mehta · Staff PD, design systems at Stripe' },
+        { kind: 'recruiter', label: 'recruiter-dm.png', title: "A recruiter's DM", sub: 'Claire Fontaine · about the staff systems role' }
+      ].map(s => ({
+        title: s.title, sub: s.sub,
+        pick: () => this.setState({ shot: { kind: s.kind, label: s.label, img: null, meta: s.sub + ' · read during the run' }, attachOpen: false })
+      })),
+      composerBorder: st.dragOver ? '#8a6d2f' : '#e3ddd0',
+      composerShadow: st.dragOver ? '0 2px 16px rgba(138,109,47,.18)' : '0 2px 10px rgba(60,50,30,.05)',
+      onDragOver: (ev) => { ev.preventDefault(); if (!this.state.dragOver) this.setState({ dragOver: true }); },
+      onDragLeave: () => { if (this.state.dragOver) this.setState({ dragOver: false }); },
+      onDrop: (ev) => { ev.preventDefault(); this.setState({ dragOver: false }); const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0]; this.attachFile(f); },
+      onPaste: (ev) => {
+        const items = ev.clipboardData && ev.clipboardData.items;
+        if (!items) return;
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type.indexOf('image') === 0) { ev.preventDefault(); this.attachFile(items[i].getAsFile()); return; }
+        }
+      },
+      fillApply: () => this.setState({ input: 'I want to apply to this link: stripe.com/jobs/staff-product-designer' }),
+      fillResume: () => this.setState({ input: 'Generate a resume for the Stripe staff product designer role' }),
+      fillFind: () => this.setState({ input: 'Find me people at Stripe who run design' }),
+      startApply: () => this.startRun('apply', 'I want to apply to this link: stripe.com/jobs/staff-product-designer'),
+      startFind: () => this.startRun('find', 'Find me people at Stripe who run design'),
+      startLog: () => { this.addStoryEntry('The quarterly review greenlit 3 of my projects for H2.'); this.setState({ screen: 'story', storyView: 'timeline' }); },
+      threadTitle: run ? run.title : '',
+      threadChips: flowChips,
+
+      isStory: screen === 'story',
+      goDesk: () => this.setState({ screen: 'desk' }),
+      goStory: () => this.setState({ screen: 'story', deskNote: '' }),
+      goRun: () => { if (this.state.run) this.setState({ screen: 'run' }); },
+      deskNavColor: screen === 'desk' ? navOn.color : navOff.color,
+      deskNavBg: screen === 'desk' ? navOn.bg : navOff.bg,
+      storyNavColor: screen === 'story' ? navOn.color : navOff.color,
+      storyNavBg: screen === 'story' ? navOn.bg : navOff.bg,
+      crewChip: !!run && !run.sent && screen !== 'run',
+      isTimeline: st.storyView === 'timeline',
+      isThemes: st.storyView === 'themes',
+      viewTimeline: () => this.setState({ storyView: 'timeline' }),
+      viewThemes: () => this.setState({ storyView: 'themes' }),
+      tlColor: st.storyView === 'timeline' ? '#211e19' : '#8b8171',
+      tlBg: st.storyView === 'timeline' ? '#fff' : 'transparent',
+      thColor: st.storyView === 'themes' ? '#211e19' : '#8b8171',
+      thBg: st.storyView === 'themes' ? '#fff' : 'transparent',
+      entries: entries, themes: themes,
+      editText: st.editText,
+      onEditText: (ev) => this.setState({ editText: ev.target.value }),
+      isJobs: screen === 'jobs',
+      goJobs: () => this.setState({ screen: 'jobs' }),
+      jobsNavColor: screen === 'jobs' ? navOn.color : navOff.color,
+      jobsNavBg: screen === 'jobs' ? navOn.bg : navOff.bg,
+      jobListOpen: !st.jobId,
+      jobDetailOpen: !!st.jobId,
+      backToJobs: () => this.setState({ jobId: null }),
+      isPeople: screen === 'people',
+      goPeople: () => this.setState({ screen: 'people' }),
+      peopleNavColor: screen === 'people' ? navOn.color : navOff.color,
+      peopleNavBg: screen === 'people' ? navOn.bg : navOff.bg,
+      peopleRows: st.people,
+      histRuns: this.histRuns.map(h => ({
+        title: h.title, when: h.when, chips: h.chips,
+        open: () => this.setState({ screen: 'hist', histId: h.id })
+      })),
+      ...(() => {
+        const h = this.histRuns.find(x => x.id === st.histId);
+        return {
+          isHist: screen === 'hist' && !!h,
+          histTitle: h ? h.title : '', histWhen: h ? h.when : '', histIntent: h ? h.intent : '',
+          histSteps: h ? h.steps : [],
+          histOutcomes: h ? h.outcomes : [],
+          histFiles: h ? h.files : [],
+          histHasFiles: !!(h && h.files.length),
+          backFromHist: () => this.setState({ screen: 'desk', histId: null })
+        };
+      })(),
+
+      // jobs
+      jobs: (() => {
+        const visaStyles = {
+          yes: { label: 'SPONSORS VISA', color: '#3d7a4f', bg: '#e9f1e9' },
+          tbd: { label: 'VISA · TBD', color: '#8a6d2f', bg: '#f4ecda' },
+          no: { label: 'NO SPONSORSHIP', color: '#a03d2e', bg: '#f7e8e2' }
+        };
+        return this.jobsData
+          .filter(j => st.dismissedJobs.indexOf(j.id) < 0)
+          .filter(j => st.visaFilter === 'all' || j.visa === st.visaFilter)
+          .filter(j => !st.remoteOnly || j.remote)
+          .filter(j => !st.compOnly || j.comp)
+          .map(j => {
+            const v = visaStyles[j.visa];
+            return {
+              company: j.company, title: j.title, posted: j.posted, loc: j.loc, why: j.why, fit: j.fit,
+              compLabel: j.comp || 'comp not listed',
+              compColor: j.comp ? '#3a352c' : '#b0a692',
+              fitColor: j.fit >= 85 ? '#3d7a4f' : (j.fit >= 75 ? '#8a6d2f' : '#8b8171'),
+              fitBorder: j.fit >= 85 ? '#bcd6c2' : (j.fit >= 75 ? '#e6d5ab' : '#ddd5c4'),
+              visaLabel: v.label, visaColor: v.color, visaBg: v.bg,
+              open: () => this.setState({ jobId: j.id })
+            };
+          });
+      })(),
+      jobsCount: this.jobsData.filter(j => st.dismissedJobs.indexOf(j.id) < 0).length,
+      visaChips: [
+        { key: 'all', label: 'All visas' }, { key: 'yes', label: 'Sponsors visa' }, { key: 'tbd', label: 'Visa TBD' }, { key: 'no', label: 'No sponsorship' }
+      ].map(f => {
+        const on = st.visaFilter === f.key;
+        return { label: f.label, color: on ? '#faf8f3' : '#6f6656', bg: on ? '#211e19' : 'transparent', borderColor: on ? '#211e19' : '#e3ddd0', pick: () => this.setState({ visaFilter: f.key }) };
+      }),
+      toggleRemote: () => this.setState({ remoteOnly: !st.remoteOnly }),
+      remoteColor: st.remoteOnly ? '#faf8f3' : '#6f6656', remoteBg: st.remoteOnly ? '#211e19' : 'transparent', remoteBorder: st.remoteOnly ? '#211e19' : '#e3ddd0',
+      toggleComp: () => this.setState({ compOnly: !st.compOnly }),
+      compColor: st.compOnly ? '#faf8f3' : '#6f6656', compBg: st.compOnly ? '#211e19' : 'transparent', compBorder: st.compOnly ? '#211e19' : '#e3ddd0',
+      jdCompany: '', jdTitle: '', jdPosted: '', jdLoc: '', jdSummary: '', jdLink: '', jdFit: '', jdWhy: [],
+      ...(() => {
+        const jd = this.jobsData.find(j => j.id === st.jobId);
+        if (!jd) return {};
+        const visaStyles = {
+          yes: { label: 'SPONSORS VISA', color: '#3d7a4f', bg: '#e9f1e9' },
+          tbd: { label: 'VISA · TBD', color: '#8a6d2f', bg: '#f4ecda' },
+          no: { label: 'NO SPONSORSHIP', color: '#a03d2e', bg: '#f7e8e2' }
+        };
+        const v = visaStyles[jd.visa];
+        return {
+          jdCompany: jd.company, jdTitle: jd.title, jdPosted: jd.posted, jdLoc: jd.loc,
+          jdSummary: jd.summary, jdLink: jd.link, jdFit: jd.fit,
+          jdCompLabel: jd.comp || 'comp not listed', jdCompColor: jd.comp ? '#3a352c' : '#b0a692',
+          jdFitColor: jd.fit >= 85 ? '#3d7a4f' : (jd.fit >= 75 ? '#8a6d2f' : '#8b8171'),
+          jdFitBorder: jd.fit >= 85 ? '#bcd6c2' : (jd.fit >= 75 ? '#e6d5ab' : '#ddd5c4'),
+          jdVisaLabel: v.label, jdVisaColor: v.color, jdVisaBg: v.bg,
+          jdWhy: jd.whyBullets.map(t => ({ text: t })),
+          jobApply: () => { this.setState({ jobId: null }); this.startRun('apply', 'Interested in ' + jd.title + ' at ' + jd.company.charAt(0) + jd.company.slice(1).toLowerCase() + ' (from Jobs)', 'Apply — ' + jd.title + ', ' + jd.company.charAt(0) + jd.company.slice(1).toLowerCase()); },
+          jobDismiss: () => this.setState({ jobId: null, dismissedJobs: this.state.dismissedJobs.concat([jd.id]) })
+        };
+      })(),
+      quickAdd: st.quickAdd,
+      onQuickAdd: (ev) => this.setState({ quickAdd: ev.target.value }),
+      onQuickAddKey: (ev) => { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); if (this.state.quickAdd.trim()) { this.addStoryEntry(this.state.quickAdd.trim()); this.setState({ quickAdd: '' }); } } },
+      addEntry: () => { if (this.state.quickAdd.trim()) { this.addStoryEntry(this.state.quickAdd.trim()); this.setState({ quickAdd: '' }); } },
+
+      // run
+      isRun: screen === 'run',
+      runTitle: run ? run.title : '',
+      runIntent: run ? run.intent : '',
+      runShot: !!(run && run.shot),
+      runShotLabel: run && run.shot ? run.shot.label : '',
+      runSteps: runSteps,
+      runBadge: runBadge, runBadgeColor: runBadgeColor, runBadgeBg: runBadgeBg,
+      showPull: !!run && run.showPull,
+      showResume: !!run && run.showResume,
+      resumeOfferPeople: !!run && run.flow === 'resume' && !run.showPeople && !run.sent,
+      showPeople: !!run && run.showPeople && !run.sent,
+      isSent: !!run && run.sent,
+      sentLine: run && run.sentChannel ? ('Sent to ' + sel.first + ' via ' + run.sentChannel + '. The crew takes it from here.') : 'Sent. The crew takes it from here.',
+      pulledList: pulledList, availableList: availableList,
+      hasAvailable: availableList.length > 0,
+      pulledCount: st.pulled.length,
+      pullAdd: st.pullAdd,
+      onPullAdd: (ev) => this.setState({ pullAdd: ev.target.value }),
+      onPullAddKey: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); this.doPullAdd(); } },
+      addPullEntry: () => this.doPullAdd(),
+      confirmPull: () => this.doConfirmPull(),
+      continueToPeople: () => {
+        const doneR = this.state.run.done;
+        this.patchRun({ active: 'people' });
+        this.runPeopleSequence(doneR);
+      },
+
+      // people panel
+      candidates: candidates,
+      selPronoun: sel.pronoun, selWho: sel.who, selSources: sel.sources,
+      selWhy: sel.why.map(t => ({ text: t })),
+      selEmail: emailShown,
+      selConf: st.emailPick[sel.id] ? 'guess · your pick' : sel.conf,
+      selConfColor: (sel.verified && !st.emailPick[sel.id]) ? '#3d7a4f' : '#8a6d2f',
+      selConfBg: (sel.verified && !st.emailPick[sel.id]) ? '#e9f1e9' : '#f4ecda',
+      selFirst: sel.first,
+      toggleAlts: () => this.setState({ altsOpen: !this.state.altsOpen }),
+      altsOpen: st.altsOpen,
+      altsLabel: st.altsOpen ? 'hide alternate patterns ▾' : sel.alts.length + ' more patterns if this bounces ▸',
+      selAlts: sel.alts.map(a => ({
+        addr: a,
+        use: () => this.setState({ emailPick: Object.assign({}, this.state.emailPick, { [sel.id]: a }) })
+      })),
+      chanEmail: () => this.setState({ channel: 'email', angle: 'base', handoffOpen: false }),
+      chanLinkedin: () => this.setState({ channel: 'linkedin', angle: 'base', handoffOpen: false }),
+      chanX: () => this.setState({ channel: 'x', angle: 'base', handoffOpen: false }),
+      tabEmailColor: st.channel === 'email' ? tabOn : tabOff, tabEmailLine: st.channel === 'email' ? tabOn : 'transparent',
+      tabLiColor: st.channel === 'linkedin' ? tabOn : tabOff, tabLiLine: st.channel === 'linkedin' ? tabOn : 'transparent',
+      tabXColor: st.channel === 'x' ? tabOn : tabOff, tabXLine: st.channel === 'x' ? tabOn : 'transparent',
+      draftMeta: meta, draftBody: body,
+      angles: angles,
+      ctaLabel: 'Open in ' + chanNames[st.channel] + ' →',
+      chanName: chanNames[st.channel],
+      handoff: () => this.setState({ handoffOpen: true }),
+      showHandoff: st.handoffOpen,
+      noHandoff: !st.handoffOpen,
+      dismissHandoff: () => this.setState({ handoffOpen: false }),
+      confirmSent: () => {
+        const chan = chanNames[st.channel] === 'Gmail' ? 'email' : chanNames[st.channel].toLowerCase();
+        const newPerson = { name: sel.name, role: sel.role, company: 'Stripe', last: chan + ' · just now', next: 'follow-up · Mon', nextColor: '#8a6d2f', status: 'AWAITING REPLY', sColor: '#8a6d2f', sBg: '#f4ecda', rowBg: '#fdfcf8' };
+        this.setState({ handoffOpen: false, hasRun: true, people: [newPerson].concat(this.state.people.filter(p => p.name !== sel.name)) });
+        this.patchRun({ sent: true, showPeople: false, sentChannel: chan });
+      }
+    };
+  }
+}
+
+</script>
+</body>
+</html>
