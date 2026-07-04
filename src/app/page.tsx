@@ -1,12 +1,13 @@
 // @ts-nocheck — verbatim port of Crew prototype v3 landing
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { PAPER_FONTS } from "@/components/paper/fonts";
 import { usePaperTheme } from "@/components/paper/use-paper-theme";
 import { signInWithGoogle, supabaseBrowser } from "@/lib/supabase-browser";
 import { useIsMobile } from "@/lib/use-is-mobile";
+import { useSignedIn } from "@/lib/use-signed-in";
 import { CrewRunWindow } from "@/components/landing/HowItWorks";
 
 /* ─────────────────────── Jugaadu logo ─────────────────────── */
@@ -53,24 +54,9 @@ async function startGoogleSignIn() {
   }
 }
 
-// Lightweight signed-in probe so CTAs can say "Open the workspace →" instead
-// of "Get a crew →" for people who already have an account.
-function useSignedIn() {
-  const [signedIn, setSignedIn] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    supabaseBrowser()
-      .auth.getSession()
-      .then(({ data }) => {
-        if (!cancelled) setSignedIn(!!data?.session);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return signedIn;
-}
+// Signed-in probe now lives in @/lib/use-signed-in (shared with the run view's
+// blur gate). CTAs use it to say "Open the workspace →" instead of "Get a crew
+// →" for people who already have an account.
 
 // eslint-disable @typescript-eslint/no-explicit-any
 

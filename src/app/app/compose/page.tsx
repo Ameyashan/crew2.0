@@ -30,7 +30,8 @@ import {
   jobHost,
 } from "@/lib/runs-store";
 import { classifyKind } from "@/lib/kind-detect";
-import { supabaseBrowser } from "@/lib/supabase-browser";
+import { supabaseBrowser, signInWithGoogle } from "@/lib/supabase-browser";
+import { useSignedIn } from "@/lib/use-signed-in";
 import { TOKENS } from "@/components/paper/tokens";
 import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
 import {
@@ -45,6 +46,18 @@ import {
   deskEarlierRuns,
   fmtWhen,
 } from "@/components/paper/desk-logic";
+import {
+  runStatusChip,
+  CHIP_TONE_COLORS,
+  THIN_STORY,
+  isThinStory,
+  hasGateableOutput,
+  shouldBlurGate,
+  gateSummary,
+  serializePendingRun,
+  parsePendingRun,
+  PENDING_RUN_KEY,
+} from "@/components/paper/run-view-logic";
 
 // Hit the existing PDF/DOCX endpoints (they take the tailored-resume JSON) and
 // trigger a browser download. Shared by the ↓ PDF / ↓ Word buttons.
@@ -95,6 +108,10 @@ function ComposeV3({ p, go }) {
   const [selectedAgents, setSelectedAgents] = useState(() => defaultSelectionFor('person', false));
   const runs = useRuns();
   const isMobile = useIsMobile();
+  // Tri-state: null while resolving, then a boolean. Drives the signed-out blur
+  // gate on completed runs (Phase 4). Signed-in is the common path — the gate
+  // never shows for them.
+  const signedIn = useSignedIn();
 
   // ─── Desk data: Story-empty derivation, first-time gate, earlier runs ───
   // profile → storyIsEmpty (thin-Story flag, threaded to Phase 4); the two
@@ -165,6 +182,32 @@ function ComposeV3({ p, go }) {
   useEffect(() => {
     resumePendingRuns();
   }, []);
+
+  // ─── pendingRun restore (signed-out blur gate) ───
+  // A run started while signed-out is stashed to sessionStorage before the OAuth
+  // hop (see the gate's Sign-in button). Once we're back and signed in, re-open
+  // that run "unlocked" — the module run-store was wiped by the full-page
+  // redirect, so we reconstruct from the stashed input. Replays go through the
+  // module store (startRun), not React state, so there's no synchronous setState
+  // here. A screenshot-only run can't be replayed (the File blob didn't survive
+  // the redirect) and is dropped; the user re-attaches on a fresh composer.
+  useEffect(() => {
+    if (signedIn !== true || typeof window === 'undefined') return;
+    let raw = null;
+    try { raw = sessionStorage.getItem(PENDING_RUN_KEY); } catch { raw = null; }
+    const pending = parsePendingRun(raw);
+    if (!pending) return;
+    try { sessionStorage.removeItem(PENDING_RUN_KEY); } catch { /* private mode */ }
+    if (pending.input && pending.input.trim()) {
+      const kind = pending.kind && pending.kind !== 'fuzzy' ? pending.kind : classifyKind(pending.input);
+      startRun(pending.input, {
+        intent: pending.intent,
+        providedEmail: pending.providedEmail,
+        kind: kind === 'job' ? 'job' : 'person',
+        selectedAgents: pending.selectedAgents,
+      });
+    }
+  }, [signedIn]);
 
   // Honor ?seed= (People's "Reach out again →"): prefill the paste box, and
   // when the seed is the person's email address, flip the "I already have
@@ -298,7 +341,7 @@ function ComposeV3({ p, go }) {
       {/* ─── one card per run, newest on top (resume runs render on /app/resume) ─── */}
       <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
         {runs.filter((run) => run.kind !== 'resume').map((run) => (
-          <RunCard key={run.id} p={p} run={run} go={go}/>
+          <RunCard key={run.id} p={p} run={run} go={go} storyIsEmpty={storyIsEmpty} signedIn={signedIn}/>
         ))}
       </div>
 
@@ -355,7 +398,7 @@ const EARLIER_CHIP_TONE = {
 
 /* ─────────────────────── one run, all its lifecycle stages ─────────────────────── */
 
-function RunCard({ p, run, go }) {
+function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
   const numberWord = ['zero', 'one', 'two', 'three', 'four', 'five'];
   const all = AGENTS_DATA[run.kind] || AGENTS_DATA.person;
   const activeCount = Array.isArray(run.selectedAgents) && run.selectedAgents.length > 0
@@ -364,16 +407,22 @@ function RunCard({ p, run, go }) {
   const agentsLabel = activeCount === 1
     ? 'one agent on it'
     : `${numberWord[activeCount] || activeCount} agents on it`;
-  // The unmissable working/done signal (user testing: the old small caption
-  // made it hard to tell whether the crew was still going or finished).
-  const badge = {
-    parsing: { label: 'reading',                                     color: p.tea,          pulse: true  },
-    working: { label: run.reconnecting ? 'reconnecting' : 'working', color: p.marigoldDeep, pulse: true  },
-    done:    { label: 'ready ✓',                                     color: p.leaf,         pulse: false },
-    error:   { label: 'needs attention',                             color: p.stamp,        pulse: false },
-  }[run.stage];
-  // Secondary caption next to the badge — only while agents are actually going.
+  // Status chip: the parsing/working/done/error machine relabeled to the
+  // prototype's RUNNING / DONE / NEEDS-YOU chips — pure rename/recolor, no logic
+  // change (see run-view-logic.runStatusChip). RUNNING + NEEDS-YOU are amber,
+  // DONE is green.
+  const chip = runStatusChip(run.stage, { reconnecting: run.reconnecting });
+  const chipTone = CHIP_TONE_COLORS[chip.tone];
+  // Secondary caption next to the chip — only while agents are actually going.
   const stageDetail = run.stage === 'working' && !run.reconnecting ? agentsLabel : '';
+  const thin = isThinStory(storyIsEmpty);
+  // Signed-out blur gate: once outputs exist and the viewer is DEFINITIVELY
+  // signed out, the steps stay readable but the output panels blur behind a
+  // sign-in overlay. `signedIn` is tri-state (null while resolving); treating
+  // "not yet known" as signed-in avoids flashing the gate over a signed-in
+  // user's outputs before the session check lands.
+  const hasOutput = hasGateableOutput(run, hasPartialResult(run));
+  const gated = shouldBlurGate({ signedIn: signedIn !== false, run, hasPartial: hasPartialResult(run) });
 
   return (
     <div style={{
@@ -385,18 +434,19 @@ function RunCard({ p, run, go }) {
       }}>
         <div style={{ minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px',
-            border: `1.5px solid ${badge.color}`, background: `${badge.color}14`, color: badge.color,
-            fontFamily: PAPER_FONTS.mono, fontSize: 10, letterSpacing: '.14em',
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 11px',
+            border: `1px solid ${chipTone.line}`, background: chipTone.bg, color: chipTone.color,
+            borderRadius: 99,
+            fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, letterSpacing: '.1em',
             textTransform: 'uppercase', flexShrink: 0, alignSelf: 'center',
           }}>
-            {badge.pulse && (
+            {chip.pulse && (
               <span style={{
-                width: 6, height: 6, borderRadius: 999, background: badge.color,
-                animation: 'pulseDot 1.1s ease-in-out infinite',
+                width: 6, height: 6, borderRadius: 999, background: chipTone.color,
+                animation: 'pulse 1.4s ease-in-out infinite',
               }}/>
             )}
-            {badge.label}
+            {chip.label}
           </span>
           {stageDetail && (
             <span style={{
@@ -458,11 +508,22 @@ function RunCard({ p, run, go }) {
 
       {/* done — or mid-run as soon as any agent has produced a deliverable → the
           package, filling in section-by-section so the user isn't blocked on the
-          slowest agent. */}
-      {(run.stage === 'done' || (run.stage === 'working' && hasPartialResult(run))) && (
-        <PackageV3 p={p} kind={run.kind} parsed={run.parsed} intent={run.intent}
-          drafts={run.drafts} enrichment={run.enrichment} person={run.person} run={run}
-          onReset={() => dismissRun(run.id)} go={go}/>
+          slowest agent. Signed-out viewers see it behind the blur gate. */}
+      {hasOutput && (
+        <div style={{ position: 'relative' }}>
+          <div style={{
+            filter: gated ? 'blur(9px)' : 'none',
+            pointerEvents: gated ? 'none' : 'auto',
+            userSelect: gated ? 'none' : 'auto',
+            transition: 'filter .3s ease',
+          }} aria-hidden={gated || undefined}>
+            <PackageV3 p={p} kind={run.kind} parsed={run.parsed} intent={run.intent}
+              drafts={run.drafts} enrichment={run.enrichment} person={run.person} run={run}
+              storyIsEmpty={thin}
+              onReset={() => dismissRun(run.id)} go={go}/>
+          </div>
+          {gated && <BlurGateOverlay kind={run.kind} run={run} input={run.input}/>}
+        </div>
       )}
 
       {/* error → message, optional candidate picker, retry */}
@@ -509,6 +570,86 @@ function RunCard({ p, run, go }) {
         </>
       )}
     </div>
+  );
+}
+
+/* ─────────────────────── signed-out blur gate overlay ─────────────────────── */
+
+// The card that sits over the blurred output for a signed-out viewer. Purely
+// presentational once the layout gate (anon can reach /app/compose) and the
+// pendingRun stash exist. The sign-in control is a real, focusable <button> (not
+// a styled div): it persists enough of the run to sessionStorage — which
+// survives the same-origin OAuth + onboarding redirect — then kicks off the real
+// Supabase Google OAuth, returning to /app/compose where the run re-opens
+// unlocked (see ComposeV3's pendingRun restore effect).
+function BlurGateOverlay({ kind, run, input }) {
+  async function signIn() {
+    try {
+      if (typeof window !== 'undefined') {
+        const payload = serializePendingRun({
+          input: input || run?.input || '',
+          intent: run?.intent || '',
+          kind: run?.kind ?? null,
+          providedEmail: !!run?.providedEmail,
+          selectedAgents: Array.isArray(run?.selectedAgents) ? run.selectedAgents : [],
+          screenshotName: run?.screenshot?.name ?? null,
+        });
+        try { sessionStorage.setItem(PENDING_RUN_KEY, payload); } catch { /* private mode */ }
+      }
+      await signInWithGoogle('/app/compose');
+    } catch (e) {
+      console.error('Gate sign-in failed', e);
+      alert('Sign-in is not configured yet. See README for setup.');
+    }
+  }
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
+      padding: 16, zIndex: 3,
+    }}>
+      <div style={{
+        width: '100%', maxWidth: 410, background: TOKENS.card,
+        border: `1px solid ${TOKENS.lineSoft}`, borderRadius: 16,
+        boxShadow: '0 16px 48px rgba(60,50,30,.2)',
+        padding: '26px 26px 24px', textAlign: 'center', animation: 'fadeUp .3s ease',
+      }}>
+        <span style={{
+          display: 'inline-block', fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500,
+          letterSpacing: '.12em', textTransform: 'uppercase', color: TOKENS.green,
+          background: TOKENS.greenBg, borderRadius: 99, padding: '5px 11px',
+        }}>Crew finished · you&apos;re signed out</span>
+        <div style={{
+          fontFamily: PAPER_FONTS_V2.serif, fontSize: 22, lineHeight: 1.25, color: TOKENS.ink,
+          margin: '14px 0 8px',
+        }}>The work is done. It&apos;s waiting behind the blur.</div>
+        <div style={{
+          fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, lineHeight: 1.5, color: TOKENS.muted, marginBottom: 18,
+        }}>{gateSummary(kind)}</div>
+        <button onClick={signIn} style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          width: '100%', padding: '11px 16px', cursor: 'pointer',
+          background: TOKENS.ink, color: TOKENS.paper, border: 'none', borderRadius: 9,
+          fontFamily: PAPER_FONTS_V2.sans, fontSize: 14, fontWeight: 500,
+        }}>
+          <GoogleGlyph/> Sign in with Google
+        </button>
+        <div style={{
+          fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, lineHeight: 1.5, color: TOKENS.faint, marginTop: 12,
+        }}>Free — this run is saved to your account the moment you&apos;re in.</div>
+      </div>
+    </div>
+  );
+}
+
+// The multi-path Google "G" mark, sized for the gate button.
+function GoogleGlyph({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/>
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+      <path fill="#4CAF50" d="M24 44c5.5 0 10.5-2.1 14.3-5.6l-6.6-5.6C29.7 34.5 27 35.5 24 35.5c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4 5.6l6.6 5.6C41.8 36 44 30.6 44 24c0-1.3-.1-2.4-.4-3.5z"/>
+    </svg>
   );
 }
 
@@ -1584,7 +1725,7 @@ function SteerDraft({ p, runId, drafts, recipientName }) {
   );
 }
 
-function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, run, onReset, go }) {
+function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, run, onReset, go, storyIsEmpty }) {
   const headerEmail = buildEmailDraft({ drafts, enrichment });
   const isMobile = useIsMobile();
   return (
@@ -1623,16 +1764,43 @@ function PackageV3({ p, kind, parsed, intent, drafts, enrichment, person, run, o
       </PaperCard>
 
       {kind === 'person'
-        ? <PersonPackage p={p} parsed={parsed} drafts={drafts} enrichment={enrichment} run={run} go={go}/>
-        : <JobPackage    p={p} parsed={parsed} drafts={drafts} enrichment={enrichment} person={person} run={run} go={go}/>
+        ? <PersonPackage p={p} parsed={parsed} drafts={drafts} enrichment={enrichment} run={run} go={go} storyIsEmpty={storyIsEmpty}/>
+        : <JobPackage    p={p} parsed={parsed} drafts={drafts} enrichment={enrichment} person={person} run={run} go={go} storyIsEmpty={storyIsEmpty}/>
       }
     </div>
   );
 }
 
-function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
+// Thin-Story treatment shared by the output panels. Shows only when the account
+// has no resume on file (storyIsEmpty), so the crew is weaving from guesses. The
+// "Add resume" control routes to Story, where ingesting a resume re-weaves the
+// run with real material. Amber throughout, per the prototype's thin-Story state.
+function ThinStoryBanner({ go, note, header = THIN_STORY.banner }) {
+  return (
+    <div style={{
+      marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+      background: TOKENS.amberWash, border: `1px solid ${TOKENS.amberLine}`, borderRadius: 10,
+      padding: '9px 12px',
+    }}>
+      <span style={{
+        fontFamily: PAPER_FONTS_V2.mono, fontSize: 9.5, fontWeight: 500, letterSpacing: '.12em',
+        textTransform: 'uppercase', color: TOKENS.amber, flexShrink: 0,
+      }}>⚠ {header}</span>
+      <span style={{
+        fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, lineHeight: 1.4, color: TOKENS.muted2, minWidth: 0, flex: 1,
+      }}>{note}</span>
+      <button onClick={() => go('resume')} style={{
+        fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, fontWeight: 500, color: TOKENS.paper,
+        background: TOKENS.ink, border: 'none', borderRadius: 99, padding: '6px 12px', cursor: 'pointer', flexShrink: 0,
+      }}>{THIN_STORY.cta}</button>
+    </div>
+  );
+}
+
+function PersonPackage({ p, parsed, drafts, enrichment, run, go, storyIsEmpty }) {
   const [channel, setChannel] = useState('email'); // email | linkedin | x
   const isMobile = useIsMobile();
+  const thin = isThinStory(storyIsEmpty);
 
   // The real researched person streamed back from /api/compose (research step).
   // Fall back to the lightweight paste-preview only for the headline fields, so
@@ -1683,6 +1851,7 @@ function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
     <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr', gap: 12 }}>
       {/* draft */}
       <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
+        {thin && <div style={{ marginBottom: 14, marginTop: -4 }}><ThinStoryBanner go={go} note={THIN_STORY.peopleWarn}/></div>}
         <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
           {[
             { id: 'email',    label: '✉ Email',     desc: 'cold email' },
@@ -1818,7 +1987,8 @@ function PersonPackage({ p, parsed, drafts, enrichment, run, go }) {
   );
 }
 
-function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
+function JobPackage({ p, parsed, drafts, enrichment, person, run, go, storyIsEmpty }) {
+  const thin = isThinStory(storyIsEmpty);
   const [picking, setPicking] = useState(false);
   const [expanded, setExpanded] = useState(false);   // full-size resume modal
   const [showNotes, setShowNotes] = useState(false);  // regenerate-with-notes panel
@@ -1898,9 +2068,13 @@ function JobPackage({ p, parsed, drafts, enrichment, person, run, go }) {
       {/* resume */}
       <PaperCard p={p} style={{ padding: '20px 22px', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Eyebrow p={p} en="Tailored resume" color={p.marigold}/>
+          <Eyebrow p={p} en={thin ? THIN_STORY.atsHeader : "Tailored resume"} color={thin ? TOKENS.amber : p.marigold}/>
           <AtsBadge p={p} before={atsScoreBefore} after={atsScore}/>
         </div>
+        {thin && (
+          <ThinStoryBanner go={go} header={THIN_STORY.banner}
+            note={`${THIN_STORY.atsNote} — ${THIN_STORY.atsNegative}.`}/>
+        )}
         {(jobRole || jobCompany) && (
           <div style={{
             fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 13, color: p.inkSoft, marginTop: 6,
