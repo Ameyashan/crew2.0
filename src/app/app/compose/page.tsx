@@ -8,7 +8,6 @@ import { usePaperTheme } from "@/components/paper/use-paper-theme";
 import {
   Eyebrow,
   InkButton,
-  PageHead,
   PaperCard,
 } from "@/components/paper/primitives";
 import { openGmailCompose } from "@/lib/gmail";
@@ -19,7 +18,6 @@ import {
   startRun,
   startImageRun,
   dismissRun,
-  clearAllRuns,
   retryRun,
   switchRunToJob,
   resumePendingRuns,
@@ -32,8 +30,9 @@ import {
 import { classifyKind } from "@/lib/kind-detect";
 import { supabaseBrowser, signInWithGoogle } from "@/lib/supabase-browser";
 import { useSignedIn } from "@/lib/use-signed-in";
-import { TOKENS } from "@/components/paper/tokens";
+import { TOKENS, RADII, SHADOWS } from "@/components/paper/tokens";
 import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
+import { nameFromEmail } from "@/components/paper/top-bar-logic";
 import {
   SUGGESTION_PILLS,
   SAMPLE_SHOTS,
@@ -43,6 +42,7 @@ import {
   deriveStoryIsEmpty,
   storyNudgeKey,
   isFirstTime,
+  deskHeadline,
   deskEarlierRuns,
   fmtWhen,
 } from "@/components/paper/desk-logic";
@@ -82,39 +82,34 @@ async function downloadResumeBlob(resume, fmt) {
   URL.revokeObjectURL(url);
 }
 
-// Label + the high-level flow each kind kicks off, surfaced in the banner so
-// people know what happens before they commit.
-const KIND_META = {
-  job:    { label: 'a job posting',     flow: 'Tailor résumé → find hiring manager → draft cold email → prep outreach' },
-  person: { label: 'a specific person', flow: 'Verify email → draft cold email → write X & LinkedIn DMs' },
-  fuzzy:  { label: 'a fuzzy search',    flow: 'Find matching people → you pick → draft personalized outreach' },
-};
+// Hover affordances lifted from the prototype's style-hover attributes — inline
+// styles can't express :hover, so the Desk ships this tiny stylesheet instead.
+const DESK_HOVER_CSS = `
+.dk-pill:hover{border-color:#b0a692!important;color:#211e19!important}
+.dk-submit:hover{background:#3a352c!important}
+.dk-card:hover{border-color:#b0a692!important;box-shadow:0 2px 12px rgba(60,50,30,.07)}
+.dk-row:hover{background:#f7f4ec}
+.dk-x:hover{color:#211e19!important}
+`;
 
 function ComposeV3({ p, go }) {
   // Paste-entry state only. Each submitted link becomes an independent run in
   // the module store (src/lib/runs-store.ts), so many can stream at once and
   // survive navigation between /app pages.
-  const [input, setInput]   = useState('');
-  const [intent, setIntent] = useState('');
+  const [input, setInput] = useState('');
+  // Set programmatically when ?seed= is the person's email address (People's
+  // "Reach out again →") — skips the email lookup for that run. No UI toggle;
+  // the prototype composer assembles the crew automatically.
   const [haveEmail, setHaveEmail] = useState(false);
   const [screenshot, setScreenshot] = useState(null);
-  // null → trust auto-detection; otherwise the kind the user forced via the
-  // "NOT RIGHT?" toggle. 'fuzzy' folds into the person flow in the store.
-  const [kindOverride, setKindOverride] = useState(null);
-  // Which agents the user opted into for the next Go. Defaults rebuild whenever
-  // the detected kind or haveEmail change (see PasteFieldV3). The checklist is
-  // the single source of truth; haveEmail is a convenience shortcut that
-  // mirrors into this set.
-  const [selectedAgents, setSelectedAgents] = useState(() => defaultSelectionFor('person', false));
   const runs = useRuns();
   const isMobile = useIsMobile();
-  // Tri-state: null while resolving, then a boolean. Drives the signed-out blur
-  // gate on completed runs (Phase 4). Signed-in is the common path — the gate
-  // never shows for them.
+  // Tri-state: null while resolving, then a boolean. Drives the headline
+  // variant and the signed-out blur gate on completed runs.
   const signedIn = useSignedIn();
 
   // ─── Desk data: Story-empty derivation, first-time gate, earlier runs ───
-  // profile → storyIsEmpty (thin-Story flag, threaded to Phase 4); the two
+  // profile → storyIsEmpty (thin-Story flag, threaded to the run view); the two
   // history endpoints feed both the first-time gate and the earlier-runs rows
   // (same payload the history page fetches — we don't invent a new source).
   const [profile, setProfile] = useState(null);
@@ -124,6 +119,9 @@ function ComposeV3({ p, go }) {
   // Start hidden so the amber pill never flashes before we know the account +
   // its saved dismissal.
   const [nudgeDismissed, setNudgeDismissed] = useState(true);
+  // Display name for the first-time "Welcome, {first}." headline — profile name
+  // first, then Google metadata / email, same resolution the top bar uses.
+  const [name, setName] = useState(null);
 
   async function loadHistory() {
     try {
@@ -139,18 +137,31 @@ function ComposeV3({ p, go }) {
   useEffect(() => {
     let alive = true;
     fetch('/api/profile').then((r) => r.json()).then((j) => {
-      if (alive) setProfile(j?.profile ?? null);
+      if (!alive) return;
+      setProfile(j?.profile ?? null);
+      const fromProfile = typeof j?.profile?.full_name === 'string' ? j.profile.full_name.trim() : '';
+      if (fromProfile) setName(fromProfile);
     }).catch(() => {});
     loadHistory();
     // Resolve the account so the nudge dismissal is per-user, then read its saved
     // flag. Key by email — dismissal persists across reloads, not across accounts.
     supabaseBrowser().auth.getUser().then(({ data }) => {
       if (!alive) return;
-      const key = storyNudgeKey(data?.user?.email);
+      const u = data?.user;
+      const key = storyNudgeKey(u?.email);
       setNudgeKey(key);
       try {
         setNudgeDismissed(typeof window !== 'undefined' && localStorage.getItem(key) === '1');
       } catch { setNudgeDismissed(false); }
+      if (u) {
+        const meta = u.user_metadata ?? {};
+        const fallback =
+          (typeof meta.full_name === 'string' && meta.full_name.trim()) ||
+          (typeof meta.name === 'string' && meta.name.trim()) ||
+          nameFromEmail(u.email);
+        // Don't override a name already resolved from the profile.
+        setName((prev) => prev ?? (fallback || null));
+      }
     }).catch(() => { if (alive) setNudgeDismissed(false); });
     return () => { alive = false; };
   }, []);
@@ -164,10 +175,12 @@ function ComposeV3({ p, go }) {
   const liveNonResume = runs.filter((run) => run.kind !== 'resume');
   const firstTime = isFirstTime(composeRuns.length, resumeRuns.length) && liveNonResume.length === 0;
   const earlier = deskEarlierRuns(composeRuns, resumeRuns, 4);
-  const showNudge = !!nudgeKey && storyIsEmpty && !nudgeDismissed;
+  // Prototype shows the Story nudge for signed-in accounts only.
+  const showNudge = signedIn === true && !!nudgeKey && storyIsEmpty && !nudgeDismissed;
+  const headline = deskHeadline(signedIn, firstTime, name);
 
   // Seed the composer from a suggestion pill / first-time card.
-  function fillComposer(text) { setInput(text); setKindOverride(null); }
+  function fillComposer(text) { setInput(text); }
   function dismissNudge() {
     setNudgeDismissed(true);
     if (nudgeKey && typeof window !== 'undefined') {
@@ -210,10 +223,10 @@ function ComposeV3({ p, go }) {
   }, [signedIn]);
 
   // Honor ?seed= (People's "Reach out again →"): prefill the paste box, and
-  // when the seed is the person's email address, flip the "I already have
-  // their email" shortcut too. Read from location instead of useSearchParams
-  // so the one-shot semantics are explicit; strip the param so a refresh
-  // doesn't re-seed over whatever the user typed since.
+  // when the seed is the person's email address, flip the haveEmail shortcut
+  // too. Read from location instead of useSearchParams so the one-shot
+  // semantics are explicit; strip the param so a refresh doesn't re-seed over
+  // whatever the user typed since.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const seed = new URLSearchParams(window.location.search).get('seed');
@@ -229,90 +242,109 @@ function ComposeV3({ p, go }) {
     // Either a typed link/name/description OR an attached screenshot is enough.
     if (!hasText && !file) return;
 
-    // Freeze the user's selection onto this run so navigating away or starting
-    // another run can't mutate the in-flight one's filter.
-    const selectedArr = Array.from(selectedAgents);
-
     if (file) {
       // Screenshot-first: the vision pass decides job vs person and extracts a
-      // query. The user's checklist selection rides along too — picks that
-      // don't apply to the resolved kind are silently dropped server-side and
-      // surfaced as a "heads up" note on the run card (e.g. Resume Darzi on a
-      // person screenshot).
-      startImageRun(file, { text: input, intent, providedEmail: haveEmail, selectedAgents: selectedArr });
+      // query. The full job-flow crew rides along; picks that don't apply to
+      // the resolved kind are silently dropped server-side.
+      startImageRun(file, {
+        text: input, providedEmail: haveEmail,
+        selectedAgents: Array.from(defaultSelectionFor('job', haveEmail)),
+      });
     } else {
-      const kind = kindOverride || classifyKind(input);
+      const kind = classifyKind(input) === 'job' ? 'job' : 'person';
       startRun(input, {
-        intent, providedEmail: haveEmail,
-        kind: kind === 'job' ? 'job' : 'person',
-        selectedAgents: selectedArr,
+        providedEmail: haveEmail, kind,
+        selectedAgents: Array.from(defaultSelectionFor(kind, haveEmail)),
       });
     }
     // clear so the next link can be pasted immediately
-    setInput(''); setIntent(''); setHaveEmail(false); setScreenshot(null); setKindOverride(null);
-    setSelectedAgents(defaultSelectionFor('person', false));
+    setInput(''); setHaveEmail(false); setScreenshot(null);
   }
+
+  const sidePad = isMobile ? 16 : 44;
 
   return (
     <div className="scroll" style={{
-      flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? '24px 16px 64px' : '40px 56px 80px', background: p.paper, color: p.ink,
+      flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column',
+      background: TOKENS.paper, color: TOKENS.ink, animation: 'fadeUp .4s ease',
     }}>
-      <PageHead p={p}
-        title="Who are you reaching out to?"
-        sub="You can run multiple jobs at once — each one keeps working even if you switch screens."
-        right={runs.length > 0 && (
-          <InkButton p={p} kind="outline" size="sm" onClick={clearAllRuns}>↺ Clear all</InkButton>
-        )}
-      />
+      <style>{DESK_HOVER_CSS}</style>
 
-      {/* ─── paste field (always available) ─── */}
-      <PasteFieldV3
-        p={p} input={input} setInput={setInput}
-        intent={intent} setIntent={setIntent}
-        haveEmail={haveEmail} setHaveEmail={setHaveEmail}
-        screenshot={screenshot} setScreenshot={setScreenshot}
-        kindOverride={kindOverride} setKindOverride={setKindOverride}
-        selectedAgents={selectedAgents} setSelectedAgents={setSelectedAgents}
-        onGo={onGo} fillComposer={fillComposer}
-      />
-
-      {/* ─── thin-Story nudge: signed-in, empty Story, dismissible per-account ─── */}
-      {showNudge && (
+      {/* ─── hero: headline + composer + nudge, centered in the leftover space ─── */}
+      <div style={{
+        flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        padding: `48px ${sidePad}px 32px`,
+      }}>
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 12, marginTop: 14,
-          background: TOKENS.amberWash, border: `1px solid ${TOKENS.amberLine}`,
-          borderRadius: 99, padding: '7px 9px 7px 18px', animation: 'fadeUp .3s ease',
-          flexWrap: 'wrap',
+          fontFamily: PAPER_FONTS_V2.serif, fontSize: 34, lineHeight: 1.25,
+          letterSpacing: '-.01em', textAlign: 'center',
+        }}>{headline}</div>
+        {firstTime && (
+          <div style={{
+            fontFamily: PAPER_FONTS_V2.serif, fontStyle: 'italic', fontSize: 17, lineHeight: 1.5,
+            color: TOKENS.muted, marginTop: 10, maxWidth: 520, textAlign: 'center',
+          }}>You say what you want. The crew does the boring half.</div>
+        )}
+
+        <DeskComposer
+          input={input} setInput={setInput}
+          screenshot={screenshot} setScreenshot={setScreenshot}
+          onGo={onGo} fillComposer={fillComposer}
+        />
+
+        {/* thin-Story nudge: signed-in, empty Story, dismissible per-account */}
+        {showNudge && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12, marginTop: 14,
+            background: TOKENS.amberWash, border: `1px solid ${TOKENS.amberLine}`,
+            borderRadius: RADII.pill, padding: '7px 9px 7px 18px', animation: 'fadeUp .3s ease',
+          }}>
+            <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.4, color: TOKENS.muted2 }}>
+              Your Story is empty — the crew is working from guesses.
+            </span>
+            <button onClick={() => go('resume')} style={{
+              fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, fontWeight: 500, color: TOKENS.paper,
+              background: TOKENS.ink, borderRadius: RADII.pill, border: 'none', padding: '8px 13px', cursor: 'pointer',
+            }}>Add your resume</button>
+            <button onClick={dismissNudge} title="dismiss" className="dk-x" style={{
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              color: TOKENS.faint, fontFamily: PAPER_FONTS_V2.sans, fontSize: 14, lineHeight: 1, padding: '2px 6px',
+            }}>×</button>
+          </div>
+        )}
+      </div>
+
+      {/* ─── live runs: one card per run, newest on top (resume runs render on
+          /app/resume). Still the old card language — Phase C rebuilds these. ─── */}
+      {liveNonResume.length > 0 && (
+        <div style={{
+          padding: `0 ${sidePad}px 24px`, maxWidth: 1060, margin: '0 auto', width: '100%',
+          boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 16,
         }}>
-          <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.4, color: TOKENS.muted2 }}>
-            Your Story is empty — the crew is working from guesses.
-          </span>
-          <button onClick={() => go('resume')} style={{
-            fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, fontWeight: 500, color: TOKENS.paper,
-            background: TOKENS.ink, borderRadius: 99, border: 'none', padding: '8px 13px', cursor: 'pointer',
-          }}>Add your resume</button>
-          <button onClick={dismissNudge} title="dismiss" style={{
-            marginLeft: 'auto', background: 'transparent', border: 'none', cursor: 'pointer',
-            color: TOKENS.faint, fontFamily: PAPER_FONTS_V2.sans, fontSize: 14, lineHeight: 1, padding: '2px 6px',
-          }}>×</button>
+          {liveNonResume.map((run) => (
+            <RunCard key={run.id} p={p} run={run} go={go} storyIsEmpty={storyIsEmpty} signedIn={signedIn}/>
+          ))}
         </div>
       )}
 
       {/* ─── first-time: "Things your crew can do" 3-card grid (no runs yet) ─── */}
       {firstTime && (
-        <div style={{ marginTop: 28 }}>
+        <div style={{
+          padding: `0 ${sidePad}px ${isMobile ? 32 : 44}px`, maxWidth: 1060, margin: '0 auto',
+          width: '100%', boxSizing: 'border-box',
+        }}>
           <div style={{
             fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, fontWeight: 500, letterSpacing: '.12em',
             textTransform: 'uppercase', color: TOKENS.faint, marginBottom: 16,
-          }}>Things your crew can do — tap one to try it</div>
+          }}>Things your crew can do — tap one to see it</div>
           <div style={{
             display: 'grid',
             gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 14,
           }}>
             {FIRST_TIME_CARDS.map((card) => (
-              <div key={card.id} onClick={() => fillComposer(card.fill)} style={{
+              <div key={card.id} className="dk-card" onClick={() => fillComposer(card.fill)} style={{
                 background: TOKENS.card, border: `1px solid ${TOKENS.lineSoft}`, borderRadius: 12,
-                padding: '18px 20px', cursor: 'pointer',
+                padding: '18px 20px', cursor: 'pointer', transition: 'border-color .15s, box-shadow .15s',
               }}>
                 <div style={{
                   fontFamily: PAPER_FONTS_V2.serif, fontSize: 17, lineHeight: 1.35, color: TOKENS.ink, marginBottom: 8,
@@ -334,29 +366,26 @@ function ComposeV3({ p, go }) {
           <div style={{
             fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, lineHeight: 1.6, color: TOKENS.faint,
             marginTop: 18, textAlign: 'center',
-          }}>These cards disappear once you've run your first thread.</div>
+          }}>These cards disappear once you&apos;ve run your first thread.</div>
         </div>
       )}
 
-      {/* ─── one card per run, newest on top (resume runs render on /app/resume) ─── */}
-      <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {runs.filter((run) => run.kind !== 'resume').map((run) => (
-          <RunCard key={run.id} p={p} run={run} go={go} storyIsEmpty={storyIsEmpty} signedIn={signedIn}/>
-        ))}
-      </div>
-
       {/* ─── earlier runs: first few from history, → the repurposed history page ─── */}
       {earlier.length > 0 && (
-        <div style={{ marginTop: 32 }}>
+        <div style={{
+          padding: `0 ${sidePad}px ${isMobile ? 32 : 44}px`, maxWidth: 1060, margin: '0 auto',
+          width: '100%', boxSizing: 'border-box',
+        }}>
           <div style={{
             fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, fontWeight: 500, letterSpacing: '.12em',
             textTransform: 'uppercase', color: TOKENS.faint, marginBottom: 14,
           }}>Earlier runs</div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {earlier.map((row) => (
-              <div key={row.key} onClick={() => go('history')} style={{
+              <div key={row.key} className="dk-row" onClick={() => go('history')} style={{
                 display: 'flex', alignItems: 'center', gap: 16, padding: '15px 8px', margin: '0 -8px',
-                borderTop: `1px solid ${TOKENS.lineRow}`, cursor: 'pointer', borderRadius: 8, flexWrap: 'wrap',
+                borderTop: `1px solid ${TOKENS.lineRow}`, cursor: 'pointer', borderRadius: 8,
+                transition: 'background .15s', flexWrap: 'wrap',
               }}>
                 <div style={{
                   flex: 1, minWidth: 0, fontFamily: PAPER_FONTS_V2.serif, fontSize: 16, lineHeight: 1.3, color: TOKENS.inkSoft,
@@ -388,12 +417,13 @@ function ComposeV3({ p, go }) {
 }
 
 // Earlier-runs chip colours per abstract tone (kept out of desk-logic since it's
-// presentation, not a rule).
+// presentation, not a rule). Error rows use the amber-family bg — red-on-amber
+// stays inside the token palette (no off-token pink).
 const EARLIER_CHIP_TONE = {
   done:       { color: TOKENS.green, bg: TOKENS.greenBg },
   progress:   { color: TOKENS.amber, bg: TOKENS.amberBg },
   attention:  { color: TOKENS.amber, bg: TOKENS.amberBg },
-  error:      { color: TOKENS.red,   bg: '#f6e9e6' },
+  error:      { color: TOKENS.red,   bg: TOKENS.amberBg },
 };
 
 /* ─────────────────────── one run, all its lifecycle stages ─────────────────────── */
@@ -653,28 +683,15 @@ function GoogleGlyph({ size = 16 }) {
   );
 }
 
-/* ─────────────────────── paste field (idle state) ─────────────────────── */
+/* ─────────────────────── the Desk composer (prototype lines 164–201) ─────────────────────── */
 
-function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHaveEmail, screenshot, setScreenshot, kindOverride, setKindOverride, selectedAgents, setSelectedAgents, onGo, fillComposer }) {
+function DeskComposer({ input, setInput, screenshot, setScreenshot, onGo, fillComposer }) {
   const fileRef = useRef(null);
   const [attachError, setAttachError] = useState(null);
-  // Transient "→ Person Khoji turned on, needed for Email" note. Fades after ~2s.
-  const [autoEnabledNote, setAutoEnabledNote] = useState(null);
   // "+" attach popover (sample rows + paste/drop hint) and drag-over highlight.
   const [attachOpen, setAttachOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const attachRef = useRef(null);
-  const hasInput = input.trim().length > 0;
-  const hasScreenshot = !!screenshot;
-  // Go is live when there's either typed input OR an attached screenshot the
-  // vision pass can read.
-  const canGo = hasInput || hasScreenshot;
-  const detected = kindOverride || classifyKind(input);
-  const meta = KIND_META[detected];
-
-  // setting text from the box or a pill clears any manual override so the
-  // banner re-reads the fresh input.
-  function setText(v) { setInput(v); setKindOverride(null); }
 
   // The one validated path every attach entry point (file picker, paste,
   // drag-drop, sample rows) funnels through — keeps a single validated
@@ -704,7 +721,7 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
     if (f) { e.preventDefault(); attachFile(f); }
   }
 
-  // Drag an image file onto the card — amber border + shadow while hovering.
+  // Drag an image file onto the card — amber border + glow while hovering.
   function onDragOver(e) { e.preventDefault(); if (!dragOver) setDragOver(true); }
   function onDragLeave() { if (dragOver) setDragOver(false); }
   function onDrop(e) {
@@ -733,375 +750,143 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
     return () => URL.revokeObjectURL(url);
   }, [screenshot]);
 
-  // Three modes for the checklist:
-  // - 'person': text/URL classified as a person. Khoji is locked on (research
-  //   is the irreducible identity step in that flow).
-  // - 'job':    text/URL classified as a job. Khoji is a free toggle.
-  // - 'screenshot': only an image attached, kind not yet known. We show the
-  //   full 4-agent superset so the user can pre-pick the crew before vision
-  //   resolves kind. Nothing is locked — the run card warns later if a chosen
-  //   agent can't apply to the resolved kind.
-  const crewMode = (!hasInput && hasScreenshot)
-    ? 'screenshot'
-    : (detected === 'job' ? 'job' : 'person');
-  const checklistAgents = crewMode === 'person' ? AGENTS_DATA.person : AGENTS_DATA.job;
-  // Reset to the mode's defaults whenever the mode changes (text-flips-kind,
-  // override pill, screenshot attached/removed). 'fuzzy' folds into 'person'.
-  useEffect(() => {
-    const kindForDefaults = crewMode === 'person' ? 'person' : 'job';
-    setSelectedAgents(defaultSelectionFor(kindForDefaults, haveEmail));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- haveEmail is mirrored separately below
-  }, [crewMode, setSelectedAgents]);
-
-  // Mirror the haveEmail shortcut into the checklist without nuking other
-  // selections. When haveEmail flips ON, strip email; when it flips OFF, don't
-  // forcibly re-add it (user may have intentionally deselected email).
-  useEffect(() => {
-    if (!haveEmail) return;
-    setSelectedAgents((prev) => {
-      if (!prev.has('email')) return prev;
-      const next = new Set(prev);
-      next.delete('email');
-      return next;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- setSelectedAgents is stable
-  }, [haveEmail]);
-
-  // Fade out the auto-enabled hint after ~2s.
-  useEffect(() => {
-    if (!autoEnabledNote) return;
-    const t = setTimeout(() => setAutoEnabledNote(null), 2000);
-    return () => clearTimeout(t);
-  }, [autoEnabledNote]);
-
-  function isSelected(k) { return selectedAgents.has(k); }
-
-  // Person Khoji is the irreducible core of the person flow — research is what
-  // identifies who to reach, so email/outreach (and the run itself) are
-  // meaningless without it. Lock it on there; in the job flow and the
-  // screenshot superset it's a free toggle ("just tailor my résumé", etc.).
-  function isLocked(k) { return k === 'person' && crewMode === 'person'; }
-
-  function toggleAgent(k) {
-    if (isLocked(k)) return;
-    const next = new Set(selectedAgents);
-    if (next.has(k)) {
-      next.delete(k);
-      // Email turning off via the checklist clears the "I already have their email"
-      // shortcut too — checklist is the source of truth.
-      if (k === 'email' && haveEmail) setHaveEmail(false);
-    } else {
-      next.add(k);
-      // Auto-enable Khoji when ticking on an agent that needs it.
-      if (PERSON_DEPENDENT.has(k) && !next.has('person')) {
-        next.add('person');
-        const label = k === 'email' ? 'Email Wallah' : 'Outreach Bhai';
-        setAutoEnabledNote(`Person Khoji turned on — ${label} needs a target.`);
-      }
-      // Ticking Email back on while haveEmail was true means they want the lookup.
-      if (k === 'email' && haveEmail) setHaveEmail(false);
-    }
-    setSelectedAgents(next);
-  }
-
-  function agentDisabled(k) {
-    // Email/Outreach can't be toggled on without Khoji — but they CAN be toggled
-    // (we auto-enable Khoji). So "disabled" is the visual-ghost state when Khoji
-    // is off AND the agent itself is currently off — to communicate the chain.
-    if (!PERSON_DEPENDENT.has(k)) return false;
-    return !selectedAgents.has('person') && !selectedAgents.has(k);
-  }
-
   return (
-    <>
-      <div
-        onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
-        style={{
-          borderRadius: 4,
-          // Amber ring + soft glow while an image is dragged over the composer.
-          boxShadow: dragOver ? `0 0 0 2px ${TOKENS.amber}, 0 2px 16px rgba(138,109,47,.18)` : 'none',
-          transition: 'box-shadow .15s',
-        }}
-      >
-      <PaperCard p={p} color={p.marigold} hardShadow style={{ padding: '22px 24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 10 }}>
-          <span style={{
-            fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.06em', color: p.inkMute,
-          }}>linkedin · x · greenhouse · lever · pdf · anything</span>
-        </div>
-        <textarea
-          value={input}
-          onChange={(e) => setText(e.target.value)}
-          onPaste={onPaste}
-          onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') onGo(); }}
-          placeholder={'Paste anything, e.g. —\na job link:  job-boards.greenhouse.io/acme/jobs/4012\na person:  linkedin.com/in/maya-ramaswamy\na description:  "the woman who runs ops at Ramp"'}
-          rows={4}
-          style={{
-            width: '100%', resize: 'vertical', minHeight: 80,
-            padding: '14px 16px', background: p.paper,
-            border: `1.5px solid ${hasInput ? p.stamp : p.ink + '30'}`,
-            fontFamily: PAPER_FONTS.mono, fontSize: 15, lineHeight: 1.5, color: p.ink,
-            outline: 'none', transition: 'border-color .2s',
-          }}
-        />
-
-        {/* ─── screenshot-only hint: no text typed, just an image ─── */}
-        {!hasInput && hasScreenshot && (
-          <div style={{
-            marginTop: 14, paddingTop: 14,
-            borderTop: `1.5px dashed ${p.ink}24`,
-            display: 'flex', alignItems: 'flex-start', gap: 12,
-          }}>
-            <span style={{
-              width: 14, height: 14, marginTop: 5, flexShrink: 0, borderRadius: '50%',
-              border: `2px solid ${p.stamp}`,
-              boxShadow: `inset 0 0 0 3px ${p.stamp}`, background: p.paper,
-            }}/>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: PAPER_FONTS.serif, fontSize: 18, color: p.ink, lineHeight: 1.3 }}>
-                Looks like <strong style={{ color: p.stamp }}>a screenshot</strong>
-              </div>
-              <div style={{
-                fontFamily: PAPER_FONTS.mono, fontSize: 12.5, color: p.inkMute,
-                marginTop: 4, lineHeight: 1.5,
-              }}>Jugaadu reads it on Go → detects a job posting or a person → runs the right crew</div>
-            </div>
-          </div>
-        )}
-
-        {/* ─── attached-screenshot chip: 46×34 thumbnail, filename, meta, × ─── */}
-        {hasScreenshot && (
-          <div style={{
-            marginTop: 12, display: 'flex', alignItems: 'center', gap: 10,
-            padding: '8px 10px', background: TOKENS.paper,
-            border: `1px solid ${TOKENS.lineSoft}`, borderRadius: 10, maxWidth: 360, animation: 'fadeUp .25s ease',
-          }}>
-            <div style={{
-              width: 46, height: 34, flexShrink: 0, borderRadius: 6, border: `1px solid ${TOKENS.line}`,
-              backgroundImage: previewUrl
-                ? `url(${previewUrl})`
-                : 'repeating-linear-gradient(-45deg,#f2eee4,#f2eee4 4px,#faf8f3 4px,#faf8f3 8px)',
-              backgroundSize: 'cover', backgroundPosition: 'center',
-            }} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{
-                fontFamily: PAPER_FONTS_V2.mono, fontSize: 11.5, fontWeight: 500, color: TOKENS.inkSoft,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>{screenshot.name}</div>
-              <div style={{
-                fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, color: TOKENS.faint, marginTop: 2,
-              }}>{screenshot.size} · attached</div>
-            </div>
-            <button onClick={() => { setScreenshot(null); setAttachError(null); }} title="remove" style={{
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              fontFamily: PAPER_FONTS_V2.sans, fontSize: 15, lineHeight: 1, color: TOKENS.faint, padding: '2px 4px',
-            }}>×</button>
-          </div>
-        )}
-
-        {/* ─── "Looks like…" banner: what we detected + the flow it kicks off ─── */}
-        {hasInput && (
-          <div style={{
-            marginTop: 14, paddingTop: 14,
-            borderTop: `1.5px dashed ${p.ink}24`,
-            display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-            gap: 16, flexWrap: 'wrap',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, minWidth: 0 }}>
-              <span style={{
-                width: 14, height: 14, marginTop: 5, flexShrink: 0, borderRadius: '50%',
-                border: `2px solid ${p.stamp}`,
-                boxShadow: `inset 0 0 0 3px ${p.stamp}`, background: p.paper,
-              }}/>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontFamily: PAPER_FONTS.serif, fontSize: 18, color: p.ink, lineHeight: 1.3 }}>
-                  Looks like <strong style={{ color: p.stamp }}>{meta.label}</strong>
-                </div>
-                <div style={{
-                  fontFamily: PAPER_FONTS.mono, fontSize: 12.5, color: p.inkMute,
-                  marginTop: 4, lineHeight: 1.5,
-                }}>{meta.flow}</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              <span style={{
-                fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.16em',
-                color: p.inkMute, textTransform: 'uppercase',
-              }}>Not right?</span>
-              {(['job', 'person', 'fuzzy']).map(k => {
-                const on = detected === k;
-                return (
-                  <button key={k} onClick={() => setKindOverride(k)} style={{
-                    padding: '5px 14px', borderRadius: 999, cursor: 'pointer',
-                    background: on ? p.ink : 'transparent',
-                    color: on ? p.paper : p.ink,
-                    border: `1.5px solid ${on ? p.ink : p.ink + '30'}`,
-                    fontFamily: PAPER_FONTS.mono, fontSize: 11.5, letterSpacing: '.02em',
-                  }}>{k}</button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* ─── the crew: per-agent checklist, visible once we have any input ─── */}
-        {(hasInput || hasScreenshot) && (
-          <AgentChecklistV3
-            p={p} agents={checklistAgents}
-            isSelected={isSelected} toggleAgent={toggleAgent} agentDisabled={agentDisabled} isLocked={isLocked}
-            haveEmail={haveEmail} autoEnabledNote={autoEnabledNote}
-            footnote={crewMode === 'screenshot'
-              ? 'Jugaadu picks what applies once it reads the image.'
-              : null}
-          />
-        )}
-
+    <div
+      onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
+      style={{
+        width: 640, maxWidth: '100%', boxSizing: 'border-box',
+        background: TOKENS.card,
+        border: `1px solid ${dragOver ? TOKENS.amber : TOKENS.line}`,
+        borderRadius: RADII.card,
+        boxShadow: dragOver ? '0 2px 16px rgba(138,109,47,.18)' : SHADOWS.card,
+        padding: '20px 22px 16px', marginTop: 30,
+        transition: 'border-color .15s, box-shadow .15s',
+      }}
+    >
+      {/* ─── attached-screenshot chip: 46×34 thumbnail, filename, meta, × ─── */}
+      {screenshot && (
         <div style={{
-          marginTop: 14, paddingTop: 14, borderTop: `1.5px solid ${p.ink}18`,
-          display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
+          display: 'flex', alignItems: 'center', gap: 10, background: TOKENS.paper,
+          border: `1px solid ${TOKENS.lineSoft}`, borderRadius: 10, padding: '8px 10px',
+          marginBottom: 12, maxWidth: 360, animation: 'fadeUp .25s ease',
         }}>
-          {/* attach "+" popover + suggestion pills */}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div ref={attachRef} style={{ position: 'relative', display: 'flex' }}>
-              <button
-                onClick={() => setAttachOpen((v) => !v)}
-                title="Attach a screenshot — a job posting, a profile, a recruiter DM"
-                style={{
-                  width: 28, height: 28, borderRadius: 99, cursor: 'pointer',
-                  border: `1px solid ${TOKENS.line}`, background: 'transparent', color: TOKENS.muted,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, lineHeight: 1,
-                }}
-              >+</button>
-              {attachOpen && (
-                <div style={{
-                  position: 'absolute', bottom: 38, left: 0, width: 322, zIndex: 30, textAlign: 'left',
-                  background: TOKENS.card, border: `1px solid ${TOKENS.line}`, borderRadius: 12,
-                  boxShadow: '0 6px 24px rgba(60,50,30,.12)', padding: '14px 14px 8px', animation: 'fadeUp .2s ease',
-                }}>
-                  <div style={{
-                    fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, letterSpacing: '.08em',
-                    color: TOKENS.faint, marginBottom: 5,
-                  }}>ATTACH A SCREENSHOT</div>
-                  <div style={{
-                    fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, lineHeight: 1.5, color: TOKENS.muted, marginBottom: 8,
-                  }}>Drop an image on the box, paste it (⌘V), or pick a file:</div>
-                  {SAMPLE_SHOTS.map((s) => (
-                    <div key={s.kind} onClick={() => { setAttachOpen(false); fileRef.current?.click(); }} style={{
-                      display: 'flex', alignItems: 'center', gap: 10, padding: 8, borderRadius: 8, cursor: 'pointer',
-                    }}>
-                      <div style={{
-                        width: 40, height: 30, flexShrink: 0, borderRadius: 4, border: `1px solid ${TOKENS.line}`,
-                        background: 'repeating-linear-gradient(-45deg,#f2eee4,#f2eee4 4px,#faf8f3 4px,#faf8f3 8px)',
-                      }} />
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, fontWeight: 500, color: TOKENS.ink }}>{s.title}</div>
-                        <div style={{
-                          fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, color: TOKENS.muted,
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>{s.sub}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            {SUGGESTION_PILLS.map((pill) => (
-              <button key={pill.id} onClick={() => setText(pill.fill)} style={{
-                fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, color: TOKENS.muted,
-                border: `1px solid ${TOKENS.line}`, borderRadius: 99, padding: '7px 12px',
-                background: 'transparent', cursor: 'pointer',
-              }}>{pill.label}</button>
-            ))}
-          </div>
-          <InkButton p={p} color={p.stamp} onClick={onGo} disabled={!canGo}>
-            <span>Go</span>
-            <kbd style={{
-              padding: '1px 6px', fontFamily: PAPER_FONTS.mono, fontSize: 10,
-              background: 'rgba(255,255,255,.16)', borderRadius: 2,
-            }}>⌘↵</kbd>
-          </InkButton>
-        </div>
-      </PaperCard>
-      </div>
-
-      {/* ─── Add context — optional (always visible) ─── */}
-      <div style={{ marginTop: 12 }}>
-        <span style={{
-          fontFamily: PAPER_FONTS.mono, fontSize: 13, color: p.inkMute,
-          letterSpacing: '.04em', padding: '4px 0',
-          display: 'inline-flex', alignItems: 'center', gap: 8,
-        }}>
-          Add context <span style={{ color: p.ink + '66' }}>— optional</span>
-        </span>
-      </div>
-
-      <>
-          {/* what do you want to convey */}
           <div style={{
-            marginTop: 10, padding: '14px 18px', background: p.card,
-            border: `1.5px solid ${p.ink}30`,
-          }}>
-            <textarea
-              value={intent}
-              onChange={(e) => setIntent(e.target.value)}
-              placeholder="What do you want to convey? (optional, e.g. 'PM at Wayfair, exploring AI roles')"
-              rows={3}
-              style={{
-                width: '100%', background: 'transparent', border: 'none', outline: 'none',
-                fontFamily: PAPER_FONTS.serif, fontStyle: 'italic',
-                fontSize: 16, color: p.ink, padding: '4px 0',
-                resize: 'vertical', minHeight: 60, lineHeight: 1.5,
-                whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
-              }}
-            />
-          </div>
-
-          {/* I already have their email */}
-          <div style={{
-            marginTop: 10, padding: '14px 18px', background: p.card,
-            border: `1.5px solid ${p.ink}30`,
-            display: 'flex', alignItems: 'center', gap: 12,
-          }}>
-            <button onClick={() => setHaveEmail(!haveEmail)} style={{
-              width: 22, height: 22, background: haveEmail ? p.ink : 'transparent',
-              color: p.paper, border: `1.5px solid ${p.ink}`,
-              display: 'grid', placeItems: 'center', cursor: 'pointer', fontSize: 12,
-            }}>{haveEmail ? '✓' : ''}</button>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontFamily: PAPER_FONTS.sans, fontSize: 14.5, color: p.ink }}>
-                I already have their email
-              </div>
-              <div style={{
-                fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute,
-                letterSpacing: '.04em', marginTop: 2,
-              }}>skip the email lookup</div>
-            </div>
-          </div>
-
-          {/* attach screenshot */}
-          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile}/>
-            <button onClick={() => fileRef.current?.click()} style={{
-              padding: '8px 14px', background: 'transparent',
-              border: `1.5px dashed ${p.ink}40`, color: p.ink,
-              fontFamily: PAPER_FONTS.mono, fontSize: 12,
-              letterSpacing: '.02em', cursor: 'pointer',
-              display: 'inline-flex', alignItems: 'center', gap: 8,
-            }}>{screenshot ? '✓ attached' : '+ attach screenshot'}</button>
-            <span style={{
-              fontFamily: PAPER_FONTS.mono, fontSize: 10.5,
-              letterSpacing: '.08em', color: p.inkMute, textTransform: 'uppercase',
-            }}>{screenshot ? `${screenshot.name} · ${screenshot.size}` : 'PNG, JPG, WEBP, GIF · max 5MB · optional'}</span>
-          </div>
-          {attachError && (
+            width: 46, height: 34, flexShrink: 0, borderRadius: 5, border: `1px solid ${TOKENS.line}`,
+            backgroundImage: previewUrl
+              ? `url(${previewUrl})`
+              : 'repeating-linear-gradient(-45deg,#f2eee4,#f2eee4 4px,#faf8f3 4px,#faf8f3 8px)',
+            backgroundSize: 'cover', backgroundPosition: 'center',
+          }} />
+          <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
             <div style={{
-              marginTop: 6, fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.stamp,
-            }}>{attachError}</div>
-          )}
-      </>
+              fontFamily: PAPER_FONTS_V2.mono, fontSize: 11.5, fontWeight: 500, lineHeight: 1.3, color: TOKENS.inkSoft,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{screenshot.name}</div>
+            <div style={{
+              fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, lineHeight: 1.4, color: TOKENS.faint, marginTop: 2,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>attached · the crew reads it when you run</div>
+          </div>
+          <button onClick={() => { setScreenshot(null); setAttachError(null); }} title="remove" className="dk-x" style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 15, lineHeight: 1, color: TOKENS.faint, padding: '2px 4px',
+          }}>×</button>
+        </div>
+      )}
 
-    </>
+      <textarea
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onPaste={onPaste}
+        onKeyDown={(e) => {
+          // Enter submits (prototype); Shift+Enter keeps the newline. ⌘/Ctrl+Enter
+          // is covered by the same branch.
+          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onGo(); }
+        }}
+        placeholder="Paste a job link or a screenshot, log what you shipped, or just say it…"
+        rows={2}
+        style={{
+          width: '100%', border: 'none', resize: 'none', outline: 'none',
+          fontFamily: PAPER_FONTS_V2.serif, fontSize: 17, lineHeight: 1.5,
+          color: TOKENS.ink, background: 'transparent', padding: 0, boxSizing: 'border-box',
+        }}
+      />
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, gap: 10 }}>
+        {/* attach "+" popover + suggestion pills */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div ref={attachRef} style={{ position: 'relative', display: 'flex' }}>
+            <button
+              onClick={() => setAttachOpen((v) => !v)}
+              title="Attach a screenshot — a job posting, a profile, a recruiter DM"
+              className="dk-pill"
+              style={{
+                width: 28, height: 28, borderRadius: RADII.pill, cursor: 'pointer', padding: 0,
+                border: `1px solid ${TOKENS.line}`, background: 'transparent', color: TOKENS.muted,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: PAPER_FONTS_V2.sans, fontSize: 16, lineHeight: 1,
+                transition: 'border-color .15s, color .15s',
+              }}
+            >+</button>
+            {attachOpen && (
+              <div style={{
+                position: 'absolute', bottom: 38, left: 0, width: 322, zIndex: 30, textAlign: 'left',
+                background: TOKENS.card, border: `1px solid ${TOKENS.line}`, borderRadius: 12,
+                boxShadow: SHADOWS.popover, padding: '14px 14px 8px', animation: 'fadeUp .2s ease',
+              }}>
+                <div style={{
+                  fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, letterSpacing: '.08em',
+                  color: TOKENS.faint, marginBottom: 5,
+                }}>ATTACH A SCREENSHOT</div>
+                <div style={{
+                  fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, lineHeight: 1.5, color: TOKENS.muted, marginBottom: 8,
+                }}>Drop an image on the box, paste it (⌘V), or try a sample:</div>
+                {SAMPLE_SHOTS.map((s) => (
+                  <div key={s.kind} className="dk-row" onClick={() => { setAttachOpen(false); fileRef.current?.click(); }} style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: 8, borderRadius: 8, cursor: 'pointer',
+                    transition: 'background .15s',
+                  }}>
+                    <div style={{
+                      width: 40, height: 30, flexShrink: 0, borderRadius: 4, border: `1px solid ${TOKENS.line}`,
+                      background: 'repeating-linear-gradient(-45deg,#f2eee4,#f2eee4 4px,#faf8f3 4px,#faf8f3 8px)',
+                    }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, fontWeight: 500, lineHeight: 1.3, color: TOKENS.ink }}>{s.title}</div>
+                      <div style={{
+                        fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, lineHeight: 1.4, color: TOKENS.muted,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>{s.sub}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile}/>
+          {SUGGESTION_PILLS.map((pill) => (
+            <button key={pill.id} onClick={() => fillComposer(pill.fill)} className="dk-pill" style={{
+              fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, lineHeight: 1, color: TOKENS.muted,
+              border: `1px solid ${TOKENS.line}`, borderRadius: RADII.pill, padding: '7px 12px',
+              background: 'transparent', cursor: 'pointer', transition: 'border-color .15s, color .15s',
+            }}>{pill.label}</button>
+          ))}
+        </div>
+        {/* 34px ink circle submit (prototype's ↑; ⌘/Ctrl+Enter still works) */}
+        <button onClick={onGo} title="Run the crew (↵)" aria-label="Run the crew" className="dk-submit" style={{
+          width: 34, height: 34, borderRadius: RADII.pill, flexShrink: 0, alignSelf: 'flex-end',
+          background: TOKENS.ink, color: TOKENS.paper, border: 'none',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: PAPER_FONTS_V2.sans, fontSize: 15, lineHeight: 1, cursor: 'pointer',
+          transition: 'background .15s',
+        }}>↑</button>
+      </div>
+
+      {attachError && (
+        <div style={{
+          marginTop: 8, fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, color: TOKENS.red, textAlign: 'left',
+        }}>{attachError}</div>
+      )}
+    </div>
   );
 }
 
@@ -1266,99 +1051,6 @@ function Shimmer({ p, width = 100, height = 12 }) {
   );
 }
 
-/* ─────────────────────── crew checklist (idle / pre-Go) ─────────────────────── */
-
-function AgentChecklistV3({ p, agents, isSelected, toggleAgent, agentDisabled, isLocked, haveEmail, autoEnabledNote, footnote }) {
-  return (
-    <div style={{
-      marginTop: 14, paddingTop: 14, borderTop: `1.5px dashed ${p.ink}24`,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
-        <Eyebrow p={p} en="The crew" color={p.inkMute}/>
-        <span style={{
-          fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.08em',
-          color: p.inkMute, textTransform: 'uppercase',
-        }}>tap to toggle</span>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {agents.map((a) => {
-          const checked = isSelected(a.k);
-          const disabled = agentDisabled(a.k);
-          const locked = isLocked?.(a.k);
-          // Email row when haveEmail is true: render faded and unchecked with a
-          // dedicated hint ("you've provided it"). User can still tick it back on.
-          const emailProvidedHint = a.k === 'email' && haveEmail && !checked;
-          const needsKhojiHint = disabled;
-          const rowOpacity = disabled || emailProvidedHint ? 0.55 : 1;
-          const ac = colorOf(p, a.color);
-          return (
-            <button
-              key={a.k}
-              onClick={() => toggleAgent(a.k)}
-              aria-disabled={locked || undefined}
-              style={{
-                display: 'grid', gridTemplateColumns: '24px 28px 1fr', gap: 10, alignItems: 'center',
-                padding: '10px 12px', background: checked ? p.paper : 'transparent',
-                border: `1.5px solid ${checked ? p.ink + '40' : p.ink + '20'}`,
-                cursor: locked ? 'default' : 'pointer', textAlign: 'left', opacity: rowOpacity,
-                transition: 'opacity .15s, background .15s, border-color .15s',
-              }}
-            >
-              {/* checkbox (reuses the haveEmail pattern) */}
-              <span style={{
-                width: 20, height: 20, background: checked ? p.ink : 'transparent',
-                color: p.paper, border: `1.5px solid ${p.ink}`,
-                display: 'grid', placeItems: 'center', fontSize: 11, lineHeight: 1,
-                flexShrink: 0,
-              }}>{checked ? '✓' : ''}</span>
-              {/* glyph in the agent's color */}
-              <span style={{
-                width: 26, height: 26, border: `1.5px solid ${ac}`,
-                color: checked ? p.paper : ac, background: checked ? ac : 'transparent',
-                display: 'grid', placeItems: 'center',
-                fontFamily: PAPER_FONTS.display, fontSize: 15,
-              }}>{a.glyph}</span>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontFamily: PAPER_FONTS.sans, fontSize: 14.5, color: p.ink }}>{a.nameEn}</span>
-                  <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, letterSpacing: '.02em' }}>{a.nameHi}</span>
-                </div>
-                <div style={{
-                  fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute,
-                  letterSpacing: '.02em', marginTop: 2, lineHeight: 1.4,
-                }}>
-                  {a.desc}
-                  {locked && (
-                    <span style={{ color: p.inkMute, marginLeft: 8 }}>· always on</span>
-                  )}
-                  {needsKhojiHint && (
-                    <span style={{ color: p.stamp, marginLeft: 8 }}>· needs Person Khoji</span>
-                  )}
-                  {emailProvidedHint && (
-                    <span style={{ color: p.leaf, marginLeft: 8 }}>· provided already</span>
-                  )}
-                </div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-      {autoEnabledNote && (
-        <div style={{
-          marginTop: 8, fontFamily: PAPER_FONTS.mono, fontSize: 11,
-          color: p.leaf, letterSpacing: '.02em', transition: 'opacity .3s',
-        }}>→ {autoEnabledNote}</div>
-      )}
-      {footnote && (
-        <div style={{
-          marginTop: 8, fontFamily: PAPER_FONTS.mono, fontSize: 11,
-          color: p.inkMute, letterSpacing: '.02em',
-        }}>{footnote}</div>
-      )}
-    </div>
-  );
-}
-
 /* ─────────────────────── working agents row ─────────────────────── */
 
 const AGENTS_DATA = {
@@ -1382,10 +1074,6 @@ const AGENTS_DATA = {
   ],
 };
 
-// Agents that need Person Khoji as a prerequisite. Khoji finds the human;
-// without it Email Wallah has nothing to look up and Outreach Bhai has nobody
-// to write to. Resume is independent.
-const PERSON_DEPENDENT = new Set(['email', 'outreach']);
 
 function defaultSelectionFor(kind, haveEmail) {
   const all = (AGENTS_DATA[kind] || AGENTS_DATA.person).map((a) => a.k);
