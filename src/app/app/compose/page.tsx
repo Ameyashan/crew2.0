@@ -30,6 +30,21 @@ import {
   jobHost,
 } from "@/lib/runs-store";
 import { classifyKind } from "@/lib/kind-detect";
+import { supabaseBrowser } from "@/lib/supabase-browser";
+import { TOKENS } from "@/components/paper/tokens";
+import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
+import {
+  SUGGESTION_PILLS,
+  SAMPLE_SHOTS,
+  FIRST_TIME_CARDS,
+  validateScreenshot,
+  imageFromClipboard,
+  deriveStoryIsEmpty,
+  storyNudgeKey,
+  isFirstTime,
+  deskEarlierRuns,
+  fmtWhen,
+} from "@/components/paper/desk-logic";
 
 // Hit the existing PDF/DOCX endpoints (they take the tailored-resume JSON) and
 // trigger a browser download. Shared by the ↓ PDF / ↓ Word buttons.
@@ -80,6 +95,68 @@ function ComposeV3({ p, go }) {
   const [selectedAgents, setSelectedAgents] = useState(() => defaultSelectionFor('person', false));
   const runs = useRuns();
   const isMobile = useIsMobile();
+
+  // ─── Desk data: Story-empty derivation, first-time gate, earlier runs ───
+  // profile → storyIsEmpty (thin-Story flag, threaded to Phase 4); the two
+  // history endpoints feed both the first-time gate and the earlier-runs rows
+  // (same payload the history page fetches — we don't invent a new source).
+  const [profile, setProfile] = useState(null);
+  const [composeRuns, setComposeRuns] = useState([]);
+  const [resumeRuns, setResumeRuns] = useState([]);
+  const [nudgeKey, setNudgeKey] = useState(null);
+  // Start hidden so the amber pill never flashes before we know the account +
+  // its saved dismissal.
+  const [nudgeDismissed, setNudgeDismissed] = useState(true);
+
+  async function loadHistory() {
+    try {
+      const [composeRes, resumeRes] = await Promise.all([
+        fetch('/api/compose/history').then((r) => r.json()).catch(() => null),
+        fetch('/api/resume/history').then((r) => r.json()).catch(() => null),
+      ]);
+      setComposeRuns(Array.isArray(composeRes?.runs) ? composeRes.runs : []);
+      setResumeRuns(Array.isArray(resumeRes?.generations) ? resumeRes.generations : []);
+    } catch { /* leave prior state */ }
+  }
+
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/profile').then((r) => r.json()).then((j) => {
+      if (alive) setProfile(j?.profile ?? null);
+    }).catch(() => {});
+    loadHistory();
+    // Resolve the account so the nudge dismissal is per-user, then read its saved
+    // flag. Key by email — dismissal persists across reloads, not across accounts.
+    supabaseBrowser().auth.getUser().then(({ data }) => {
+      if (!alive) return;
+      const key = storyNudgeKey(data?.user?.email);
+      setNudgeKey(key);
+      try {
+        setNudgeDismissed(typeof window !== 'undefined' && localStorage.getItem(key) === '1');
+      } catch { setNudgeDismissed(false); }
+    }).catch(() => { if (alive) setNudgeDismissed(false); });
+    return () => { alive = false; };
+  }, []);
+
+  // Refresh the earlier-runs list whenever a live run finishes, so a completed
+  // run shows up as a new row without a manual reload.
+  const doneCount = runs.filter((r) => r.stage === 'done').length;
+  useEffect(() => { loadHistory(); }, [doneCount]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const storyIsEmpty = deriveStoryIsEmpty(profile);
+  const liveNonResume = runs.filter((run) => run.kind !== 'resume');
+  const firstTime = isFirstTime(composeRuns.length, resumeRuns.length) && liveNonResume.length === 0;
+  const earlier = deskEarlierRuns(composeRuns, resumeRuns, 4);
+  const showNudge = !!nudgeKey && storyIsEmpty && !nudgeDismissed;
+
+  // Seed the composer from a suggestion pill / first-time card.
+  function fillComposer(text) { setInput(text); setKindOverride(null); }
+  function dismissNudge() {
+    setNudgeDismissed(true);
+    if (nudgeKey && typeof window !== 'undefined') {
+      try { localStorage.setItem(nudgeKey, '1'); } catch { /* private mode */ }
+    }
+  }
 
   // Recover any runs that were still streaming when a previous session ended
   // (e.g. the OS reclaimed a backgrounded mobile tab). The server kept working
@@ -153,8 +230,70 @@ function ComposeV3({ p, go }) {
         screenshot={screenshot} setScreenshot={setScreenshot}
         kindOverride={kindOverride} setKindOverride={setKindOverride}
         selectedAgents={selectedAgents} setSelectedAgents={setSelectedAgents}
-        onGo={onGo}
+        onGo={onGo} fillComposer={fillComposer}
       />
+
+      {/* ─── thin-Story nudge: signed-in, empty Story, dismissible per-account ─── */}
+      {showNudge && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12, marginTop: 14,
+          background: TOKENS.amberWash, border: `1px solid ${TOKENS.amberLine}`,
+          borderRadius: 99, padding: '7px 9px 7px 18px', animation: 'fadeUp .3s ease',
+          flexWrap: 'wrap',
+        }}>
+          <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.4, color: TOKENS.muted2 }}>
+            Your Story is empty — the crew is working from guesses.
+          </span>
+          <button onClick={() => go('resume')} style={{
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, fontWeight: 500, color: TOKENS.paper,
+            background: TOKENS.ink, borderRadius: 99, border: 'none', padding: '8px 13px', cursor: 'pointer',
+          }}>Add your resume</button>
+          <button onClick={dismissNudge} title="dismiss" style={{
+            marginLeft: 'auto', background: 'transparent', border: 'none', cursor: 'pointer',
+            color: TOKENS.faint, fontFamily: PAPER_FONTS_V2.sans, fontSize: 14, lineHeight: 1, padding: '2px 6px',
+          }}>×</button>
+        </div>
+      )}
+
+      {/* ─── first-time: "Things your crew can do" 3-card grid (no runs yet) ─── */}
+      {firstTime && (
+        <div style={{ marginTop: 28 }}>
+          <div style={{
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, fontWeight: 500, letterSpacing: '.12em',
+            textTransform: 'uppercase', color: TOKENS.faint, marginBottom: 16,
+          }}>Things your crew can do — tap one to try it</div>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 14,
+          }}>
+            {FIRST_TIME_CARDS.map((card) => (
+              <div key={card.id} onClick={() => fillComposer(card.fill)} style={{
+                background: TOKENS.card, border: `1px solid ${TOKENS.lineSoft}`, borderRadius: 12,
+                padding: '18px 20px', cursor: 'pointer',
+              }}>
+                <div style={{
+                  fontFamily: PAPER_FONTS_V2.serif, fontSize: 17, lineHeight: 1.35, color: TOKENS.ink, marginBottom: 8,
+                }}>{card.title}</div>
+                <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, lineHeight: 1.6, color: TOKENS.muted }}>
+                  {card.desc}
+                </div>
+                <div style={{ display: 'flex', gap: 5, marginTop: 12, flexWrap: 'wrap' }}>
+                  {card.chips.map((c) => (
+                    <span key={c} style={{
+                      fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, color: TOKENS.muted,
+                      background: TOKENS.chip, borderRadius: 4, padding: '4px 7px',
+                    }}>{c}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, lineHeight: 1.6, color: TOKENS.faint,
+            marginTop: 18, textAlign: 'center',
+          }}>These cards disappear once you've run your first thread.</div>
+        </div>
+      )}
 
       {/* ─── one card per run, newest on top (resume runs render on /app/resume) ─── */}
       <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -162,9 +301,57 @@ function ComposeV3({ p, go }) {
           <RunCard key={run.id} p={p} run={run} go={go}/>
         ))}
       </div>
+
+      {/* ─── earlier runs: first few from history, → the repurposed history page ─── */}
+      {earlier.length > 0 && (
+        <div style={{ marginTop: 32 }}>
+          <div style={{
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, fontWeight: 500, letterSpacing: '.12em',
+            textTransform: 'uppercase', color: TOKENS.faint, marginBottom: 14,
+          }}>Earlier runs</div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {earlier.map((row) => (
+              <div key={row.key} onClick={() => go('history')} style={{
+                display: 'flex', alignItems: 'center', gap: 16, padding: '15px 8px', margin: '0 -8px',
+                borderTop: `1px solid ${TOKENS.lineRow}`, cursor: 'pointer', borderRadius: 8, flexWrap: 'wrap',
+              }}>
+                <div style={{
+                  flex: 1, minWidth: 0, fontFamily: PAPER_FONTS_V2.serif, fontSize: 16, lineHeight: 1.3, color: TOKENS.inkSoft,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>{row.title}</div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {row.chips.map((c, i) => {
+                    const tone = EARLIER_CHIP_TONE[c.tone] || EARLIER_CHIP_TONE.done;
+                    return (
+                      <span key={i} style={{
+                        fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, fontWeight: 500,
+                        color: tone.color, background: tone.bg, borderRadius: 5, padding: '4px 8px', whiteSpace: 'nowrap',
+                      }}>{c.label}</span>
+                    );
+                  })}
+                </div>
+                <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, color: TOKENS.faint2, whiteSpace: 'nowrap' }}>
+                  {fmtWhen(row.created_at)}
+                </div>
+                <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, color: TOKENS.faint }}>→</span>
+              </div>
+            ))}
+            <div style={{ borderTop: `1px solid ${TOKENS.lineRow}` }} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+// Earlier-runs chip colours per abstract tone (kept out of desk-logic since it's
+// presentation, not a rule).
+const EARLIER_CHIP_TONE = {
+  done:       { color: TOKENS.green, bg: TOKENS.greenBg },
+  progress:   { color: TOKENS.amber, bg: TOKENS.amberBg },
+  attention:  { color: TOKENS.amber, bg: TOKENS.amberBg },
+  error:      { color: TOKENS.red,   bg: '#f6e9e6' },
+};
 
 /* ─────────────────────── one run, all its lifecycle stages ─────────────────────── */
 
@@ -327,11 +514,15 @@ function RunCard({ p, run, go }) {
 
 /* ─────────────────────── paste field (idle state) ─────────────────────── */
 
-function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHaveEmail, screenshot, setScreenshot, kindOverride, setKindOverride, selectedAgents, setSelectedAgents, onGo }) {
+function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHaveEmail, screenshot, setScreenshot, kindOverride, setKindOverride, selectedAgents, setSelectedAgents, onGo, fillComposer }) {
   const fileRef = useRef(null);
   const [attachError, setAttachError] = useState(null);
   // Transient "→ Person Khoji turned on, needed for Email" note. Fades after ~2s.
   const [autoEnabledNote, setAutoEnabledNote] = useState(null);
+  // "+" attach popover (sample rows + paste/drop hint) and drag-over highlight.
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const attachRef = useRef(null);
   const hasInput = input.trim().length > 0;
   const hasScreenshot = !!screenshot;
   // Go is live when there's either typed input OR an attached screenshot the
@@ -340,30 +531,66 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
   const detected = kindOverride || classifyKind(input);
   const meta = KIND_META[detected];
 
-  const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-  const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-
   // setting text from the box or a pill clears any manual override so the
   // banner re-reads the fresh input.
   function setText(v) { setInput(v); setKindOverride(null); }
+
+  // The one validated path every attach entry point (file picker, paste,
+  // drag-drop, sample rows) funnels through — keeps a single validated
+  // `screenshot` shape regardless of how the file arrived.
+  function attachFile(f) {
+    const res = validateScreenshot(f);
+    if (!res.ok) {
+      if (res.error) setAttachError(res.error);
+      return;
+    }
+    setAttachError(null);
+    setAttachOpen(false);
+    // Keep the real File so onGo can hand it to the vision pass + Supabase.
+    setScreenshot(res.screenshot);
+  }
 
   function pickFile(e) {
     const f = e.target.files?.[0];
     // Reset so re-picking the same file still fires onChange.
     e.target.value = '';
-    if (!f) return;
-    if (!ALLOWED_IMAGE_TYPES.includes(f.type)) {
-      setAttachError('Use a PNG, JPG, WEBP, or GIF.');
-      return;
-    }
-    if (f.size > MAX_IMAGE_BYTES) {
-      setAttachError('Image must be under 5MB.');
-      return;
-    }
-    setAttachError(null);
-    // Keep the real File so onGo can hand it to the vision pass + Supabase.
-    setScreenshot({ name: f.name, size: `${Math.round(f.size / 1024)} KB`, file: f });
+    attachFile(f);
   }
+
+  // Paste (⌘V) an image straight onto the composer.
+  function onPaste(e) {
+    const f = imageFromClipboard(e.clipboardData?.items ? Array.from(e.clipboardData.items) : null);
+    if (f) { e.preventDefault(); attachFile(f); }
+  }
+
+  // Drag an image file onto the card — amber border + shadow while hovering.
+  function onDragOver(e) { e.preventDefault(); if (!dragOver) setDragOver(true); }
+  function onDragLeave() { if (dragOver) setDragOver(false); }
+  function onDrop(e) {
+    e.preventDefault();
+    setDragOver(false);
+    attachFile(e.dataTransfer?.files?.[0]);
+  }
+
+  // Close the attach popover on click-outside / Escape.
+  useEffect(() => {
+    if (!attachOpen) return;
+    const onDown = (e) => { if (attachRef.current && !attachRef.current.contains(e.target)) setAttachOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setAttachOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [attachOpen]);
+
+  // Object-URL thumbnail for the attached-screenshot chip. Revoked on change so
+  // swapping/removing an attachment doesn't leak blobs.
+  const [previewUrl, setPreviewUrl] = useState(null);
+  useEffect(() => {
+    if (!screenshot?.file || typeof URL === 'undefined' || !URL.createObjectURL) { setPreviewUrl(null); return; }
+    const url = URL.createObjectURL(screenshot.file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [screenshot]);
 
   // Three modes for the checklist:
   // - 'person': text/URL classified as a person. Khoji is locked on (research
@@ -446,6 +673,15 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
 
   return (
     <>
+      <div
+        onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
+        style={{
+          borderRadius: 4,
+          // Amber ring + soft glow while an image is dragged over the composer.
+          boxShadow: dragOver ? `0 0 0 2px ${TOKENS.amber}, 0 2px 16px rgba(138,109,47,.18)` : 'none',
+          transition: 'box-shadow .15s',
+        }}
+      >
       <PaperCard p={p} color={p.marigold} hardShadow style={{ padding: '22px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 10 }}>
           <span style={{
@@ -455,6 +691,7 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
         <textarea
           value={input}
           onChange={(e) => setText(e.target.value)}
+          onPaste={onPaste}
           onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') onGo(); }}
           placeholder={'Paste anything, e.g. —\na job link:  job-boards.greenhouse.io/acme/jobs/4012\na person:  linkedin.com/in/maya-ramaswamy\na description:  "the woman who runs ops at Ramp"'}
           rows={4}
@@ -491,25 +728,32 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
           </div>
         )}
 
-        {/* ─── attached-screenshot chip (always visible once attached) ─── */}
+        {/* ─── attached-screenshot chip: 46×34 thumbnail, filename, meta, × ─── */}
         {hasScreenshot && (
           <div style={{
             marginTop: 12, display: 'flex', alignItems: 'center', gap: 10,
-            padding: '8px 12px', background: p.paper,
-            border: `1.5px solid ${p.ink}24`, flexWrap: 'wrap',
+            padding: '8px 10px', background: TOKENS.paper,
+            border: `1px solid ${TOKENS.lineSoft}`, borderRadius: 10, maxWidth: 360, animation: 'fadeUp .25s ease',
           }}>
-            <span style={{
-              fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.08em',
-              color: p.leaf, textTransform: 'uppercase',
-            }}>✓ attached</span>
-            <span style={{
-              fontFamily: PAPER_FONTS.mono, fontSize: 12, color: p.ink,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 320,
-            }}>{screenshot.name}</span>
-            <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute }}>· {screenshot.size}</span>
+            <div style={{
+              width: 46, height: 34, flexShrink: 0, borderRadius: 6, border: `1px solid ${TOKENS.line}`,
+              backgroundImage: previewUrl
+                ? `url(${previewUrl})`
+                : 'repeating-linear-gradient(-45deg,#f2eee4,#f2eee4 4px,#faf8f3 4px,#faf8f3 8px)',
+              backgroundSize: 'cover', backgroundPosition: 'center',
+            }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontFamily: PAPER_FONTS_V2.mono, fontSize: 11.5, fontWeight: 500, color: TOKENS.inkSoft,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{screenshot.name}</div>
+              <div style={{
+                fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, color: TOKENS.faint, marginTop: 2,
+              }}>{screenshot.size} · attached</div>
+            </div>
             <button onClick={() => { setScreenshot(null); setAttachError(null); }} title="remove" style={{
-              marginLeft: 'auto', background: 'transparent', border: 'none', cursor: 'pointer',
-              fontFamily: PAPER_FONTS.mono, fontSize: 15, lineHeight: 1, color: p.inkMute,
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              fontFamily: PAPER_FONTS_V2.sans, fontSize: 15, lineHeight: 1, color: TOKENS.faint, padding: '2px 4px',
             }}>×</button>
           </div>
         )}
@@ -574,8 +818,61 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
         <div style={{
           marginTop: 14, paddingTop: 14, borderTop: `1.5px solid ${p.ink}18`,
           display: 'flex', alignItems: 'center',
-          justifyContent: 'flex-end', flexWrap: 'wrap', gap: 10,
+          justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
         }}>
+          {/* attach "+" popover + suggestion pills */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div ref={attachRef} style={{ position: 'relative', display: 'flex' }}>
+              <button
+                onClick={() => setAttachOpen((v) => !v)}
+                title="Attach a screenshot — a job posting, a profile, a recruiter DM"
+                style={{
+                  width: 28, height: 28, borderRadius: 99, cursor: 'pointer',
+                  border: `1px solid ${TOKENS.line}`, background: 'transparent', color: TOKENS.muted,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, lineHeight: 1,
+                }}
+              >+</button>
+              {attachOpen && (
+                <div style={{
+                  position: 'absolute', bottom: 38, left: 0, width: 322, zIndex: 30, textAlign: 'left',
+                  background: TOKENS.card, border: `1px solid ${TOKENS.line}`, borderRadius: 12,
+                  boxShadow: '0 6px 24px rgba(60,50,30,.12)', padding: '14px 14px 8px', animation: 'fadeUp .2s ease',
+                }}>
+                  <div style={{
+                    fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, letterSpacing: '.08em',
+                    color: TOKENS.faint, marginBottom: 5,
+                  }}>ATTACH A SCREENSHOT</div>
+                  <div style={{
+                    fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, lineHeight: 1.5, color: TOKENS.muted, marginBottom: 8,
+                  }}>Drop an image on the box, paste it (⌘V), or pick a file:</div>
+                  {SAMPLE_SHOTS.map((s) => (
+                    <div key={s.kind} onClick={() => { setAttachOpen(false); fileRef.current?.click(); }} style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: 8, borderRadius: 8, cursor: 'pointer',
+                    }}>
+                      <div style={{
+                        width: 40, height: 30, flexShrink: 0, borderRadius: 4, border: `1px solid ${TOKENS.line}`,
+                        background: 'repeating-linear-gradient(-45deg,#f2eee4,#f2eee4 4px,#faf8f3 4px,#faf8f3 8px)',
+                      }} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, fontWeight: 500, color: TOKENS.ink }}>{s.title}</div>
+                        <div style={{
+                          fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, color: TOKENS.muted,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>{s.sub}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {SUGGESTION_PILLS.map((pill) => (
+              <button key={pill.id} onClick={() => setText(pill.fill)} style={{
+                fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, color: TOKENS.muted,
+                border: `1px solid ${TOKENS.line}`, borderRadius: 99, padding: '7px 12px',
+                background: 'transparent', cursor: 'pointer',
+              }}>{pill.label}</button>
+            ))}
+          </div>
           <InkButton p={p} color={p.stamp} onClick={onGo} disabled={!canGo}>
             <span>Go</span>
             <kbd style={{
@@ -585,6 +882,7 @@ function PasteFieldV3({ p, input, setInput, intent, setIntent, haveEmail, setHav
           </InkButton>
         </div>
       </PaperCard>
+      </div>
 
       {/* ─── Add context — optional (always visible) ─── */}
       <div style={{ marginTop: 12 }}>
