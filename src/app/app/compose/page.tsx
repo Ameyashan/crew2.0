@@ -308,16 +308,23 @@ function ComposeV3({ p, go }) {
           flex: 1, maxWidth: 1100, margin: '0 auto', width: '100%', boxSizing: 'border-box',
           padding: `40px ${sidePad}px 60px`, animation: 'fadeUp .4s ease',
         }}>
-          <button
-            type="button"
-            className="rv-back"
-            onClick={() => setFocusedRun(null)}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 22,
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, color: TOKENS.muted, padding: 0,
-            }}
-          >← Back to the Desk</button>
+          {/* A signed-out visitor gets one run that lives only in memory (anon
+              runs persist nothing — see api/compose). Leaving the run screen
+              would strand it with no way back (the "crew running" chip is
+              signed-in only), so we lock them here: the only way forward is the
+              blur-gate's "sign in" — which stashes + replays the run unlocked. */}
+          {signedIn !== false && (
+            <button
+              type="button"
+              className="rv-back"
+              onClick={() => setFocusedRun(null)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 22,
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, color: TOKENS.muted, padding: 0,
+              }}
+            >← Back to the Desk</button>
+          )}
           <RunCard p={p} run={focusedRun} go={go} storyIsEmpty={storyIsEmpty} signedIn={signedIn}/>
         </div>
       </div>
@@ -1948,7 +1955,7 @@ function BlurGateOverlay({ kind, run, input }) {
         <div style={{
           fontFamily: PAPER_FONTS_V2.serif, fontSize: 24, lineHeight: 1.3, letterSpacing: '-.01em',
           color: TOKENS.ink, marginBottom: 10,
-        }}>The work is done. It&apos;s waiting behind the blur.</div>
+        }}>Your crew&apos;s work is waiting behind the blur.</div>
         <div style={{
           fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, lineHeight: 1.65, color: TOKENS.muted, marginBottom: 24,
         }}>{gateSummary(kind)}</div>
