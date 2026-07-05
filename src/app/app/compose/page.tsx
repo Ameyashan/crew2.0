@@ -29,7 +29,6 @@ import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
 import { nameFromEmail } from "@/components/paper/top-bar-logic";
 import {
   SUGGESTION_PILLS,
-  SAMPLE_SHOTS,
   FIRST_TIME_CARDS,
   validateScreenshot,
   imageFromClipboard,
@@ -1937,14 +1936,12 @@ function GoogleGlyph({ size = 18 }) {
 function DeskComposer({ input, setInput, screenshot, setScreenshot, onGo, fillComposer }) {
   const fileRef = useRef(null);
   const [attachError, setAttachError] = useState(null);
-  // "+" attach popover (sample rows + paste/drop hint) and drag-over highlight.
-  const [attachOpen, setAttachOpen] = useState(false);
+  // Drag-over highlight for image drop onto the composer card.
   const [dragOver, setDragOver] = useState(false);
-  const attachRef = useRef(null);
 
   // The one validated path every attach entry point (file picker, paste,
-  // drag-drop, sample rows) funnels through — keeps a single validated
-  // `screenshot` shape regardless of how the file arrived.
+  // drag-drop) funnels through — keeps a single validated `screenshot` shape
+  // regardless of how the file arrived.
   function attachFile(f) {
     const res = validateScreenshot(f);
     if (!res.ok) {
@@ -1952,7 +1949,6 @@ function DeskComposer({ input, setInput, screenshot, setScreenshot, onGo, fillCo
       return;
     }
     setAttachError(null);
-    setAttachOpen(false);
     // Keep the real File so onGo can hand it to the vision pass + Supabase.
     setScreenshot(res.screenshot);
   }
@@ -1978,16 +1974,6 @@ function DeskComposer({ input, setInput, screenshot, setScreenshot, onGo, fillCo
     setDragOver(false);
     attachFile(e.dataTransfer?.files?.[0]);
   }
-
-  // Close the attach popover on click-outside / Escape.
-  useEffect(() => {
-    if (!attachOpen) return;
-    const onDown = (e) => { if (attachRef.current && !attachRef.current.contains(e.target)) setAttachOpen(false); };
-    const onKey = (e) => { if (e.key === 'Escape') setAttachOpen(false); };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
-  }, [attachOpen]);
 
   // Object-URL thumbnail for the attached-screenshot chip. Revoked on change so
   // swapping/removing an attachment doesn't leak blobs.
@@ -2064,53 +2050,19 @@ function DeskComposer({ input, setInput, screenshot, setScreenshot, onGo, fillCo
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, gap: 10 }}>
         {/* attach "+" popover + suggestion pills */}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div ref={attachRef} style={{ position: 'relative', display: 'flex' }}>
-            <button
-              onClick={() => setAttachOpen((v) => !v)}
-              title="Attach a screenshot — a job posting, a profile, a recruiter DM"
-              className="dk-pill"
-              style={{
-                width: 28, height: 28, borderRadius: RADII.pill, cursor: 'pointer', padding: 0,
-                border: `1px solid ${TOKENS.line}`, background: 'transparent', color: TOKENS.muted,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontFamily: PAPER_FONTS_V2.sans, fontSize: 16, lineHeight: 1,
-                transition: 'border-color .15s, color .15s',
-              }}
-            >+</button>
-            {attachOpen && (
-              <div style={{
-                position: 'absolute', bottom: 38, left: 0, width: 322, zIndex: 30, textAlign: 'left',
-                background: TOKENS.card, border: `1px solid ${TOKENS.line}`, borderRadius: 12,
-                boxShadow: SHADOWS.popover, padding: '14px 14px 8px', animation: 'fadeUp .2s ease',
-              }}>
-                <div style={{
-                  fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, letterSpacing: '.08em',
-                  color: TOKENS.faint, marginBottom: 5,
-                }}>ATTACH A SCREENSHOT</div>
-                <div style={{
-                  fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, lineHeight: 1.5, color: TOKENS.muted, marginBottom: 8,
-                }}>Drop an image on the box, paste it (⌘V), or try a sample:</div>
-                {SAMPLE_SHOTS.map((s) => (
-                  <div key={s.kind} className="dk-row" onClick={() => { setAttachOpen(false); fileRef.current?.click(); }} style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: 8, borderRadius: 8, cursor: 'pointer',
-                    transition: 'background .15s',
-                  }}>
-                    <div style={{
-                      width: 40, height: 30, flexShrink: 0, borderRadius: 4, border: `1px solid ${TOKENS.line}`,
-                      background: 'repeating-linear-gradient(-45deg,#f2eee4,#f2eee4 4px,#faf8f3 4px,#faf8f3 8px)',
-                    }} />
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, fontWeight: 500, lineHeight: 1.3, color: TOKENS.ink }}>{s.title}</div>
-                      <div style={{
-                        fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, lineHeight: 1.4, color: TOKENS.muted,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}>{s.sub}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <button
+            onClick={() => fileRef.current?.click()}
+            title="Add a screenshot"
+            aria-label="Add a screenshot"
+            className="dk-pill"
+            style={{
+              width: 28, height: 28, borderRadius: RADII.pill, cursor: 'pointer', padding: 0,
+              border: `1px solid ${TOKENS.line}`, background: 'transparent', color: TOKENS.muted,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontFamily: PAPER_FONTS_V2.sans, fontSize: 16, lineHeight: 1,
+              transition: 'border-color .15s, color .15s',
+            }}
+          >+</button>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile}/>
           {SUGGESTION_PILLS.map((pill) => (
             <button key={pill.id} onClick={() => fillComposer(pill.fill)} className="dk-pill" style={{
