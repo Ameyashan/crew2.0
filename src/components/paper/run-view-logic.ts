@@ -138,7 +138,7 @@ export const RUN_STEP_ORDER: Record<"job" | "person", string[]> = {
   person: ["parse", "person", "email", "outreach"],
 };
 
-export type RunStepState = "done" | "active" | "error";
+export type RunStepState = "done" | "active" | "error" | "skipped";
 export type RunStepRow = {
   id: string;
   title: string;
@@ -160,6 +160,10 @@ export type BuildRunStepsInput = {
   // The pull-review panel is on screen — the resume step reads as "choosing
   // what to pull" rather than "weaving".
   pulling?: boolean;
+  // Signed-out job runs never run the Resume agent server-side (there's no
+  // uploaded Story to weave from), so the resume step renders as a "skipped"
+  // row and the crew jumps straight to finding the hiring manager.
+  skipResume?: boolean;
   // Real data for the done-row subtitles. All optional; rows degrade to
   // generic (but honest) copy when an agent returned nothing.
   peopleCount?: number | null;
@@ -318,6 +322,19 @@ export function buildRunSteps(input: BuildRunStepsInput): RunStepRow[] {
   let activePlaced = false;
   for (const id of order) {
     if (id === "parse") continue;
+    // Signed-out job runs skip Resume Darzi entirely (the server never runs it):
+    // show one muted "skipped" row and move on, so `person` becomes the active
+    // step rather than a resume row stuck mid-weave.
+    if (id === "resume" && input.skipResume) {
+      rows.push({
+        id,
+        title: "Skipped resume — going to find the hiring manager",
+        sub: "signed-out runs skip the resume — sign in to weave one from your Story",
+        agent: RUN_AGENT_CHIPS.resume,
+        state: "skipped",
+      });
+      continue;
+    }
     const err = input.stepErrors?.[id];
     if (err) {
       rows.push({
