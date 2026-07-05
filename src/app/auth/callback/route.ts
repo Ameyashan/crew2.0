@@ -54,7 +54,12 @@ export async function GET(req: NextRequest) {
     });
     const { data, error } = await sb.auth.exchangeCodeForSession(code);
     if (error) {
-      url.pathname = "/";
+      // Surface the failure on the Desk rather than "/". The Desk is
+      // anon-allowed, so the proxy neither bounces it back to the landing nor
+      // strips the query (a redirect to "/" gets rewritten to /app/compose with
+      // search cleared, swallowing the error); AuthErrorBanner reads the param
+      // there and shows a retry prompt.
+      url.pathname = "/app/compose";
       url.search = `?auth_error=${encodeURIComponent(error.message)}`;
       return NextResponse.redirect(url);
     }
