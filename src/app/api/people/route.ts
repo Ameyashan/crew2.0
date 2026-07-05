@@ -36,10 +36,29 @@ export async function GET() {
       }
     }
 
+    // Next pending follow-up per person — the People tracker's NEXT column
+    // ("auto follow-up · {date}"). Earliest-due wins; same grouped-query shape.
+    const nextFollowupByPerson: Record<string, string> = {};
+    if (ids.length) {
+      const { data: fus } = await sb
+        .from("followups")
+        .select("person_id, due_at")
+        .eq("user_id", userId)
+        .eq("status", "pending")
+        .in("person_id", ids)
+        .order("due_at", { ascending: true });
+      for (const fu of fus ?? []) {
+        const pid = fu.person_id as string | null;
+        if (!pid || nextFollowupByPerson[pid]) continue;
+        nextFollowupByPerson[pid] = fu.due_at as string;
+      }
+    }
+
     const enriched = (people ?? []).map((p) => ({
       ...p,
       last_interaction: latestByPerson[p.id]?.last ?? null,
       last_interaction_type: latestByPerson[p.id]?.type ?? null,
+      next_followup_due: nextFollowupByPerson[p.id] ?? null,
     }));
 
     return Response.json({ people: enriched });

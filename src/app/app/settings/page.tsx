@@ -14,25 +14,6 @@ import {
 } from "@/components/paper/phase5-logic";
 import { useIsMobile } from "@/lib/use-is-mobile";
 
-// Uppercase IBM Plex Mono section label.
-function MonoLabel({ children, color = TOKENS.muted, size = 10.5, style }) {
-  return (
-    <span
-      style={{
-        fontFamily: PAPER_FONTS_V2.mono,
-        fontSize: size,
-        fontWeight: 500,
-        letterSpacing: ".12em",
-        textTransform: "uppercase",
-        color,
-        ...style,
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
 // White soft-shadow card surface.
 function Card({ children, style }) {
   return (
@@ -113,28 +94,25 @@ function SettingsV3({ profile, saveProfile, reloadProfile }) {
     >
       {/* Page header */}
       <div style={{ marginBottom: 22 }}>
-        <MonoLabel>Settings · you</MonoLabel>
         <h1
           style={{
-            margin: "8px 0 0",
+            margin: 0,
             fontFamily: PAPER_FONTS_V2.serif,
             fontWeight: 400,
-            fontSize: isMobile ? 30 : 34,
-            lineHeight: 1.05,
+            fontSize: 30,
+            lineHeight: 1.25,
             letterSpacing: "-.01em",
             color: TOKENS.ink,
           }}
         >
-          Your crew,{" "}
-          <span style={{ fontStyle: "italic", color: TOKENS.muted2 }}>set up just for you.</span>
+          Settings
         </h1>
         <p
           style={{
-            margin: "10px 0 0",
-            fontFamily: PAPER_FONTS_V2.serif,
-            fontStyle: "italic",
-            fontSize: 15.5,
-            lineHeight: 1.5,
+            margin: "8px 0 0",
+            fontFamily: PAPER_FONTS_V2.sans,
+            fontSize: 14,
+            lineHeight: 1.7,
             color: TOKENS.muted,
             maxWidth: 560,
           }}

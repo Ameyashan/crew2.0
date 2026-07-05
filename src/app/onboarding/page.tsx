@@ -1,4 +1,4 @@
-// @ts-nocheck — onboarding (jugaadu reskin)
+// @ts-nocheck — onboarding: the prototype's 3-step 600px card (jugaadu reskin, Phase F)
 "use client";
 
 import { useState } from "react";
@@ -6,705 +6,29 @@ import { useRouter } from "next/navigation";
 import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
 import { TOKENS, RADII, SHADOWS } from "@/components/paper/tokens";
 import { AuthLoadingOverlay } from "@/components/paper/auth-loading";
-import {
-  onboardingCompletedCount,
-  onboardingDonePatch,
-  onboardingSkipPatch,
-} from "@/components/paper/phase5-logic";
-import { useIsMobile } from "@/lib/use-is-mobile";
-import { SECTORS } from "@/lib/jobs/catalog/sectors";
+import { onboardingDonePatch } from "@/components/paper/phase5-logic";
 
-const GOALS_PROMPT = `I'm using a tool that drafts outreach messages on my behalf. Help me write a self-summary it can use as context. Cover:
-- My current role, background, and what I'm working on
-- What I'm looking for next (roles, companies, kinds of people to meet)
-- My motivations and what excites me professionally
-- How I communicate (tone, formality, things I'd never say)
-- Anything else that would help someone write a message that sounds like me
+// The four agents shown as chips on step 1 (prototype lines 115–118).
+const AGENT_CHIPS = ["resume", "person khoji", "email wallah", "outreach"];
 
-Ask me questions if you need to. When we're done, give me a single block of text I can paste back.`;
-
-const GOALS_SAMPLE = `I'm Ameya — Senior VP of Product at Goldman Sachs Asset Management's Alternatives group, where I partner with Strats to build portfolio management tools for private credit, real estate, and infra. Spent the last decade going from analyst to leading a small product team; before GSAM, I shipped retail trading at Robinhood and credit-risk tooling at Capital One.
-
-What I'm looking for: senior product roles at AI-native fintechs (Series B+) or the asset-management arm of a top-tier firm. Roles where I get to own the LLM-in-the-loop layer for analysts, not just dashboards.
-
-How I communicate: warm but direct. Hate corporate filler ("hope this finds you well", "circling back"). Will use lowercase if it feels right. Prefer ending on a real question, not a CTA.`;
+// Two preset goals + the "write your own" escape hatch (prototype step 3). The
+// picked goal saves to the same context/goals field Settings edits.
+const GOAL_PRESETS = [
+  "Land a senior role at a company I respect.",
+  "Meet the people who can open doors for me.",
+];
 
 function OnboardingV3({ onDone }) {
-  const isMobile = useIsMobile();
-  const [resume, setResume] = useState(null);
-  const [linkedin, setLinkedin] = useState("");
-  const [samples, setSamples] = useState([]);
-  const [goals, setGoals] = useState("");
-  const [interests, setInterests] = useState([]);
-  const [followup, setFollowup] = useState("3d");
-  const [copied, setCopied] = useState(false);
+  const [step, setStep] = useState(1); // 1 | 2 | 3
+  const [resume, setResume] = useState(null); // { name, seeded } | null
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  const [goal, setGoal] = useState("");
+  const [customMode, setCustomMode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
-  async function handleDone() {
-    setSubmitting(true);
-    setSubmitError(null);
-    try {
-      const res = await fetch("/api/profile", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(onboardingDonePatch({ linkedin, samples, goals, followup })),
-      });
-      if (!res.ok) throw new Error(`profile save failed: ${res.status}`);
-      // Save job-feed interests so the first daily feed has something to show.
-      // Non-blocking — onboarding shouldn't fail if catalog growth hiccups.
-      try {
-        await fetch("/api/jobs/preferences", {
-          method: "PUT",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ interests }),
-        });
-      } catch {
-        /* non-blocking */
-      }
-      // soft signal the middleware reads to skip the landing for returning users
-      document.cookie = "crew_onboarded=1; path=/; max-age=31536000; samesite=lax";
-      onDone();
-    } catch (e) {
-      setSubmitError(String(e?.message || e));
-      setSubmitting(false);
-    }
-  }
-
-  // The escape hatch. It still marks the profile onboarded — the /app layout
-  // gate redirects un-onboarded users back here, so a skip that doesn't set
-  // onboarded would trap people in a loop. Skipping ingests no resume, which is
-  // exactly what leaves the account's Story thin (the thin-Story path).
-  async function handleSkip() {
-    if (submitting) return;
-    setSubmitting(true);
-    setSubmitError(null);
-    try {
-      const res = await fetch("/api/profile", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(onboardingSkipPatch()),
-      });
-      if (!res.ok) throw new Error(`profile save failed: ${res.status}`);
-      document.cookie = "crew_onboarded=1; path=/; max-age=31536000; samesite=lax";
-      onDone();
-    } catch (e) {
-      setSubmitError(String(e?.message || e));
-      setSubmitting(false);
-    }
-  }
-
-  const completed = onboardingCompletedCount({ resume, linkedin, samples, goals, interests });
-
-  function copyPrompt() {
-    navigator.clipboard?.writeText(GOALS_PROMPT).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  }
-
-  return (
-    <div
-      style={{
-        flex: 1,
-        background: TOKENS.paper,
-        color: TOKENS.ink,
-        ...(isMobile
-          ? { display: "flex", flexDirection: "column", overflowY: "auto", overflowX: "hidden" }
-          : { display: "grid", gridTemplateColumns: "1fr 1.15fr", overflow: "hidden" }),
-      }}
-    >
-      {/* Left — narrative */}
-      <aside
-        style={{
-          background: TOKENS.cardWarm,
-          padding: isMobile ? "28px 20px 28px" : "64px 56px 48px",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
-          borderRight: isMobile ? "none" : `1px solid ${TOKENS.line}`,
-          borderBottom: isMobile ? `1px solid ${TOKENS.line}` : "none",
-          position: "relative",
-          overflow: "hidden",
-          flexShrink: 0,
-        }}
-      >
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            right: -140,
-            bottom: -200,
-            fontFamily: PAPER_FONTS_V2.serif,
-            fontSize: 480,
-            lineHeight: 0.8,
-            color: TOKENS.chip,
-            opacity: 0.6,
-            letterSpacing: "-.06em",
-            pointerEvents: "none",
-          }}
-        >
-          जु
-        </div>
-
-        <div style={{ position: "relative" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
-            <button
-              onClick={handleSkip}
-              disabled={submitting}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: TOKENS.muted,
-                fontFamily: PAPER_FONTS_V2.mono,
-                fontSize: 11,
-                letterSpacing: ".1em",
-                textTransform: "uppercase",
-                cursor: "pointer",
-                padding: 0,
-              }}
-            >
-              skip setup — add all this later in Settings →
-            </button>
-          </div>
-          <span
-            style={{
-              fontFamily: PAPER_FONTS_V2.mono,
-              fontSize: 10.5,
-              fontWeight: 500,
-              letterSpacing: ".12em",
-              textTransform: "uppercase",
-              color: TOKENS.muted,
-            }}
-          >
-            Jugaadu · let&apos;s get you set up
-          </span>
-          <h1
-            style={{
-              margin: "8px 0 0",
-              fontFamily: PAPER_FONTS_V2.serif,
-              fontWeight: 400,
-              fontSize: "clamp(36px, 4.4vw, 56px)",
-              lineHeight: 0.98,
-              letterSpacing: "-.02em",
-              color: TOKENS.ink,
-              maxWidth: 500,
-            }}
-          >
-            Tell Jugaadu about you.{" "}
-            <span style={{ fontStyle: "italic", color: TOKENS.muted2 }}>
-              Start with your resume.
-            </span>
-          </h1>
-          <p
-            style={{
-              margin: "18px 0 0",
-              fontFamily: PAPER_FONTS_V2.serif,
-              fontStyle: "italic",
-              fontSize: 18,
-              lineHeight: 1.45,
-              color: TOKENS.muted,
-              maxWidth: 500,
-            }}
-          >
-            The resume is what Resume Darzi tailors and what drafts lean on — without one, half the
-            crew sits idle. Everything else here is optional polish.
-          </p>
-
-          {/* Live preview */}
-          <div
-            style={{
-              marginTop: 32,
-              padding: "18px 20px",
-              background: TOKENS.card,
-              border: `1px solid ${TOKENS.lineSoft}`,
-              borderRadius: RADII.card,
-              boxShadow: SHADOWS.card,
-            }}
-          >
-            <div
-              style={{
-                fontFamily: PAPER_FONTS_V2.mono,
-                fontSize: 10,
-                color: TOKENS.muted,
-                letterSpacing: ".14em",
-                textTransform: "uppercase",
-                marginBottom: 10,
-              }}
-            >
-              Context Jugaadu will use
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              <PreviewChip on={!!resume} label={resume ? `Resume · ${resume.name}` : "Resume"} />
-              <PreviewChip
-                on={!!linkedin.trim()}
-                label={linkedin.trim() ? `LinkedIn · ${linkedin}` : "LinkedIn"}
-              />
-              <PreviewChip
-                on={samples.length > 0}
-                label={samples.length ? `Voice samples · ${samples.length} learned` : "Voice samples"}
-              />
-              <PreviewChip
-                on={!!goals.trim()}
-                label={goals.trim() ? `Goals & context · ${Math.round(goals.length / 5)} words` : "Goals & context"}
-              />
-              <PreviewChip
-                on={interests.length > 0}
-                label={
-                  interests.length
-                    ? `Interests · ${interests.length} sector${interests.length === 1 ? "" : "s"}`
-                    : "Job interests"
-                }
-              />
-              <PreviewChip on required label={`Followup default · after ${followup}`} />
-            </div>
-          </div>
-        </div>
-
-        {/* progress strip */}
-        <div
-          style={{
-            position: "relative",
-            marginTop: 36,
-            display: "flex",
-            alignItems: "center",
-            gap: 14,
-            fontFamily: PAPER_FONTS_V2.mono,
-            fontSize: 11,
-            color: TOKENS.muted,
-            letterSpacing: ".08em",
-          }}
-        >
-          <span>{completed}/5 ADDED</span>
-          <div
-            style={{
-              flex: 1,
-              height: 4,
-              background: TOKENS.lineInset,
-              borderRadius: RADII.pill,
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                height: "100%",
-                width: `${(completed / 5) * 100}%`,
-                background: TOKENS.green,
-                transition: "width .4s ease",
-              }}
-            />
-          </div>
-        </div>
-      </aside>
-
-      {/* Right — cards */}
-      <div
-        className="scroll"
-        style={{
-          overflow: isMobile ? "visible" : "auto",
-          padding: isMobile ? "28px 20px 64px" : "60px 56px 80px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 14,
-        }}
-      >
-        <OnbCardV3
-          num={1}
-          done={!!resume}
-          required
-          title="Drop your resume"
-          sub="PDF or DOCX. Resume Darzi tailors this per job, and drafts borrow your background from it."
-        >
-          <ResumeDropV3 resume={resume} setResume={setResume} />
-        </OnbCardV3>
-
-        <OnbCardV3
-          num={2}
-          done={!!linkedin.trim()}
-          optional
-          title="LinkedIn profile"
-          sub="Used for context, never to message anyone."
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "11px 14px",
-              background: TOKENS.card,
-              border: `1px solid ${linkedin.trim() ? TOKENS.green : TOKENS.line}`,
-              borderRadius: RADII.panelTight,
-              transition: "border-color .2s",
-            }}
-          >
-            <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 13, color: TOKENS.muted }}>
-              linkedin.com/in/
-            </span>
-            <input
-              value={linkedin}
-              onChange={(e) => setLinkedin(e.target.value)}
-              placeholder="ameya-shanbhag"
-              style={{
-                flex: 1,
-                background: "transparent",
-                border: "none",
-                outline: "none",
-                color: TOKENS.ink,
-                fontFamily: PAPER_FONTS_V2.mono,
-                fontSize: 14,
-              }}
-            />
-            {linkedin.trim() && (
-              <span style={{ color: TOKENS.green, fontFamily: PAPER_FONTS_V2.mono, fontSize: 12 }}>
-                ✓
-              </span>
-            )}
-          </div>
-        </OnbCardV3>
-
-        <OnbCardV3
-          num={3}
-          done={samples.length > 0}
-          optional
-          title="Writing samples"
-          sub="Paste 1–2 things you've actually written so Jugaadu matches your voice."
-        >
-          <SampleEditorV3 samples={samples} setSamples={setSamples} />
-        </OnbCardV3>
-
-        <OnbCardV3
-          num={4}
-          done={!!goals.trim()}
-          optional
-          title="Goals & context"
-          sub="Paste the prompt below into your favourite LLM, answer its questions, then paste the summary back. Jugaadu uses it to write drafts that match what you're working toward."
-        >
-          <div
-            style={{
-              background: TOKENS.cardWarm,
-              border: `1px dashed ${TOKENS.dashed}`,
-              borderRadius: RADII.panelTight,
-              padding: "14px 16px",
-              position: "relative",
-              fontFamily: PAPER_FONTS_V2.mono,
-              fontSize: 12,
-              lineHeight: 1.55,
-              color: TOKENS.muted2,
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {GOALS_PROMPT}
-            <button
-              onClick={copyPrompt}
-              style={{
-                position: "absolute",
-                top: 8,
-                right: 8,
-                padding: "5px 10px",
-                fontFamily: PAPER_FONTS_V2.mono,
-                fontSize: 10.5,
-                letterSpacing: ".06em",
-                textTransform: "uppercase",
-                background: copied ? TOKENS.green : TOKENS.card,
-                color: copied ? TOKENS.paper : TOKENS.ink,
-                border: `1px solid ${copied ? TOKENS.green : TOKENS.line}`,
-                borderRadius: RADII.buttonTight,
-                cursor: "pointer",
-              }}
-            >
-              {copied ? "✓ copied" : "copy prompt"}
-            </button>
-          </div>
-          <textarea
-            value={goals}
-            onChange={(e) => setGoals(e.target.value)}
-            placeholder={`Paste the LLM's reply here.\n\n${GOALS_SAMPLE.slice(0, 220)}…`}
-            rows={6}
-            style={{
-              width: "100%",
-              marginTop: 10,
-              padding: "12px 14px",
-              resize: "vertical",
-              background: TOKENS.card,
-              color: TOKENS.ink,
-              border: `1px solid ${goals.trim() ? TOKENS.muted2 : TOKENS.line}`,
-              borderRadius: RADII.panelTight,
-              fontFamily: PAPER_FONTS_V2.sans,
-              fontSize: 13.5,
-              lineHeight: 1.5,
-              outline: "none",
-              minHeight: 110,
-            }}
-          />
-          {!goals.trim() && (
-            <button
-              onClick={() => setGoals(GOALS_SAMPLE)}
-              style={{
-                marginTop: 8,
-                padding: "6px 10px",
-                background: "transparent",
-                border: `1px solid ${TOKENS.line}`,
-                borderRadius: RADII.buttonTight,
-                color: TOKENS.muted2,
-                fontFamily: PAPER_FONTS_V2.mono,
-                fontSize: 10.5,
-                letterSpacing: ".06em",
-                cursor: "pointer",
-              }}
-            >
-              + try a sample summary
-            </button>
-          )}
-        </OnbCardV3>
-
-        <OnbCardV3
-          num={5}
-          done={interests.length > 0}
-          optional
-          title="What jobs interest you?"
-          sub="Pick the sectors you want roles from. This powers your daily Jobs feed — we scan companies in these spaces and rank openings by fit."
-        >
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {SECTORS.map((s) => {
-              const active = interests.includes(s.id);
-              return (
-                <button
-                  key={s.id}
-                  onClick={() =>
-                    setInterests(active ? interests.filter((x) => x !== s.id) : [...interests, s.id])
-                  }
-                  style={{
-                    padding: "8px 14px",
-                    fontFamily: PAPER_FONTS_V2.mono,
-                    fontSize: 13,
-                    background: active ? TOKENS.ink : "transparent",
-                    color: active ? TOKENS.paper : TOKENS.ink,
-                    border: `1px solid ${active ? TOKENS.ink : TOKENS.line}`,
-                    borderRadius: RADII.pill,
-                    cursor: "pointer",
-                    transition: "background .15s, border-color .15s",
-                  }}
-                >
-                  {s.label}
-                </button>
-              );
-            })}
-          </div>
-        </OnbCardV3>
-
-        <OnbCardV3
-          num={6}
-          done
-          required
-          title="Followup cadence"
-          sub="When someone doesn't reply, when should Jugaadu nudge?"
-        >
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {["3d", "5d", "7d", "10d", "never"].map((v) => {
-              const active = followup === v;
-              return (
-                <button
-                  key={v}
-                  onClick={() => setFollowup(v)}
-                  style={{
-                    padding: "9px 18px",
-                    fontFamily: PAPER_FONTS_V2.mono,
-                    fontSize: 13,
-                    background: active ? TOKENS.ink : "transparent",
-                    color: active ? TOKENS.paper : TOKENS.ink,
-                    border: `1px solid ${active ? TOKENS.ink : TOKENS.line}`,
-                    borderRadius: RADII.pill,
-                    cursor: "pointer",
-                    transition: "background .15s, border-color .15s",
-                  }}
-                >
-                  {v}
-                </button>
-              );
-            })}
-          </div>
-        </OnbCardV3>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 18 }}>
-          <button
-            onClick={handleDone}
-            disabled={submitting || !resume}
-            style={{
-              background: TOKENS.ink,
-              color: TOKENS.paper,
-              border: "none",
-              borderRadius: RADII.button,
-              padding: "12px 22px",
-              fontFamily: PAPER_FONTS_V2.sans,
-              fontSize: 15,
-              fontWeight: 500,
-              cursor: submitting || !resume ? "not-allowed" : "pointer",
-              opacity: submitting || !resume ? 0.45 : 1,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            {submitting ? "Saving…" : "Take me to Jugaadu"}{" "}
-            <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 17 }}>→</span>
-          </button>
-          {submitError && (
-            <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.red }}>
-              {submitError}
-            </span>
-          )}
-          <span
-            style={{
-              fontFamily: PAPER_FONTS_V2.serif,
-              fontStyle: "italic",
-              fontSize: 13.5,
-              color: TOKENS.faint,
-            }}
-          >
-            {resume ? "everything else is optional" : "drop your resume first — or skip setup, top left"}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PreviewChip({ on, label, required }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        fontSize: 13.5,
-        color: on ? TOKENS.ink : TOKENS.muted,
-      }}
-    >
-      <span
-        style={{
-          width: 14,
-          height: 14,
-          background: on ? TOKENS.green : "transparent",
-          border: `1px solid ${on ? TOKENS.green : TOKENS.line}`,
-          borderRadius: 5,
-          display: "grid",
-          placeItems: "center",
-          color: TOKENS.paper,
-          fontSize: 10,
-          flexShrink: 0,
-        }}
-      >
-        {on ? "✓" : ""}
-      </span>
-      <span
-        style={{
-          fontFamily: on ? PAPER_FONTS_V2.sans : PAPER_FONTS_V2.serif,
-          fontStyle: on ? "normal" : "italic",
-        }}
-      >
-        {label}
-      </span>
-      {required && (
-        <span
-          style={{
-            marginLeft: "auto",
-            fontFamily: PAPER_FONTS_V2.mono,
-            fontSize: 9,
-            letterSpacing: ".16em",
-            color: TOKENS.muted2,
-            textTransform: "uppercase",
-          }}
-        >
-          set
-        </span>
-      )}
-    </div>
-  );
-}
-
-function OnbCardV3({ num, done, required, optional, title, sub, children }) {
-  return (
-    <div
-      style={{
-        background: TOKENS.card,
-        border: `1px solid ${done ? TOKENS.line : TOKENS.lineSoft}`,
-        borderRadius: RADII.card,
-        boxShadow: done ? SHADOWS.elevated : SHADOWS.card,
-        padding: "20px 22px",
-        transition: "box-shadow .25s, border-color .25s",
-        animation: `fadeUp .4s ease both`,
-        animationDelay: `${num * 50}ms`,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 6 }}>
-        <span
-          style={{
-            width: 26,
-            height: 26,
-            fontSize: 12,
-            fontWeight: 500,
-            fontFamily: PAPER_FONTS_V2.mono,
-            display: "grid",
-            placeItems: "center",
-            flexShrink: 0,
-            background: done ? TOKENS.ink : "transparent",
-            color: done ? TOKENS.paper : TOKENS.ink,
-            border: `1px solid ${done ? TOKENS.ink : TOKENS.line}`,
-            borderRadius: RADII.pill,
-          }}
-        >
-          {done ? "✓" : num}
-        </span>
-        <h3
-          style={{
-            fontFamily: PAPER_FONTS_V2.serif,
-            fontWeight: 400,
-            fontSize: 22,
-            letterSpacing: "-.01em",
-            margin: 0,
-            flex: 1,
-            color: TOKENS.ink,
-            lineHeight: 1.1,
-          }}
-        >
-          {title}
-        </h3>
-        <span
-          style={{
-            fontFamily: PAPER_FONTS_V2.mono,
-            fontSize: 10,
-            letterSpacing: ".18em",
-            color: required ? TOKENS.muted2 : TOKENS.faint,
-            textTransform: "uppercase",
-          }}
-        >
-          {required ? "required" : "optional"}
-        </span>
-      </div>
-      {sub && (
-        <p
-          style={{
-            margin: "4px 0 14px",
-            marginLeft: 38,
-            fontFamily: PAPER_FONTS_V2.serif,
-            fontStyle: "italic",
-            fontSize: 14,
-            lineHeight: 1.5,
-            color: TOKENS.muted,
-          }}
-        >
-          {sub}
-        </p>
-      )}
-      <div style={{ marginLeft: 38 }}>{children}</div>
-    </div>
-  );
-}
-
-function ResumeDropV3({ resume, setResume }) {
-  const [hover, setHover] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState(null);
-  async function handleFile(file) {
+  async function handleUpload(file) {
     if (!file) return;
     setUploading(true);
     setUploadError(null);
@@ -714,275 +38,324 @@ function ResumeDropV3({ resume, setResume }) {
       const res = await fetch("/api/profile/resume", { method: "POST", body: fd });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || `upload failed: ${res.status}`);
-      const kb = Math.max(1, Math.round(file.size / 1024));
-      setResume({ name: j.filename || file.name, size: `${kb} KB`, characters: j.characters });
+      setResume({ name: j.filename || file.name, seeded: j.seeded || 0 });
     } catch (e) {
       setUploadError(String(e?.message || e));
     } finally {
       setUploading(false);
     }
   }
-  if (resume) {
-    return (
+
+  // Finish onboarding. The resume (if any) was already saved by its own upload
+  // endpoint; here we persist the goal and flip the onboarded flag. Skipping the
+  // resume leaves the Story thin — exactly the prototype's thin-Story path.
+  async function finish() {
+    if (submitting) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const res = await fetch("/api/profile", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(
+          onboardingDonePatch({ linkedin: "", samples: [], goals: goal, followup: "5d" }),
+        ),
+      });
+      if (!res.ok) throw new Error(`profile save failed: ${res.status}`);
+      // Soft signal the middleware reads to skip the landing for returning users.
+      document.cookie = "crew_onboarded=1; path=/; max-age=31536000; samesite=lax";
+      onDone();
+    } catch (e) {
+      setSubmitError(String(e?.message || e));
+      setSubmitting(false);
+    }
+  }
+
+  function next() {
+    if (step < 3) setStep(step + 1);
+    else finish();
+  }
+
+  const dot = (n) => (n <= step ? TOKENS.ink : TOKENS.line);
+  const nextLabel = step === 3 ? "Open the Desk →" : "Next →";
+
+  return (
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 24px" }}>
       <div
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 14,
-          padding: "12px 14px",
-          background: TOKENS.cardWarm,
-          border: `1px solid ${TOKENS.green}`,
-          borderRadius: RADII.panelTight,
+          width: 600,
+          maxWidth: "100%",
+          background: TOKENS.card,
+          border: `1px solid ${TOKENS.lineSoft}`,
+          borderRadius: RADII.modal,
+          boxShadow: SHADOWS.elevated,
+          padding: "44px 52px 40px",
+          animation: "fadeUp .4s ease",
         }}
       >
+        {/* header */}
         <div
           style={{
-            width: 36,
-            height: 44,
-            background: TOKENS.card,
-            color: TOKENS.amber,
-            border: `1px solid ${TOKENS.amberLine}`,
-            borderRadius: 6,
-            display: "grid",
-            placeItems: "center",
-            fontFamily: PAPER_FONTS_V2.mono,
-            fontSize: 10,
-            fontWeight: 500,
-            letterSpacing: ".04em",
-          }}
-        >
-          PDF
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 14, color: TOKENS.ink }}>
-            <span style={{ color: TOKENS.green, marginRight: 4 }}>✓</span>
-            {resume.name}
-          </div>
-          <div
-            style={{
-              fontFamily: PAPER_FONTS_V2.mono,
-              fontSize: 11,
-              color: TOKENS.muted,
-              marginTop: 2,
-              letterSpacing: ".04em",
-            }}
-          >
-            {resume.size}
-            {resume.characters ? ` · ${resume.characters.toLocaleString()} chars` : ""} · parsed
-          </div>
-        </div>
-        <button
-          onClick={() => setResume(null)}
-          style={{
-            padding: "6px 10px",
-            background: "transparent",
-            color: TOKENS.muted2,
-            border: `1px solid ${TOKENS.line}`,
-            borderRadius: RADII.buttonTight,
-            fontFamily: PAPER_FONTS_V2.mono,
-            fontSize: 11,
-            cursor: "pointer",
-          }}
-        >
-          remove
-        </button>
-      </div>
-    );
-  }
-  return (
-    <label
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 14,
-        padding: "18px 18px",
-        background: hover ? TOKENS.cardWarm : "transparent",
-        border: `1px dashed ${hover ? TOKENS.dashed2 : TOKENS.dashed}`,
-        borderRadius: RADII.panelTight,
-        cursor: "pointer",
-        transition: "border-color .2s, background .2s",
-      }}
-    >
-      <input
-        type="file"
-        accept=".pdf,.docx,.txt"
-        style={{ display: "none" }}
-        onChange={(e) => handleFile(e.target.files?.[0])}
-      />
-      <span
-        style={{
-          width: 32,
-          height: 32,
-          background: hover ? TOKENS.ink : "transparent",
-          color: hover ? TOKENS.paper : TOKENS.ink,
-          display: "grid",
-          placeItems: "center",
-          fontSize: 16,
-          border: `1px solid ${hover ? TOKENS.ink : TOKENS.line}`,
-          borderRadius: RADII.pill,
-          transition: "all .2s",
-        }}
-      >
-        {uploading ? "…" : "↑"}
-      </span>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 14, color: TOKENS.ink }}>
-          {uploading ? "Parsing…" : "Click to upload your resume"}
-        </div>
-        <div
-          style={{
-            fontFamily: PAPER_FONTS_V2.mono,
-            fontSize: 11,
-            color: uploadError ? TOKENS.red : TOKENS.muted,
-            marginTop: 2,
-            letterSpacing: ".04em",
-          }}
-        >
-          {uploadError || "PDF, DOCX, TXT · max 5MB · skip if you’d rather not"}
-        </div>
-      </div>
-    </label>
-  );
-}
-
-function SampleEditorV3({ samples, setSamples }) {
-  const [draft, setDraft] = useState("");
-  const presets = [
-    "Hey — saw your launch. The bit about agent UX hit. Worth a chat?",
-    "Quick one. Retail investors can now access private markets through their 401k, and asset managers are being defensive in their investments — collateral monitoring is becoming critical for risk management.",
-  ];
-  function add(text) {
-    if (!text.trim() || samples.length >= 3) return;
-    setSamples([...samples, text.trim()]);
-    setDraft("");
-  }
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {samples.map((s, i) => (
-        <div
-          key={i}
-          style={{
-            padding: "12px 14px",
-            background: TOKENS.cardWarm,
-            border: `1px solid ${TOKENS.green}`,
-            borderRadius: RADII.panelTight,
             display: "flex",
-            gap: 10,
-            alignItems: "flex-start",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            marginBottom: 26,
           }}
         >
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span style={{ fontFamily: PAPER_FONTS_V2.serif, fontWeight: 500, fontSize: 18, lineHeight: 1 }}>
+              Jugaadu
+            </span>
+            <span style={{ fontFamily: PAPER_FONTS_V2.devan, fontSize: 10, lineHeight: 1, color: TOKENS.faint2Alt }}>
+              जुगाडू
+            </span>
+          </div>
           <span
             style={{
               fontFamily: PAPER_FONTS_V2.mono,
-              fontSize: 10,
-              color: TOKENS.green,
-              letterSpacing: ".1em",
-              flexShrink: 0,
-              marginTop: 2,
+              fontSize: 10.5,
+              fontWeight: 500,
+              color: TOKENS.faint,
             }}
           >
-            #{String(i + 1).padStart(2, "0")}
+            STEP {step} OF 3
           </span>
-          <span
-            style={{
-              flex: 1,
-              fontFamily: PAPER_FONTS_V2.serif,
-              fontStyle: "italic",
-              fontSize: 14,
-              lineHeight: 1.5,
-              color: TOKENS.ink,
-            }}
-          >
-            &quot;{s}&quot;
-          </span>
-          <button
-            onClick={() => setSamples(samples.filter((_, j) => j !== i))}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: TOKENS.muted,
-              fontSize: 16,
-              cursor: "pointer",
-              padding: 0,
-              lineHeight: 1,
-            }}
-          >
-            ×
-          </button>
         </div>
-      ))}
-      {samples.length < 3 && (
-        <>
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Paste a real email, DM, or post you've sent."
-            rows={3}
-            style={{
-              width: "100%",
-              resize: "none",
-              padding: "11px 14px",
-              background: TOKENS.card,
-              color: TOKENS.ink,
-              border: `1px solid ${TOKENS.line}`,
-              borderRadius: RADII.panelTight,
-              fontFamily: PAPER_FONTS_V2.sans,
-              fontSize: 13.5,
-              lineHeight: 1.5,
-              outline: "none",
-            }}
-          />
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: 8,
-            }}
-          >
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {presets.map((s, i) => (
-                <button
-                  key={i}
-                  onClick={() => add(s)}
+
+        {/* ── Step 1 — intro ── */}
+        {step === 1 && (
+          <div>
+            <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 30, lineHeight: 1.25, letterSpacing: "-.01em" }}>
+              You bring the ambition. The crew does the boring half.
+            </div>
+            <div
+              style={{
+                fontFamily: PAPER_FONTS_V2.sans,
+                fontSize: 14,
+                lineHeight: 1.7,
+                color: TOKENS.muted2,
+                margin: "16px 0 24px",
+              }}
+            >
+              Four agents work behind one box: they weave your resume from your real work, find the
+              people who decide, verify their emails, and draft outreach in your voice. You review
+              everything before it goes out.
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 30 }}>
+              {AGENT_CHIPS.map((c) => (
+                <span
+                  key={c}
                   style={{
-                    padding: "5px 10px",
-                    background: "transparent",
-                    border: `1px solid ${TOKENS.line}`,
-                    borderRadius: RADII.buttonTight,
-                    color: TOKENS.muted2,
                     fontFamily: PAPER_FONTS_V2.mono,
-                    fontSize: 10.5,
-                    letterSpacing: ".04em",
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: TOKENS.muted2,
+                    background: TOKENS.chip,
+                    borderRadius: RADII.pill,
+                    padding: "8px 13px",
+                  }}
+                >
+                  {c}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 2 — resume → Story ── */}
+        {step === 2 && (
+          <div>
+            <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 30, lineHeight: 1.25, letterSpacing: "-.01em" }}>
+              Give the crew your story.
+            </div>
+            <div
+              style={{
+                fontFamily: PAPER_FONTS_V2.sans,
+                fontSize: 14,
+                lineHeight: 1.7,
+                color: TOKENS.muted2,
+                margin: "16px 0 24px",
+              }}
+            >
+              Drop in your current resume — it becomes the first entries in your{" "}
+              <em>Story</em>, the living record of your work. Everything you add later makes every
+              future resume sharper.
+            </div>
+            <label
+              style={{
+                display: "block",
+                border: `1.5px dashed ${resume ? TOKENS.green : TOKENS.dashed2}`,
+                borderRadius: RADII.panel,
+                padding: "32px 24px",
+                textAlign: "center",
+                background: resume ? TOKENS.cardWarm : "transparent",
+                marginBottom: 30,
+                cursor: uploading ? "wait" : "pointer",
+                transition: "border-color .2s, background .2s",
+              }}
+            >
+              <input
+                type="file"
+                accept=".pdf,.docx,.txt"
+                style={{ display: "none" }}
+                disabled={uploading}
+                onChange={(e) => handleUpload(e.target.files?.[0])}
+              />
+              <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 16, lineHeight: 1.4, color: resume ? TOKENS.green : TOKENS.muted2 }}>
+                {uploading
+                  ? "Reading your resume…"
+                  : resume
+                    ? `✓ ${resume.name}`
+                    : "Drop your resume, or click to browse"}
+              </div>
+              <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, lineHeight: 1.6, color: TOKENS.faint, marginTop: 6 }}>
+                {uploadError
+                  ? uploadError
+                  : resume
+                    ? resume.seeded
+                      ? `${resume.seeded} ${resume.seeded === 1 ? "entry" : "entries"} extracted into your Story…`
+                      : "saved to your Story…"
+                    : "PDF, DOCX, or TXT · or skip for now"}
+              </div>
+            </label>
+          </div>
+        )}
+
+        {/* ── Step 3 — goal ── */}
+        {step === 3 && (
+          <div>
+            <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 30, lineHeight: 1.25, letterSpacing: "-.01em" }}>
+              What are you after right now?
+            </div>
+            <div
+              style={{
+                fontFamily: PAPER_FONTS_V2.sans,
+                fontSize: 14,
+                lineHeight: 1.7,
+                color: TOKENS.muted2,
+                margin: "16px 0 24px",
+              }}
+            >
+              One line is enough. The crew uses it to rank roles and people for you.
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 30 }}>
+              {GOAL_PRESETS.map((g) => {
+                const active = !customMode && goal === g;
+                return (
+                  <div
+                    key={g}
+                    onClick={() => {
+                      setCustomMode(false);
+                      setGoal(g);
+                    }}
+                    style={{
+                      border: `1px solid ${active ? TOKENS.ink : TOKENS.line}`,
+                      borderRadius: RADII.panelTight,
+                      padding: "14px 18px",
+                      background: TOKENS.card,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 15, lineHeight: 1.4, color: TOKENS.ink }}>
+                      {g}
+                    </span>
+                    <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, color: TOKENS.ink }}>
+                      {active ? "✓" : ""}
+                    </span>
+                  </div>
+                );
+              })}
+              {/* write your own */}
+              {!customMode ? (
+                <div
+                  onClick={() => {
+                    setCustomMode(true);
+                    setGoal("");
+                  }}
+                  style={{
+                    border: `1px solid ${TOKENS.line}`,
+                    borderRadius: RADII.panelTight,
+                    padding: "14px 18px",
+                    background: TOKENS.card,
                     cursor: "pointer",
                   }}
                 >
-                  + sample {i + 1}
-                </button>
-              ))}
+                  <span style={{ fontFamily: PAPER_FONTS_V2.serif, fontStyle: "italic", fontSize: 15, color: TOKENS.muted }}>
+                    or write your own…
+                  </span>
+                </div>
+              ) : (
+                <input
+                  autoFocus
+                  value={goal}
+                  onChange={(e) => setGoal(e.target.value)}
+                  placeholder="e.g. Break into climate tech as a staff engineer."
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    border: `1px solid ${goal.trim() ? TOKENS.ink : TOKENS.line}`,
+                    borderRadius: RADII.panelTight,
+                    padding: "14px 18px",
+                    background: TOKENS.card,
+                    color: TOKENS.ink,
+                    fontFamily: PAPER_FONTS_V2.serif,
+                    fontSize: 15,
+                    outline: "none",
+                  }}
+                />
+              )}
             </div>
-            <button
-              onClick={() => add(draft)}
-              disabled={!draft.trim()}
+          </div>
+        )}
+
+        {/* footer */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            {[1, 2, 3].map((n) => (
+              <span key={n} style={{ width: 18, height: 4, borderRadius: 2, background: dot(n) }} />
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+            {submitError && (
+              <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.red }}>
+                {submitError}
+              </span>
+            )}
+            {step === 2 && (
+              <span
+                onClick={next}
+                style={{
+                  fontFamily: PAPER_FONTS_V2.sans,
+                  fontSize: 13,
+                  color: TOKENS.faint2,
+                  cursor: "pointer",
+                }}
+              >
+                Skip for now
+              </span>
+            )}
+            <span
+              onClick={submitting ? undefined : next}
               style={{
-                padding: "7px 14px",
-                background: draft.trim() ? TOKENS.ink : "transparent",
-                color: draft.trim() ? TOKENS.paper : TOKENS.muted,
-                border: `1px solid ${draft.trim() ? TOKENS.ink : TOKENS.line}`,
-                borderRadius: RADII.buttonTight,
-                fontFamily: PAPER_FONTS_V2.mono,
-                fontSize: 12,
-                cursor: draft.trim() ? "pointer" : "not-allowed",
+                fontFamily: PAPER_FONTS_V2.sans,
+                fontSize: 13,
+                fontWeight: 500,
+                color: TOKENS.paper,
+                background: TOKENS.ink,
+                borderRadius: RADII.button,
+                padding: "12px 20px",
+                cursor: submitting ? "wait" : "pointer",
+                opacity: submitting ? 0.6 : 1,
               }}
             >
-              add ⌘↵
-            </button>
+              {submitting ? "Saving…" : nextLabel}
+            </span>
           </div>
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 }
