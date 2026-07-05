@@ -3,11 +3,18 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
-import { TOKENS, RADII, SHADOWS } from "@/components/paper/tokens";
-import { InkButton2 } from "@/components/paper/primitives2";
+import { TOKENS, RADII } from "@/components/paper/tokens";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { startRun } from "@/lib/runs-store";
-import { relativePosted, visaLabelFull, sizeLabel, scoreTier } from "@/lib/jobs/format";
+import {
+  postedAgo,
+  compDisplay,
+  fitColors,
+  visaChipLabel,
+  visaChipColors,
+  whyBullets,
+  sourceHost,
+} from "@/lib/jobs/format";
 import type { JobDetail } from "@/lib/jobs/types";
 
 export default function JobDetailPage() {
@@ -19,6 +26,9 @@ export default function JobDetailPage() {
   const [job, setJob] = useState<JobDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [backHover, setBackHover] = useState(false);
+  const [dismissHover, setDismissHover] = useState(false);
+  const [applyHover, setApplyHover] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -67,31 +77,44 @@ export default function JobDetailPage() {
     }
   }
 
-  const tierColor = (s: number) =>
-    scoreTier(s) === "high" ? TOKENS.green : scoreTier(s) === "mid" ? TOKENS.gold : TOKENS.red;
-
   return (
     <div
       className="scroll"
-      style={{ flex: 1, overflow: "auto", padding: isMobile ? "24px 16px 64px" : "48px 56px 80px", background: TOKENS.paper }}
+      style={{
+        flex: 1,
+        overflow: "auto",
+        maxWidth: 920,
+        width: "100%",
+        margin: "0 auto",
+        boxSizing: "border-box",
+        padding: isMobile ? "28px 18px 60px" : "44px 44px 60px",
+        background: TOKENS.paper,
+      }}
     >
-      <button
+      <span
+        role="button"
+        tabIndex={0}
         onClick={() => router.push("/app/jobs")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            router.push("/app/jobs");
+          }
+        }}
+        onMouseEnter={() => setBackHover(true)}
+        onMouseLeave={() => setBackHover(false)}
         style={{
-          background: "transparent",
-          border: "none",
-          color: TOKENS.muted,
-          fontFamily: PAPER_FONTS_V2.mono,
-          fontSize: 11,
-          letterSpacing: ".1em",
-          textTransform: "uppercase",
+          display: "inline-block",
+          fontFamily: "system-ui, sans-serif",
+          fontSize: 13,
+          lineHeight: 1,
+          color: backHover ? TOKENS.ink : TOKENS.muted,
           cursor: "pointer",
-          padding: 0,
-          marginBottom: 18,
+          marginBottom: 22,
         }}
       >
-        ← all jobs
-      </button>
+        ← All jobs
+      </span>
 
       {error ? (
         <div
@@ -99,171 +122,307 @@ export default function JobDetailPage() {
             background: TOKENS.card,
             border: `1px solid ${TOKENS.lineSoft}`,
             borderRadius: RADII.card,
-            boxShadow: SHADOWS.card,
             padding: "20px 22px",
           }}
         >
-          <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 20, color: TOKENS.ink }}>Couldn&apos;t load this job</div>
+          <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 20, color: TOKENS.ink }}>
+            Couldn&apos;t load this job
+          </div>
           <p style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 12, color: TOKENS.red, marginTop: 6 }}>{error}</p>
         </div>
       ) : !job ? (
         <p style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 13, color: TOKENS.muted }}>Loading…</p>
       ) : (
-        <>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
-              gap: 24,
-              flexWrap: "wrap",
-              marginBottom: 24,
-            }}
-          >
-            <div style={{ minWidth: 0, flex: 1 }}>
+        (() => {
+          const posted = postedAgo(job.posted_date, job.posted_date_approx);
+          const comp = compDisplay(job.compensation);
+          const fit = fitColors(job.score);
+          const visaColors = visaChipColors(job.visa_confidence);
+          const bullets = whyBullets(job.reasons);
+          return (
+            <>
+              {/* Header */}
+              <div style={{ display: "flex", gap: 20, alignItems: "flex-start", marginBottom: 6 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                    <span
+                      style={{
+                        fontFamily: PAPER_FONTS_V2.mono,
+                        fontWeight: 500,
+                        fontSize: 11,
+                        lineHeight: 1,
+                        letterSpacing: ".1em",
+                        color: TOKENS.muted,
+                      }}
+                    >
+                      {job.company}
+                    </span>
+                    {posted && (
+                      <span
+                        style={{ fontFamily: "system-ui, sans-serif", fontSize: 11, lineHeight: 1, color: TOKENS.faint }}
+                      >
+                        posted {posted}
+                      </span>
+                    )}
+                    <span
+                      style={{
+                        fontFamily: PAPER_FONTS_V2.mono,
+                        fontWeight: 500,
+                        fontSize: 10,
+                        lineHeight: 1,
+                        color: visaColors.color,
+                        background: visaColors.bg,
+                        borderRadius: 4,
+                        padding: "5px 8px",
+                      }}
+                    >
+                      {visaChipLabel(job.visa_confidence)}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: PAPER_FONTS_V2.serif,
+                      fontWeight: 400,
+                      fontSize: 28,
+                      lineHeight: 1.25,
+                      letterSpacing: "-.01em",
+                      color: TOKENS.ink,
+                    }}
+                  >
+                    {job.title}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "system-ui, sans-serif",
+                      fontSize: 13,
+                      lineHeight: 1.6,
+                      color: TOKENS.muted,
+                      marginTop: 8,
+                    }}
+                  >
+                    {job.location ? `${job.location} · ` : ""}
+                    <span style={{ color: comp.listed ? TOKENS.green : TOKENS.faint }}>{comp.label}</span>
+                    {" · "}
+                    <a
+                      href={job.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: TOKENS.amber, textDecoration: "none", cursor: "pointer" }}
+                    >
+                      {sourceHost(job.url)} ↗
+                    </a>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    border: `1px solid ${fit.border}`,
+                    color: fit.color,
+                    borderRadius: RADII.button,
+                    padding: "10px 13px",
+                    textAlign: "center",
+                    flex: "none",
+                  }}
+                >
+                  <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontWeight: 500, fontSize: 19, lineHeight: 1 }}>
+                    {job.score}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: PAPER_FONTS_V2.mono,
+                      fontWeight: 500,
+                      fontSize: 8.5,
+                      lineHeight: 1,
+                      letterSpacing: ".1em",
+                      marginTop: 4,
+                    }}
+                  >
+                    FIT
+                  </div>
+                </div>
+              </div>
+
+              {/* Two-column: role summary + why it matters */}
               <div
                 style={{
-                  fontFamily: PAPER_FONTS_V2.mono,
-                  fontSize: 10.5,
-                  color: TOKENS.muted,
-                  letterSpacing: ".1em",
-                  textTransform: "uppercase",
-                  marginBottom: 8,
+                  display: "grid",
+                  gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                  gap: 14,
+                  marginTop: 22,
+                  alignItems: "start",
                 }}
               >
-                {job.company}
-              </div>
-              <h1
-                style={{
-                  margin: 0,
-                  fontFamily: PAPER_FONTS_V2.serif,
-                  fontWeight: 400,
-                  fontSize: "clamp(40px, 4.8vw, 64px)",
-                  lineHeight: 0.95,
-                  letterSpacing: "-.02em",
-                  color: TOKENS.ink,
-                  textWrap: "balance",
-                }}
-              >
-                {job.title}
-              </h1>
-              {job.reasons && (
-                <p
+                <div
                   style={{
-                    margin: "14px 0 0",
-                    fontFamily: PAPER_FONTS_V2.serif,
-                    fontStyle: "italic",
-                    fontSize: 18,
-                    lineHeight: 1.45,
-                    color: TOKENS.inkSoft,
-                    maxWidth: 720,
-                  }}
-                >
-                  {job.reasons}
-                </p>
-              )}
-            </div>
-            <div style={{ flexShrink: 0 }}>
-              <span
-                style={{
-                  display: "inline-block",
-                  fontFamily: PAPER_FONTS_V2.mono,
-                  fontWeight: 600,
-                  fontSize: 14,
-                  letterSpacing: ".04em",
-                  textTransform: "uppercase",
-                  color: tierColor(job.score),
-                  border: `1px solid ${tierColor(job.score)}`,
-                  borderRadius: RADII.buttonTight,
-                  padding: "7px 12px",
-                  background: TOKENS.card,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {`${job.score} fit`}
-              </span>
-            </div>
-          </div>
-
-          {/* Meta strip */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>
-            {[
-              relativePosted(job.posted_date, job.posted_date_approx),
-              job.location,
-              job.remote_type !== "unknown" ? job.remote_type : null,
-              job.compensation,
-              sizeLabel(job.company_size),
-              visaLabelFull(job.visa_confidence),
-            ]
-              .filter(Boolean)
-              .map((chip, i) => (
-                <span
-                  key={i}
-                  style={{
-                    fontFamily: PAPER_FONTS_V2.mono,
-                    fontSize: 11,
-                    color: TOKENS.inkSoft,
-                    border: `1px solid ${TOKENS.line}`,
-                    borderRadius: RADII.pill,
-                    padding: "4px 12px",
                     background: TOKENS.card,
+                    border: `1px solid ${TOKENS.lineSoft}`,
+                    borderRadius: RADII.card,
+                    padding: "20px 22px",
                   }}
                 >
-                  {chip}
+                  <div
+                    style={{
+                      fontFamily: PAPER_FONTS_V2.mono,
+                      fontWeight: 500,
+                      fontSize: 10,
+                      lineHeight: 1,
+                      letterSpacing: ".08em",
+                      color: TOKENS.faint,
+                      marginBottom: 12,
+                    }}
+                  >
+                    WHAT THE ROLE IS
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "system-ui, sans-serif",
+                      fontSize: 13.5,
+                      lineHeight: 1.7,
+                      color: TOKENS.inkSoft,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {job.description ||
+                      "No description available from the source board. Open the original posting for the full details."}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    background: TOKENS.cardWarm,
+                    border: `1px solid ${TOKENS.amberLine}`,
+                    borderRadius: RADII.card,
+                    padding: "20px 22px",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontFamily: PAPER_FONTS_V2.mono,
+                      fontWeight: 500,
+                      fontSize: 10,
+                      lineHeight: 1,
+                      letterSpacing: ".08em",
+                      color: TOKENS.amber,
+                      marginBottom: 12,
+                    }}
+                  >
+                    WHY IT MATTERS TO YOU
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                      fontFamily: "system-ui, sans-serif",
+                      fontSize: 13,
+                      lineHeight: 1.6,
+                      color: TOKENS.inkSoft,
+                    }}
+                  >
+                    {bullets.length > 0 ? (
+                      bullets.map((w, i) => (
+                        <div key={i} style={{ display: "flex", gap: 9 }}>
+                          <span style={{ color: TOKENS.amber, flex: "none" }}>→</span>
+                          <span>{w}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ display: "flex", gap: 9 }}>
+                        <span style={{ color: TOKENS.amber, flex: "none" }}>→</span>
+                        <span>Ranked into your feed by fit against your Story and stated interests.</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer CTA */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 14,
+                  marginTop: 20,
+                  flexWrap: "wrap",
+                  background: TOKENS.card,
+                  border: `1px solid ${TOKENS.lineSoft}`,
+                  borderRadius: RADII.card,
+                  padding: "18px 22px",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "system-ui, sans-serif",
+                    fontSize: 13,
+                    lineHeight: 1.6,
+                    color: TOKENS.muted,
+                    maxWidth: 440,
+                  }}
+                >
+                  Interested? The crew runs the full apply: resume woven from your Story, likely hiring manager found,
+                  outreach drafted for every channel.
                 </span>
-              ))}
-          </div>
-
-          {/* Actions */}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
-            <InkButton2 kind="solid" disabled={busy} onClick={runOutreach} style={{ padding: "12px 20px", fontSize: 15 }}>
-              {busy ? "Starting…" : "Run outreach"} <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 16 }}>→</span>
-            </InkButton2>
-            <InkButton2 kind="outline" disabled={busy} onClick={dismiss} style={{ padding: "12px 20px", fontSize: 15 }}>
-              Dismiss
-            </InkButton2>
-            <a href={job.url} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
-              <InkButton2 kind="ghost" style={{ padding: "12px 20px", fontSize: 15 }}>
-                View original ↗
-              </InkButton2>
-            </a>
-          </div>
-
-          {/* JD */}
-          <div
-            style={{
-              background: TOKENS.card,
-              border: `1px solid ${TOKENS.lineSoft}`,
-              borderRadius: RADII.card,
-              boxShadow: SHADOWS.card,
-              padding: "20px 22px",
-            }}
-          >
-            <div
-              style={{
-                fontFamily: PAPER_FONTS_V2.mono,
-                fontSize: 10,
-                color: TOKENS.muted,
-                letterSpacing: ".1em",
-                textTransform: "uppercase",
-                marginBottom: 12,
-              }}
-            >
-              The role
-            </div>
-            <div
-              style={{
-                fontFamily: PAPER_FONTS_V2.serif,
-                fontSize: 15,
-                lineHeight: 1.6,
-                color: TOKENS.ink,
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {job.description || "No description available from the source board. Open the original posting for details."}
-            </div>
-          </div>
-        </>
+                <div style={{ display: "flex", gap: 10, flex: "none" }}>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-disabled={busy}
+                    onClick={dismiss}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        dismiss();
+                      }
+                    }}
+                    onMouseEnter={() => setDismissHover(true)}
+                    onMouseLeave={() => setDismissHover(false)}
+                    style={{
+                      fontFamily: "system-ui, sans-serif",
+                      fontWeight: 500,
+                      fontSize: 13,
+                      lineHeight: 1,
+                      color: dismissHover ? TOKENS.red : TOKENS.muted2,
+                      border: `1px solid ${dismissHover ? "#d9b8ae" : TOKENS.line}`,
+                      borderRadius: RADII.button,
+                      padding: "12px 16px",
+                      cursor: busy ? "default" : "pointer",
+                      opacity: busy ? 0.6 : 1,
+                    }}
+                  >
+                    Not for me
+                  </span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-disabled={busy}
+                    onClick={runOutreach}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        runOutreach();
+                      }
+                    }}
+                    onMouseEnter={() => setApplyHover(true)}
+                    onMouseLeave={() => setApplyHover(false)}
+                    style={{
+                      fontFamily: "system-ui, sans-serif",
+                      fontWeight: 500,
+                      fontSize: 13,
+                      lineHeight: 1,
+                      color: TOKENS.paper,
+                      background: applyHover ? TOKENS.inkSoft : TOKENS.ink,
+                      borderRadius: RADII.button,
+                      padding: "13px 20px",
+                      cursor: busy ? "default" : "pointer",
+                      opacity: busy ? 0.6 : 1,
+                    }}
+                  >
+                    {busy ? "Starting…" : "Interested — run the crew →"}
+                  </span>
+                </div>
+              </div>
+            </>
+          );
+        })()
       )}
     </div>
   );
