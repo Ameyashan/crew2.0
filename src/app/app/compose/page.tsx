@@ -36,6 +36,8 @@ import {
   validateScreenshot,
   imageFromClipboard,
   deriveStoryIsEmpty,
+  isStoryLog,
+  storyLogText,
   storyNudgeKey,
   isFirstTime,
   deskHeadline,
@@ -133,6 +135,9 @@ function ComposeV3({ p, go }) {
   const [composeRuns, setComposeRuns] = useState([]);
   const [resumeRuns, setResumeRuns] = useState([]);
   const [nudgeKey, setNudgeKey] = useState(null);
+  // Story entry count → thin-Story derivation (with resume_text fallback).
+  // null while loading so the nudge doesn't flash before we know.
+  const [storyCount, setStoryCount] = useState(null);
   // Start hidden so the amber pill never flashes before we know the account +
   // its saved dismissal.
   const [nudgeDismissed, setNudgeDismissed] = useState(true);
@@ -160,6 +165,9 @@ function ComposeV3({ p, go }) {
       if (fromProfile) setName(fromProfile);
     }).catch(() => {});
     loadHistory();
+    fetch('/api/story').then((r) => r.json()).then((j) => {
+      if (alive) setStoryCount(Array.isArray(j?.entries) ? j.entries.length : 0);
+    }).catch(() => { if (alive) setStoryCount(0); });
     // Resolve the account so the nudge dismissal is per-user, then read its saved
     // flag. Key by email — dismissal persists across reloads, not across accounts.
     supabaseBrowser().auth.getUser().then(({ data }) => {
@@ -188,7 +196,7 @@ function ComposeV3({ p, go }) {
   const doneCount = runs.filter((r) => r.stage === 'done').length;
   useEffect(() => { loadHistory(); }, [doneCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const storyIsEmpty = deriveStoryIsEmpty(profile);
+  const storyIsEmpty = deriveStoryIsEmpty(profile, storyCount);
   const liveNonResume = runs.filter((run) => run.kind !== 'resume');
   const firstTime = isFirstTime(composeRuns.length, resumeRuns.length) && liveNonResume.length === 0;
   const earlier = deskEarlierRuns(composeRuns, resumeRuns, 4);
@@ -258,6 +266,23 @@ function ComposeV3({ p, go }) {
     const file = screenshot?.file;
     // Either a typed link/name/description OR an attached screenshot is enough.
     if (!hasText && !file) return;
+
+    // "Log: …" is a Story entry, not a crew run — hand it to the Story quick-add
+    // (create + kick the polish pass) and take the user to their Story.
+    if (hasText && !file && isStoryLog(input)) {
+      const note = storyLogText(input);
+      if (note) {
+        fetch('/api/story', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ raw: note }),
+        }).then((r) => r.json()).then((j) => {
+          if (j?.entry?.id) fetch(`/api/story/${j.entry.id}/polish`, { method: 'POST' }).catch(() => {});
+        }).catch(() => {});
+        setInput(''); setHaveEmail(false); setScreenshot(null);
+        go('resume');
+      }
+      return;
+    }
 
     if (file) {
       // Screenshot-first: the vision pass decides job vs person and extracts a

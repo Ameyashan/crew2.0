@@ -7,6 +7,8 @@ import {
   validateScreenshot,
   imageFromClipboard,
   deriveStoryIsEmpty,
+  isStoryLog,
+  storyLogText,
   storyNudgeKey,
   STORY_NUDGE_PREFIX,
   isFirstTime,
@@ -98,6 +100,35 @@ test("deriveStoryIsEmpty: empty when no profile or no resume text", () => {
   assert.equal(deriveStoryIsEmpty({ resume_text: "   " }), true);
   assert.equal(deriveStoryIsEmpty({ resume_text: null }), true);
   assert.equal(deriveStoryIsEmpty({ resume_text: "Senior PM at Ramp…" }), false);
+});
+
+test("deriveStoryIsEmpty: Story entry count drives it, resume_text is the fallback", () => {
+  // Any entries → not empty, regardless of resume text.
+  assert.equal(deriveStoryIsEmpty(null, 3), false);
+  assert.equal(deriveStoryIsEmpty({ resume_text: "" }, 1), false);
+  // Zero/undefined/null count → fall back to the resume-text signal (unchanged
+  // behaviour so existing accounts don't suddenly flip thin).
+  assert.equal(deriveStoryIsEmpty({ resume_text: "Senior PM…" }, 0), false);
+  assert.equal(deriveStoryIsEmpty({ resume_text: "" }, 0), true);
+  assert.equal(deriveStoryIsEmpty({ resume_text: "Senior PM…" }, null), false);
+  assert.equal(deriveStoryIsEmpty({ resume_text: "" }, undefined), true);
+});
+
+test("isStoryLog matches the 'Log:' prefix; storyLogText strips it", () => {
+  assert.equal(isStoryLog("Log: shipped the billing migration"), true);
+  assert.equal(isStoryLog("log:shipped it"), true); // case + no space
+  assert.equal(isStoryLog("  Log : did a thing "), true); // padding
+  assert.equal(isStoryLog("Apply to this job: log stuff"), false);
+  assert.equal(isStoryLog("blogging about it"), false);
+  assert.equal(isStoryLog(""), false);
+  assert.equal(isStoryLog(null), false);
+
+  assert.equal(storyLogText("Log: shipped the billing migration"), "shipped the billing migration");
+  assert.equal(storyLogText("log:shipped it"), "shipped it");
+  assert.equal(storyLogText("Log:   "), "");
+  // The first-time "Log" card pre-fills exactly this:
+  const card = FIRST_TIME_CARDS.find((c) => c.id === "log");
+  assert.ok(card && isStoryLog(card.fill));
 });
 
 test("storyNudgeKey is per-account and case/space-insensitive", () => {

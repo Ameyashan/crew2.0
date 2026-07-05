@@ -930,6 +930,86 @@ export async function sourceHiringManagers(
   };
 }
 
+// ---------- POLISH STORY ENTRY ----------
+// The résumé agent's Story pass: turn ONE raw, first-person note the user logged
+// ("shipped the billing migration, cut p95 by 40%") into a single resume-ready
+// bullet the user can approve, plus a couple of theme tags for the "By theme"
+// view. Same client/logging pattern as the other agent calls; no web search.
+
+export interface StoryPolishResult {
+  bullet: string;
+  tags: string[];
+  model: string;
+}
+
+const STORY_POLISH_SYSTEM = `You are the résumé agent. You rewrite ONE raw, first-person note about something the user did into a single crisp, resume-ready bullet — the kind that survives an ATS screen and reads well to a human.
+
+Rules for the bullet:
+- One sentence. Start with a strong past-tense action verb (Led, Shipped, Cut, Built, Grew, Owned…). Never "Responsible for".
+- Keep every concrete fact and number the user gave. Do NOT invent metrics, tools, scope, or outcomes that aren't in the note.
+- No fluff, no adjectives that praise the user ("expertly", "successfully"), no buzzwords.
+- Roughly 8–24 words. Plain, specific, quantified where the note supports it.
+
+Also propose 1–3 short lowercase theme tags that categorize the entry for grouping (e.g. "leadership", "backend", "growth", "infra", "design"). One or two words each, no "#".
+
+Output strict JSON only, no prose, no markdown fences:
+{ "bullet": string, "tags": string[] }`;
+
+export async function polishStoryEntry(raw: string): Promise<StoryPolishResult> {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) throw new Error("polishStoryEntry(): empty input");
+
+  const started = Date.now();
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 300,
+      system: STORY_POLISH_SYSTEM,
+      messages: [{ role: "user", content: `# Raw note\n${trimmed}` }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") text += block.text;
+    }
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: "story:polish",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+    });
+  }
+
+  let parsed: { bullet?: string; tags?: unknown } = {};
+  try {
+    parsed = JSON.parse(extractJson(text));
+  } catch {
+    parsed = {};
+  }
+  const bullet = typeof parsed.bullet === "string" && parsed.bullet.trim() ? parsed.bullet.trim() : trimmed;
+  const tags = Array.isArray(parsed.tags)
+    ? parsed.tags
+        .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+        .map((t) => t.trim().toLowerCase())
+        .slice(0, 3)
+    : [];
+  return { bullet, tags, model: MODEL };
+}
+
 // ---------- DRAFT ----------
 
 export interface DraftInput {

@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
 import { upsertProfile } from "@/lib/profile";
 import { withUser } from "@/lib/auth";
+import { seedStoryFromResume } from "@/lib/story/seed";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
-  return withUser(async () => {
+  return withUser(async (userId) => {
     const form = await req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) {
@@ -49,6 +50,16 @@ export async function POST(req: NextRequest) {
       console.error("[resume] save failed", e);
       return Response.json({ error: `failed to save: ${e}` }, { status: 500 });
     }
-    return Response.json({ ok: true, characters: text.length, filename: name });
+
+    // Pre-fill the Story from the resume (prototype's "N entries extracted").
+    // Best-effort — a seeding failure must not fail the upload the user just made.
+    let storySeeded = 0;
+    try {
+      storySeeded = await seedStoryFromResume(userId, text);
+    } catch (e) {
+      console.error("[resume] story seed failed", e);
+    }
+
+    return Response.json({ ok: true, characters: text.length, filename: name, story_seeded: storySeeded });
   });
 }

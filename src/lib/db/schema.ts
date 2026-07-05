@@ -203,3 +203,23 @@ export interface JobMatch {
   status: MatchStatus;
   scored_at: string;
 }
+
+// ── Story (mirrors 0012_story_entries.sql) ───────────────────────────────────
+// The living record behind every resume: raw first-person notes the résumé
+// agent polishes into resume-ready bullets the user approves.
+//   raw      — captured, no polish requested/kept
+//   pending  — polish in flight (agent is working on it)
+//   proposed — a resume-ready bullet is waiting for the user to approve/reject
+//   polished — the proposed bullet was approved and is now the canonical line
+export type StoryStatus = "pending" | "proposed" | "polished" | "raw";
+
+export interface StoryEntry {
+  id: string;
+  user_id: string;
+  raw: string;
+  bullet: string | null;
+  status: StoryStatus;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}

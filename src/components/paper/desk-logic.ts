@@ -55,6 +55,22 @@ export const FIRST_TIME_CARDS = [
   },
 ] as const;
 
+// ── "Log:" → Story routing ───────────────────────────────────────────────────
+// A composer input (or the first-time "Log" card, which pre-fills "Log: ") that
+// starts with "Log:" is a Story entry, not a crew run — the Desk's onGo branches
+// on this and hands the note to the Story quick-add instead of startRun. Kept
+// pure so the routing rule is unit-testable.
+const STORY_LOG_PREFIX = /^log\s*:/i;
+
+export function isStoryLog(input: string | null | undefined): boolean {
+  return STORY_LOG_PREFIX.test((input ?? "").trim());
+}
+
+// Strip the "Log:" prefix down to the raw note the Story entry should hold.
+export function storyLogText(input: string | null | undefined): string {
+  return (input ?? "").trim().replace(STORY_LOG_PREFIX, "").trim();
+}
+
 // ── Screenshot attach validation ─────────────────────────────────────────────
 // The single source of truth for "is this file an attachable screenshot", shared
 // by the file-picker, paste, drag-drop, and sample-row paths. Returns the exact
@@ -101,12 +117,16 @@ export function imageFromClipboard(
 }
 
 // ── Thin-Story derivation + dismissal key ────────────────────────────────────
-// The Story is "empty" when the account has no resume on file — that's the
-// material the crew weaves from (confirmed there's no pre-existing isEmpty/thin
-// concept). Threaded down to Phase 4's thin-Story states as a single flag.
+// The Story is "empty" when the account has nothing for the crew to weave from.
+// Post-Phase-E that's driven by the Story entry count; we keep the `resume_text`
+// fallback so existing accounts (a resume on file, Story not yet seeded/loaded)
+// don't suddenly flip thin. `entryCount` is optional: pass undefined while the
+// count is still loading and the resume-text signal answers on its own.
 export function deriveStoryIsEmpty(
   profile: { resume_text?: string | null } | null | undefined,
+  entryCount?: number | null,
 ): boolean {
+  if ((entryCount ?? 0) > 0) return false;
   if (!profile) return true;
   const text = typeof profile.resume_text === "string" ? profile.resume_text.trim() : "";
   return text.length === 0;
