@@ -278,6 +278,26 @@ export function TopBar() {
                   animation: "fadeUp .2s ease",
                 }}
               >
+                <Link
+                  href="/app/settings"
+                  role="menuitem"
+                  onClick={() => setAcctOpen(false)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    textDecoration: "none",
+                    fontFamily: PAPER_FONTS_V2.sans,
+                    fontSize: 12.5,
+                    lineHeight: 1,
+                    color: TOKENS.ink,
+                    cursor: "pointer",
+                    padding: "4px 0",
+                  }}
+                >
+                  Settings
+                </Link>
+                <div style={{ height: 1, background: TOKENS.line, margin: "8px 0" }} />
                 <button
                   onClick={signOut}
                   role="menuitem"
