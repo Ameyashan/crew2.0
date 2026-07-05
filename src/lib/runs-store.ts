@@ -10,6 +10,18 @@ import { detectKind } from "@/lib/kind-detect";
 const ANON_LIMIT_MESSAGE =
   "You've used up your free tries. Sign in to keep your crew running.";
 
+// Set the instant an outbound OAuth navigation begins (the Sign-in buttons call
+// beginAuthNavigation() right before signInWithGoogle). A live run's streaming
+// fetch is torn down by that navigation, and because the browser — not our
+// AbortController — kills it, the abort surfaces as a generic fetch error
+// ("Load failed" on WebKit). Without this flag the store would flip the run to a
+// bogus error card in the split second before the page leaves for Google. Treat
+// any drop during this window as an intentional teardown, not a failure.
+let navigatingForAuth = false;
+export function beginAuthNavigation() {
+  navigatingForAuth = true;
+}
+
 /* ─────────────────────── types ─────────────────────── */
 
 export type RunStage = "parsing" | "working" | "done" | "error";
@@ -407,6 +419,7 @@ export function startImageRun(
       launch(id);
     } catch (e) {
       if (!runs.some((r) => r.id === id)) return;
+      if (navigatingForAuth) return; // page is leaving for OAuth — not a real failure
       patch(id, () => ({ stage: "error", error: String(e?.message || e) }));
     }
   })();
@@ -1432,6 +1445,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
     }
   } catch (e) {
     if (signal.aborted) return; // dismissed/cleared — not an error
+    if (navigatingForAuth) return; // page is leaving for OAuth — not a real failure
     // A terminal error the server already reported (and persisted) — show it now.
     if (e?.serverReported) {
       patch(id, () => ({ stage: "error", error: String(e?.message || e), reconnecting: false }));
@@ -1569,6 +1583,7 @@ async function streamResumeRun(run: Run, signal: AbortSignal) {
     }));
   } catch (e) {
     if (signal.aborted) return; // dismissed/cleared — not an error
+    if (navigatingForAuth) return; // page is leaving for OAuth — not a real failure
     if (e?.serverReported) {
       patch(id, () => ({ stage: "error", error: String(e?.message || e), reconnecting: false }));
       return;

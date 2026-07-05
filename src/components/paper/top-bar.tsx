@@ -6,7 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { PAPER_FONTS_V2 } from "./fonts";
 import { TOKENS, RADII, SHADOWS } from "./tokens";
 import { supabaseBrowser, signInWithGoogle } from "@/lib/supabase-browser";
-import { useRuns, useFocusedRun, setFocusedRun } from "@/lib/runs-store";
+import { useSessionUser } from "@/lib/use-signed-in";
+import { useRuns, useFocusedRun, setFocusedRun, beginAuthNavigation } from "@/lib/runs-store";
 import { TOP_NAV, nameFromEmail, isNavActive, avatarBg, avatarInitial, crewChip } from "./top-bar-logic";
 import { serializePendingRun, PENDING_RUN_KEY } from "./run-view-logic";
 
@@ -36,51 +37,33 @@ export function TopBar() {
   const focusedRunId = useFocusedRun();
   const onRunScreen = !!focusedRunId && isNavActive(pathname, "/app/compose");
 
-  // Session probe: /app/* is server-gated to signed-in users, but the bar also
-  // renders its signed-out variant for the (future) signed-out Desk. `null` =
-  // still resolving, so we don't flash the wrong variant on first paint.
-  const [signedIn, setSignedIn] = useState<boolean | null>(null);
-  const [name, setName] = useState<string | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
+  // Session state drives the signed-in/out variant. Reads the LOCAL session
+  // (getSession) and stays live via onAuthStateChange — NOT getUser(), whose
+  // network validation could come back empty right after the OAuth redirect and
+  // strand a signed-in visitor on a Desk that still said "Sign in", even across
+  // a refresh. `null` = still resolving, so we don't flash the wrong variant.
+  const { signedIn, user } = useSessionUser();
 
+  // Preferred display name: the saved profile first, then the session account
+  // (Google metadata or the email) so we never call a logged-in user "Guest".
+  const [profileName, setProfileName] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
-
-    // Prefer the name saved on the profile; fall back to the signed-in account
-    // (Google metadata or the email) so we never refer to a logged-in user as "Guest".
     fetch("/api/profile")
       .then((r) => r.json())
       .then((j) => {
         const fromProfile =
           typeof j?.profile?.full_name === "string" ? j.profile.full_name.trim() : "";
-        if (!cancelled && fromProfile) setName(fromProfile);
+        if (!cancelled && fromProfile) setProfileName(fromProfile);
       })
       .catch(() => {});
-
-    supabaseBrowser()
-      .auth.getUser()
-      .then(({ data }) => {
-        if (cancelled) return;
-        const u = data?.user;
-        setSignedIn(!!u);
-        if (!u) return;
-        if (u.email) setEmail(u.email);
-        const meta = (u.user_metadata ?? {}) as Record<string, unknown>;
-        const fallback =
-          (typeof meta.full_name === "string" && meta.full_name.trim()) ||
-          (typeof meta.name === "string" && meta.name.trim()) ||
-          nameFromEmail(u.email);
-        // Don't override a name already resolved from the profile.
-        setName((prev) => prev ?? (fallback || null));
-      })
-      .catch(() => {
-        if (!cancelled) setSignedIn(false);
-      });
-
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const email = user?.email ?? null;
+  const name = profileName ?? user?.name ?? null;
 
   // Account popover open/close, with click-outside + Escape to dismiss.
   const [acctOpen, setAcctOpen] = useState(false);
@@ -277,6 +260,9 @@ export function TopBar() {
           <button
             onClick={() => {
               stashFocusedAnonRun();
+              // Suppress the "Load failed" flash from the in-flight run's stream
+              // being torn down by the OAuth navigation.
+              beginAuthNavigation();
               signInWithGoogle("/app/compose").catch((e) => console.error("Sign-in failed", e));
             }}
             style={{
