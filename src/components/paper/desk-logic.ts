@@ -101,12 +101,16 @@ export function imageFromClipboard(
 }
 
 // ── Thin-Story derivation + dismissal key ────────────────────────────────────
-// The Story is "empty" when the account has no resume on file — that's the
-// material the crew weaves from (confirmed there's no pre-existing isEmpty/thin
-// concept). Threaded down to Phase 4's thin-Story states as a single flag.
+// The Story is "empty" when the account has no Story entries AND no resume on
+// file — either is material the crew can weave from. `entryCount` wins when
+// known (Phase E's story_entries model); the resume_text fallback keeps accounts
+// that onboarded before Story existed from suddenly flipping to thin.
+// Threaded down to Phase 4's thin-Story states as a single flag.
 export function deriveStoryIsEmpty(
   profile: { resume_text?: string | null } | null | undefined,
+  entryCount?: number | null,
 ): boolean {
+  if (typeof entryCount === "number" && entryCount > 0) return false;
   if (!profile) return true;
   const text = typeof profile.resume_text === "string" ? profile.resume_text.trim() : "";
   return text.length === 0;
