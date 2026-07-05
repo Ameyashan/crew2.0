@@ -100,6 +100,18 @@ test("deriveStoryIsEmpty: empty when no profile or no resume text", () => {
   assert.equal(deriveStoryIsEmpty({ resume_text: "Senior PM at Ramp…" }), false);
 });
 
+test("deriveStoryIsEmpty: a positive entry count wins over the resume fallback", () => {
+  // Phase E — story_entries model. Any entries → not thin, even with no resume.
+  assert.equal(deriveStoryIsEmpty(null, 3), false);
+  assert.equal(deriveStoryIsEmpty({ resume_text: "" }, 1), false);
+  // Zero / unknown count → the existing resume_text fallback still governs, so
+  // accounts that onboarded before Story existed don't suddenly flip thin.
+  assert.equal(deriveStoryIsEmpty({ resume_text: "Senior PM…" }, 0), false);
+  assert.equal(deriveStoryIsEmpty({ resume_text: "" }, 0), true);
+  assert.equal(deriveStoryIsEmpty(null, 0), true);
+  assert.equal(deriveStoryIsEmpty({ resume_text: "x" }, undefined), false);
+});
+
 test("storyNudgeKey is per-account and case/space-insensitive", () => {
   assert.equal(storyNudgeKey("Ameya@Gmail.com "), `${STORY_NUDGE_PREFIX}:ameya@gmail.com`);
   assert.notEqual(storyNudgeKey("a@x.io"), storyNudgeKey("b@x.io"));

@@ -1,9 +1,11 @@
 import { NextRequest } from "next/server";
 import { upsertProfile } from "@/lib/profile";
 import { withUser } from "@/lib/auth";
+import { countStoryEntries, createStoryEntries } from "@/lib/story";
+import { extractStoryFromResume } from "@/lib/agents/extract-story";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   return withUser(async () => {
@@ -49,6 +51,20 @@ export async function POST(req: NextRequest) {
       console.error("[resume] save failed", e);
       return Response.json({ error: `failed to save: ${e}` }, { status: 500 });
     }
-    return Response.json({ ok: true, characters: text.length, filename: name });
+
+    // Seed the Story from the resume — the prototype's "{n} entries extracted".
+    // Best-effort and idempotent: only when the account has no entries yet, so a
+    // re-upload doesn't duplicate. A failure here never blocks the upload.
+    let seeded = 0;
+    try {
+      if ((await countStoryEntries()) === 0) {
+        const entries = await extractStoryFromResume(text);
+        if (entries.length) seeded = await createStoryEntries(entries);
+      }
+    } catch (e) {
+      console.error("[resume] story seed failed", e);
+    }
+
+    return Response.json({ ok: true, characters: text.length, filename: name, seeded });
   });
 }
