@@ -22,6 +22,7 @@ import {
   regenerateDraft,
   steerAllChannels,
   jobHost,
+  beginAuthNavigation,
 } from "@/lib/runs-store";
 import { classifyKind } from "@/lib/kind-detect";
 import { supabaseBrowser, signInWithGoogle } from "@/lib/supabase-browser";
@@ -1930,6 +1931,9 @@ function BlurGateOverlay({ kind, run, input }) {
         });
         try { sessionStorage.setItem(PENDING_RUN_KEY, payload); } catch { /* private mode */ }
       }
+      // Suppress the "Load failed" flash from the run's stream being torn down
+      // by the OAuth navigation.
+      beginAuthNavigation();
       await signInWithGoogle('/app/compose');
     } catch (e) {
       console.error('Gate sign-in failed', e);
