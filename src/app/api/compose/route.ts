@@ -5,6 +5,7 @@ import { runWithUser } from "@/lib/user-context";
 import { supabaseAdmin } from "@/lib/supabase";
 import { parseAgents } from "@/lib/agent-selection";
 import { isJobBoardUrl } from "@/lib/kind-detect";
+import { assertAnonRunAllowed } from "@/lib/anon-rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -109,9 +110,14 @@ async function parseInput(req: NextRequest): Promise<
 export async function POST(req: NextRequest) {
   // The reach-out agent reads the current user (getProfile, people dedupe, draft
   // persistence) via the AsyncLocalStorage context. Establish it here or every
-  // currentUserId() call deep in the pipeline throws.
+  // currentUserId() call deep in the pipeline throws. A null userId is an
+  // anonymous blur-gate teaser: the crew runs but persists nothing (the agent
+  // gates its writes on maybeUserId()). Cap anonymous compute first.
   const userId = await resolveUserId();
-  if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
+  if (!userId) {
+    const limited = await assertAnonRunAllowed(req);
+    if (limited) return limited;
+  }
 
   const parsed = await parseInput(req);
   if ("error" in parsed) {
@@ -126,28 +132,32 @@ export async function POST(req: NextRequest) {
   // on desktop even if the stream dies mid-flight. We'll update outcome /
   // collected output once the stream terminates.
   const sb = supabaseAdmin();
+  // Anonymous runs persist nothing — no compose_runs row. composeRunId stays
+  // null, which the stream + final update already treat as "don't persist".
   let composeRunId: string | null = null;
-  try {
-    const { data, error } = await sb
-      .from("compose_runs")
-      .insert({
-        user_id: userId,
-        kind: "person",
-        input: input.text,
-        intent: input.intent ?? null,
-        provided_email: input.provided_email ?? null,
-        screenshot_id: screenshot_id ?? null,
-        picked: input.picked ?? null,
-        outcome: "in_flight",
-      })
-      .select("id")
-      .single();
-    if (error) throw error;
-    composeRunId = data?.id ?? null;
-  } catch (e) {
-    // Non-fatal: a failed insert shouldn't block the live stream — it just
-    // means this run won't appear in /app/history. Log and keep going.
-    console.error("[compose_runs] insert failed", e);
+  if (userId) {
+    try {
+      const { data, error } = await sb
+        .from("compose_runs")
+        .insert({
+          user_id: userId,
+          kind: "person",
+          input: input.text,
+          intent: input.intent ?? null,
+          provided_email: input.provided_email ?? null,
+          screenshot_id: screenshot_id ?? null,
+          picked: input.picked ?? null,
+          outcome: "in_flight",
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      composeRunId = data?.id ?? null;
+    } catch (e) {
+      // Non-fatal: a failed insert shouldn't block the live stream — it just
+      // means this run won't appear in /app/history. Log and keep going.
+      console.error("[compose_runs] insert failed", e);
+    }
   }
 
   const encoder = new TextEncoder();

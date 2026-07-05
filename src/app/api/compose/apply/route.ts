@@ -8,6 +8,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { resolveUserId } from "@/lib/auth";
 import { runWithUser } from "@/lib/user-context";
 import { agentEnabled, parseAgents } from "@/lib/agent-selection";
+import { assertAnonRunAllowed } from "@/lib/anon-rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -19,8 +20,14 @@ export const maxDuration = 180;
 // it pipes the existing resume-tailor and reach-out agents end-to-end and
 // records one job_applications row.
 export async function POST(req: NextRequest) {
+  // Signed-out visitors get the blur-gate teaser (design_handoff_jugaadu_reskin):
+  // the crew runs for real but persists nothing, and the client blurs the output
+  // behind a sign-in card. Cap anonymous compute before doing any work.
   const userId = await resolveUserId();
-  if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
+  if (!userId) {
+    const limited = await assertAnonRunAllowed(req);
+    if (limited) return limited;
+  }
 
   const body = await req.json().catch(() => ({}));
   const job_url = (body?.job_url ?? "").toString().trim();
@@ -40,7 +47,10 @@ export async function POST(req: NextRequest) {
   // Wallah → Outreach Bhai) is gated as a unit on 'person', with 'email' and
   // 'outreach' gated individually inside the reach-out agent.
   const agents = parseAgents(body?.agents);
-  const resumeEnabled = agentEnabled(agents, "resume");
+  // Anonymous runs skip Resume Darzi entirely — a signed-out visitor has no
+  // uploaded base resume to tailor, so it could only error. The people pipeline
+  // (hiring manager → verified email → drafted outreach) forms the teaser.
+  const resumeEnabled = !!userId && agentEnabled(agents, "resume");
   const personEnabled = agentEnabled(agents, "person");
 
   // Re-pick: when the user clicks a different candidate in the UI, we re-run
@@ -78,24 +88,29 @@ export async function POST(req: NextRequest) {
   // Insert the compose_runs row up front so a job run kicked off on mobile shows
   // up on desktop. Re-picks are amendments to the original run rather than a new
   // session, but for simplicity we still record them — the client can dedupe.
+  // Anonymous runs persist nothing — no compose_runs row (and, below, no
+  // job_applications row). composeRunId stays null, which the stream already
+  // treats as "don't emit/patch the run row".
   let composeRunId: string | null = null;
-  try {
-    const { data, error } = await supabaseAdmin()
-      .from("compose_runs")
-      .insert({
-        user_id: userId,
-        kind: "job",
-        input: job_url || [detectedRole, detectedCompany].filter(Boolean).join(" at ") || posterName,
-        intent: intent ?? null,
-        picked: picked ?? null,
-        outcome: "in_flight",
-      })
-      .select("id")
-      .single();
-    if (error) throw error;
-    composeRunId = data?.id ?? null;
-  } catch (e) {
-    console.error("[compose_runs] insert failed", e);
+  if (userId) {
+    try {
+      const { data, error } = await supabaseAdmin()
+        .from("compose_runs")
+        .insert({
+          user_id: userId,
+          kind: "job",
+          input: job_url || [detectedRole, detectedCompany].filter(Boolean).join(" at ") || posterName,
+          intent: intent ?? null,
+          picked: picked ?? null,
+          outcome: "in_flight",
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      composeRunId = data?.id ?? null;
+    } catch (e) {
+      console.error("[compose_runs] insert failed", e);
+    }
   }
 
   const encoder = new TextEncoder();
@@ -389,24 +404,26 @@ export async function POST(req: NextRequest) {
             draftId = primary.draftId ?? draftId;
           }
 
-          try {
-            const { data, error } = await supabaseAdmin()
-              .from("job_applications")
-              .insert({
-                user_id: userId,
-                job_url: openingUrl || job_url || null,
-                job_json: collectedTailored?.meta ?? null,
-                resume_generation_id: resumeGenerationId,
-                person_id: personId,
-                draft_id: draftId,
-                status: "drafted",
-              })
-              .select("id")
-              .single();
-            if (error) throw error;
-            if (data?.id) send({ type: "saved", id: data.id });
-          } catch (e) {
-            console.error("[job_applications] insert failed", e);
+          if (userId) {
+            try {
+              const { data, error } = await supabaseAdmin()
+                .from("job_applications")
+                .insert({
+                  user_id: userId,
+                  job_url: openingUrl || job_url || null,
+                  job_json: collectedTailored?.meta ?? null,
+                  resume_generation_id: resumeGenerationId,
+                  person_id: personId,
+                  draft_id: draftId,
+                  status: "drafted",
+                })
+                .select("id")
+                .single();
+              if (error) throw error;
+              if (data?.id) send({ type: "saved", id: data.id });
+            } catch (e) {
+              console.error("[job_applications] insert failed", e);
+            }
           }
 
           runOutcome = "complete";
@@ -601,24 +618,26 @@ export async function POST(req: NextRequest) {
 
         // Record the bundle. Soft FKs — failure to insert is non-fatal so the
         // client still sees the drafts in the SSE stream.
-        try {
-          const { data, error } = await supabaseAdmin()
-            .from("job_applications")
-            .insert({
-              user_id: userId,
-              job_url,
-              job_json: tailored?.meta ?? null,
-              resume_generation_id: resumeGenerationId,
-              person_id: personId,
-              draft_id: draftId,
-              status: "drafted",
-            })
-            .select("id")
-            .single();
-          if (error) throw error;
-          if (data?.id) send({ type: "saved", id: data.id });
-        } catch (e) {
-          console.error("[job_applications] insert failed", e);
+        if (userId) {
+          try {
+            const { data, error } = await supabaseAdmin()
+              .from("job_applications")
+              .insert({
+                user_id: userId,
+                job_url,
+                job_json: tailored?.meta ?? null,
+                resume_generation_id: resumeGenerationId,
+                person_id: personId,
+                draft_id: draftId,
+                status: "drafted",
+              })
+              .select("id")
+              .single();
+            if (error) throw error;
+            if (data?.id) send({ type: "saved", id: data.id });
+          } catch (e) {
+            console.error("[job_applications] insert failed", e);
+          }
         }
 
         runOutcome = "complete";

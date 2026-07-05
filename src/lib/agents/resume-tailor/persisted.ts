@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { currentUserId } from "@/lib/user-context";
+import { maybeUserId } from "@/lib/user-context";
 import { runResumeTailorStream } from "./index";
 import type { ResumeTailorInput, ResumeTailorStepEvent, TailoredResume } from "./types";
 
@@ -22,28 +22,33 @@ export async function* runResumeTailorStreamPersisted(
   input: ResumeTailorInput,
 ): AsyncGenerator<PersistedTailorEvent> {
   const sb = supabaseAdmin();
-  const userId = currentUserId();
+  // Anonymous (blur-gate) runs persist nothing: no resume_generations row, no
+  // `resume_run`/`saved` yields. The tailor still streams its steps so the
+  // client can render (and, for signed-out runs, blur) the result.
+  const userId = maybeUserId();
 
   let generationId: string | null = null;
-  try {
-    const { data, error } = await sb
-      .from("resume_generations")
-      .insert({
-        user_id: userId,
-        job_url: input.job_url || null,
-        highlights: input.highlights?.trim() || null,
-        regenerate_notes: input.regenerate_notes?.trim() || null,
-        page_count: input.page_count,
-        status: "in_flight",
-      })
-      .select("id")
-      .single();
-    if (error) throw error;
-    generationId = data?.id ?? null;
-  } catch (e) {
-    // Non-fatal: a failed insert shouldn't block the tailor — the run just
-    // won't appear in resume history. Log and keep going.
-    console.error("[resume_generations] insert failed", e);
+  if (userId) {
+    try {
+      const { data, error } = await sb
+        .from("resume_generations")
+        .insert({
+          user_id: userId,
+          job_url: input.job_url || null,
+          highlights: input.highlights?.trim() || null,
+          regenerate_notes: input.regenerate_notes?.trim() || null,
+          page_count: input.page_count,
+          status: "in_flight",
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      generationId = data?.id ?? null;
+    } catch (e) {
+      // Non-fatal: a failed insert shouldn't block the tailor — the run just
+      // won't appear in resume history. Log and keep going.
+      console.error("[resume_generations] insert failed", e);
+    }
   }
 
   if (generationId) {
