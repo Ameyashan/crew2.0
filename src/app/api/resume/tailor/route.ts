@@ -2,13 +2,21 @@ import { NextRequest } from "next/server";
 import { runResumeTailorStreamPersisted } from "@/lib/agents/resume-tailor/persisted";
 import { resolveUserId } from "@/lib/auth";
 import { runWithUser } from "@/lib/user-context";
+import { assertAnonRunAllowed } from "@/lib/anon-rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
+  // A null userId is an anonymous blur-gate run: the tailor persists nothing.
+  // (A signed-out visitor has no base resume on file, so the tailor will yield
+  // its honest "no resume" error rather than a teaser — an inherent limitation,
+  // not a regression.) Cap anonymous compute first.
   const userId = await resolveUserId();
-  if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
+  if (!userId) {
+    const limited = await assertAnonRunAllowed(req);
+    if (limited) return limited;
+  }
 
   const body = await req.json().catch(() => ({}));
   const job_url = (body?.job_url ?? "").toString().trim();

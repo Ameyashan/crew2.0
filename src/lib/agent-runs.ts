@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { currentUserId } from "@/lib/user-context";
+import { maybeUserId } from "@/lib/user-context";
 
 // Sonnet 4.6 pricing (USD per million tokens). Update if model changes.
 const PRICING: Record<string, { input: number; output: number }> = {
@@ -31,8 +31,13 @@ export async function logAgentRun(run: AgentRunLog) {
       : null;
 
   try {
+    // Anonymous (blur-gate) runs persist nothing — there's no account to bill
+    // the usage to, so skip the log. Kept inside the try so this stays as
+    // no-throw as it was: an out-of-context call is caught, not propagated.
+    const userId = maybeUserId();
+    if (!userId) return;
     await supabaseAdmin().from("agent_runs").insert({
-      user_id: currentUserId(),
+      user_id: userId,
       agent_type: run.agent_type,
       model: run.model ?? null,
       input_tokens: run.input_tokens ?? null,

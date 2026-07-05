@@ -13,8 +13,9 @@ import {
 } from "@/lib/apollo";
 import { lookupEmployer } from "@/lib/employer";
 import { findEmailHunter as findEmail } from "@/lib/hunter";
+import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase";
-import { currentUserId } from "@/lib/user-context";
+import { currentUserId, isAnonymousRun } from "@/lib/user-context";
 import { getProfile, senderContextFromProfile } from "@/lib/profile";
 import { agentEnabled } from "@/lib/agent-selection";
 
@@ -208,33 +209,13 @@ export async function* runReachOutStream(
 
     // Dedupe: prefer linkedin URL match; fall back to lower(name) + lower(company).
     const sb = supabaseAdmin();
+    // Blur-gate teaser runs (signed-out) persist nothing — no people/drafts rows.
+    const anon = isAnonymousRun();
     const linkedin = ctx.links?.linkedin ?? input.picked?.linkedin ?? null;
     const personName = ctx.name ?? input.picked?.name ?? input.text.slice(0, 80);
     const personCompany = ctx.company ?? input.picked?.company ?? null;
 
-    let existingId: string | null = null;
-    if (linkedin) {
-      const { data } = await sb
-        .from("people")
-        .select("id")
-        .eq("user_id", currentUserId())
-        .eq("links->>linkedin", linkedin)
-        .limit(1);
-      if (data?.[0]) existingId = data[0].id as string;
-    }
-    if (!existingId) {
-      const { data } = await sb
-        .from("people")
-        .select("id")
-        .eq("user_id", currentUserId())
-        .ilike("name", personName)
-        .ilike("company", personCompany ?? "")
-        .limit(1);
-      if (data?.[0]) existingId = data[0].id as string;
-    }
-
     const personRow = {
-      user_id: currentUserId(),
       name: personName,
       role: ctx.role,
       company: personCompany,
@@ -246,21 +227,47 @@ export async function* runReachOutStream(
     };
 
     let personId: string;
-    if (existingId) {
-      const { error: uErr } = await sb
-        .from("people")
-        .update({ ...personRow, updated_at: new Date().toISOString() })
-        .eq("id", existingId);
-      if (uErr) throw new Error(`people update: ${uErr.message}`);
-      personId = existingId;
+    if (anon) {
+      // Nothing written; synthesize a stable id so the UI's person_saved /
+      // draft events (and any client re-pick keyed on it) still work.
+      personId = `anon-${randomUUID()}`;
     } else {
-      const { data: person, error: pErr } = await sb
-        .from("people")
-        .insert(personRow)
-        .select("id")
-        .single();
-      if (pErr) throw new Error(`people insert: ${pErr.message}`);
-      personId = person!.id as string;
+      let existingId: string | null = null;
+      if (linkedin) {
+        const { data } = await sb
+          .from("people")
+          .select("id")
+          .eq("user_id", currentUserId())
+          .eq("links->>linkedin", linkedin)
+          .limit(1);
+        if (data?.[0]) existingId = data[0].id as string;
+      }
+      if (!existingId) {
+        const { data } = await sb
+          .from("people")
+          .select("id")
+          .eq("user_id", currentUserId())
+          .ilike("name", personName)
+          .ilike("company", personCompany ?? "")
+          .limit(1);
+        if (data?.[0]) existingId = data[0].id as string;
+      }
+      if (existingId) {
+        const { error: uErr } = await sb
+          .from("people")
+          .update({ ...personRow, user_id: currentUserId(), updated_at: new Date().toISOString() })
+          .eq("id", existingId);
+        if (uErr) throw new Error(`people update: ${uErr.message}`);
+        personId = existingId;
+      } else {
+        const { data: person, error: pErr } = await sb
+          .from("people")
+          .insert({ ...personRow, user_id: currentUserId() })
+          .select("id")
+          .single();
+        if (pErr) throw new Error(`people insert: ${pErr.message}`);
+        personId = person!.id as string;
+      }
     }
     yield {
       type: "step",
@@ -302,42 +309,61 @@ export async function* runReachOutStream(
         throw new Error("all drafts failed");
       }
 
-      // Persist drafts + interactions, then emit done
-      const draftRows = okResults.map(({ channel, result }) => ({
-        user_id: currentUserId(),
-        person_id: personId,
-        channel,
-        subject: result.subject,
-        body: result.body,
-        intent: input.intent ?? null,
-        status: "generated" as const,
-        model: result.model,
-        compose_run_id: input.compose_run_id ?? null,
-      }));
-      const { data: drafts, error: dErr } = await sb
-        .from("drafts")
-        .insert(draftRows)
-        .select("id, channel, subject, body");
-      if (dErr) throw new Error(`drafts insert: ${dErr.message}`);
-
-      await sb.from("interactions").insert(
-        drafts!.map((d) => ({
+      // Persist drafts + interactions (signed-in only), then emit done. An
+      // anonymous teaser skips the writes and emits straight from the in-memory
+      // results with synthetic ids — the client blurs them behind the gate.
+      let emitDrafts: { id: string; channel: Channel; subject: string | null; body: string }[];
+      if (anon) {
+        emitDrafts = okResults.map(({ channel, result }) => ({
+          id: `anon-${randomUUID()}`,
+          channel,
+          subject: result.subject,
+          body: result.body,
+        }));
+      } else {
+        const draftRows = okResults.map(({ channel, result }) => ({
           user_id: currentUserId(),
           person_id: personId,
-          agent_type: "reach_out",
-          interaction_type: "drafted",
-          channel: d.channel,
-          draft_id: d.id,
-        }))
-      );
+          channel,
+          subject: result.subject,
+          body: result.body,
+          intent: input.intent ?? null,
+          status: "generated" as const,
+          model: result.model,
+          compose_run_id: input.compose_run_id ?? null,
+        }));
+        const { data: drafts, error: dErr } = await sb
+          .from("drafts")
+          .insert(draftRows)
+          .select("id, channel, subject, body");
+        if (dErr) throw new Error(`drafts insert: ${dErr.message}`);
 
-      for (const d of drafts!) {
+        await sb.from("interactions").insert(
+          drafts!.map((d) => ({
+            user_id: currentUserId(),
+            person_id: personId,
+            agent_type: "reach_out",
+            interaction_type: "drafted",
+            channel: d.channel,
+            draft_id: d.id,
+          }))
+        );
+
+        emitDrafts = drafts!.map((d) => ({
+          id: d.id as string,
+          channel: d.channel as Channel,
+          subject: d.subject as string | null,
+          body: d.body as string,
+        }));
+      }
+
+      for (const d of emitDrafts) {
         yield {
           type: "step",
           id: "draft",
           status: "done",
-          channel: d.channel as Channel,
-          data: { id: d.id as string, channel: d.channel as Channel, subject: d.subject as string | null, body: d.body as string },
+          channel: d.channel,
+          data: { id: d.id, channel: d.channel, subject: d.subject, body: d.body },
         };
       }
     }

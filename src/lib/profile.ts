@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { currentUserId } from "@/lib/user-context";
+import { currentUserId, maybeUserId } from "@/lib/user-context";
 
 export { CONTEXT_PROMPT_TEMPLATE } from "@/lib/profile-constants";
 
@@ -18,10 +18,15 @@ export interface UserProfile {
 }
 
 export async function getProfile(): Promise<UserProfile | null> {
+  // Anonymous (blur-gate) runs have no account and therefore no profile — skip
+  // the query. Downstream (senderContextFromProfile) already handles null, so
+  // outreach just runs without sender personalization.
+  const userId = maybeUserId();
+  if (!userId) return null;
   const { data } = await supabaseAdmin()
     .from("user_profile")
     .select("*")
-    .eq("user_id", currentUserId())
+    .eq("user_id", userId)
     .maybeSingle();
   return (data as UserProfile | null) ?? null;
 }

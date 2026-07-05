@@ -4,6 +4,12 @@
 import { useSyncExternalStore } from "react";
 import { detectKind } from "@/lib/kind-detect";
 
+// Shown when a signed-out visitor exceeds the anonymous-run cap (HTTP 429 from
+// the compose/tailor routes). Nudges them to sign in rather than leaking a raw
+// "failed: 429".
+const ANON_LIMIT_MESSAGE =
+  "You've used up your free tries. Sign in to keep your crew running.";
+
 /* ─────────────────────── types ─────────────────────── */
 
 export type RunStage = "parsing" | "working" | "done" | "error";
@@ -1111,7 +1117,10 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
         }),
         signal,
       });
-      if (!res.ok || !res.body) throw new Error(`apply failed: ${res.status}`);
+      if (!res.ok || !res.body) {
+        if (res.status === 429) throw new Error(ANON_LIMIT_MESSAGE);
+        throw new Error(`apply failed: ${res.status}`);
+      }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = "";
@@ -1284,7 +1293,10 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
         signal,
       });
     }
-    if (!res.ok || !res.body) throw new Error(`compose failed: ${res.status}`);
+    if (!res.ok || !res.body) {
+      if (res.status === 429) throw new Error(ANON_LIMIT_MESSAGE);
+      throw new Error(`compose failed: ${res.status}`);
+    }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = "";
@@ -1438,6 +1450,9 @@ async function streamResumeRun(run: Run, signal: AbortSignal) {
       signal,
     });
     if (!res.ok || !res.body) {
+      if (res.status === 429) {
+        throw Object.assign(new Error(ANON_LIMIT_MESSAGE), { serverReported: true });
+      }
       // Non-stream failures (400/401) carry a JSON error worth showing as-is.
       let message = `tailor failed: ${res.status}`;
       try {
