@@ -4,7 +4,11 @@ import { isAnonAllowedPath } from "@/components/paper/run-view-logic";
 
 // Edge routing + session refresh for the auth boundary.
 //
-//   /                        → /app/compose for a signed-in visitor
+//   /                        → /app/compose for EVERYONE (plan_2.md decision 2):
+//                              the prototype's Desk is the landing experience, so
+//                              signed-out visitors land on the try-before-sign-in
+//                              Desk (blur gate) rather than the legacy marketing
+//                              page, which stays reachable at /home.
 //   /app/** and /onboarding  → / when there's no (valid) Supabase session,
 //                              EXCEPT the try-before-sign-in Desk (/app/compose),
 //                              which anonymous visitors may reach (Phase 4 blur
@@ -90,7 +94,11 @@ export async function proxy(req: NextRequest) {
     return r;
   };
 
-  if (pathname === "/" && signedIn) {
+  // The Desk is the landing experience for everyone (plan_2.md decision 2):
+  // signed-in visitors get their returning Desk, signed-out visitors get the
+  // try-before-sign-in Desk with the blur gate. The old marketing page lives
+  // on at /home for anyone who still wants it.
+  if (pathname === "/") {
     return redirectPreservingCookies("/app/compose");
   }
 

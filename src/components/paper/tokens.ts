@@ -6,8 +6,10 @@
 // properties in src/app/globals.css; the primitives in primitives2.tsx consume
 // this object directly so inline `style={{}}` usage stays type-safe.
 //
-// Nothing imports this yet — Phase 1 is foundation only. The legacy
-// palette.ts / use-paper-theme.ts stay untouched alongside it.
+// Consumed throughout the reskinned surface (compose, jobs, people, history,
+// resume/Story, onboarding, top bar, auth-loading, primitives2). The legacy
+// palette.ts / use-paper-theme.ts stay alongside it for the not-yet-retired
+// landing / changelog / (legacy) routes.
 
 export const TOKENS = {
   // Surfaces

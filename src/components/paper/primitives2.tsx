@@ -3,7 +3,8 @@
 // New "paper" primitives for the jugaadu reskin — soft cards, thin 1px borders,
 // gentle shadows, no hard offset shadows. These consume the flat token object in
 // tokens.ts (not the legacy palette/theme hook). Added ALONGSIDE the old
-// primitives.tsx; nothing imports these yet (Phase 1 is foundation only).
+// primitives.tsx; consumed by the reskinned pages (e.g. jobs preferences,
+// people) while the legacy routes keep using primitives.tsx.
 
 import type { CSSProperties, ReactNode } from "react";
 import { PAPER_FONTS_V2 } from "./fonts";
