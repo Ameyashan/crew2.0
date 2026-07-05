@@ -24,9 +24,10 @@
 
   /* ── NEW "jugaadu" reskin tokens ───────────────────────────────────────────
      Warm, minimal paper aesthetic (see design_handoff_jugaadu_reskin). Prefixed
-     `jg-` so they never collide with the legacy block above. Nothing consumes
-     these yet (Phase 1 is foundation only); primitives2.tsx reads the mirrored
-     hex constants from src/components/paper/tokens.ts. */
+     `jg-` so they never collide with the legacy block above. The reskinned
+     pages consume these via the mirrored hex constants in
+     src/components/paper/tokens.ts (read directly by primitives2.tsx and the
+     compose / jobs / people / history / resume / onboarding screens). */
   --color-jg-paper: #faf8f3;
   --color-jg-card: #ffffff;
   --color-jg-card-warm: #fdfcf8;

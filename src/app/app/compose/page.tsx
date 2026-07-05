@@ -3,9 +3,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PAPER_FONTS } from "@/components/paper/fonts";
-import { usePaperTheme } from "@/components/paper/use-paper-theme";
-import { InkButton } from "@/components/paper/primitives";
+import { PAPER_L } from "@/components/paper/palette";
 import { openGmailCompose } from "@/lib/gmail";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { ChangeList } from "@/components/resume/ChangeList";
@@ -2187,16 +2185,20 @@ function emailVerdict(enrichment) {
 
 // Full-size, readable view of the tailored resume. The card preview is
 // deliberately tiny (it's a thumbnail); this is the "actually read it" view.
-function ResumeSection({ p, title }) {
+// Styled from TOKENS (jugaadu reskin), matching the run view's paper aesthetic.
+function ResumeSection({ title }) {
   return (
     <div style={{
-      fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.16em',
-      textTransform: 'uppercase', color: p.marigoldDeep,
-      borderBottom: `1.5px solid ${p.ink}20`, paddingBottom: 4, margin: '20px 0 10px',
+      fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, letterSpacing: '.16em',
+      textTransform: 'uppercase', color: TOKENS.amber,
+      borderBottom: `1px solid ${TOKENS.line}`, paddingBottom: 4, margin: '20px 0 10px',
     }}>{title}</div>
   );
 }
 
+// The full-resume modal keeps the `p` (light `Palette`) prop only to feed
+// ChangeList, which still speaks the legacy palette shape; everything else here
+// is TOKENS-driven.
 function ResumeModal({ p, resume, jobRole, jobCompany, atsScore, atsScoreBefore, onClose }) {
   const h = resume.header || {};
   const isMobile = useIsMobile();
@@ -2211,135 +2213,149 @@ function ResumeModal({ p, resume, jobRole, jobCompany, atsScore, atsScoreBefore,
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: '100%', maxWidth: 820, background: p.paper,
-          border: `1.5px solid ${p.ink}`, boxShadow: `8px 8px 0 ${p.ink}24`,
-          padding: isMobile ? '24px 18px 28px' : '32px 44px 40px', position: 'relative', color: p.ink,
+          width: '100%', maxWidth: 820, background: TOKENS.card,
+          border: `1px solid ${TOKENS.line}`, borderRadius: RADII.modal, boxShadow: SHADOWS.modal,
+          padding: isMobile ? '24px 18px 28px' : '32px 44px 40px', position: 'relative', color: TOKENS.ink,
         }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
-          <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.14em', textTransform: 'uppercase', color: p.marigoldDeep }}>
+          <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, letterSpacing: '.14em', textTransform: 'uppercase', color: TOKENS.amber }}>
             Tailored resume{(jobRole || jobCompany) ? ` · for ${[jobRole, jobCompany].filter(Boolean).join(' at ')}` : ''}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
-            {atsScore != null && <AtsBadge p={p} before={atsScoreBefore} after={atsScore} size={11}/>}
+            {atsScore != null && <AtsBadge before={atsScoreBefore} after={atsScore} size={11}/>}
             <button onClick={onClose} style={{
-              background: 'transparent', border: 'none', color: p.inkMute,
-              fontFamily: PAPER_FONTS.mono, fontSize: 12, letterSpacing: '.08em',
+              background: 'transparent', border: 'none', color: TOKENS.muted2,
+              fontFamily: PAPER_FONTS_V2.mono, fontSize: 12, letterSpacing: '.08em',
               textTransform: 'uppercase', cursor: 'pointer',
             }}>× close</button>
           </div>
         </div>
 
-        <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 30, lineHeight: 1.05 }}>
+        <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 30, lineHeight: 1.05 }}>
           {h.full_name || 'Your name'}
         </div>
         {h.headline && (
-          <div style={{ fontFamily: PAPER_FONTS.serif, fontStyle: 'italic', fontSize: 15, color: p.inkSoft, marginTop: 3 }}>
+          <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontStyle: 'italic', fontSize: 15, color: TOKENS.inkSoft, marginTop: 3 }}>
             {h.headline}
           </div>
         )}
         {(h.email || h.phone || h.location || h.links?.website || h.links?.linkedin || h.links?.github) && (
-          <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11.5, color: p.inkMute, marginTop: 6 }}>
+          <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11.5, color: TOKENS.muted2, marginTop: 6 }}>
             {[h.email, h.phone, h.location, h.links?.website, h.links?.linkedin, h.links?.github].filter(Boolean).join('  ·  ')}
           </div>
         )}
-        <div style={{ height: 1.5, background: p.ink + '30', margin: '16px 0' }}/>
+        <div style={{ height: 1, background: TOKENS.line, margin: '16px 0' }}/>
 
         {Array.isArray(resume.changes) && resume.changes.length > 0 && (
           <div style={{
-            marginBottom: 20, padding: '16px 18px',
-            background: p.card, border: `1.5px solid ${p.ink}24`,
+            marginBottom: 20, padding: '16px 18px', borderRadius: RADII.panel,
+            background: TOKENS.cardWarm, border: `1px solid ${TOKENS.lineInset}`,
           }}>
             <div style={{
-              fontFamily: PAPER_FONTS.mono, fontSize: 10.5, letterSpacing: '.14em',
-              textTransform: 'uppercase', color: p.stamp, marginBottom: 12,
+              fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, letterSpacing: '.14em',
+              textTransform: 'uppercase', color: TOKENS.amber, marginBottom: 12,
             }}>What Jugaadu changed for this role</div>
             <ChangeList p={p} changes={resume.changes}/>
           </div>
         )}
 
         {resume.summary && (
-          <p style={{ margin: 0, fontFamily: PAPER_FONTS.sans, fontSize: 14, lineHeight: 1.55 }}>{resume.summary}</p>
+          <p style={{ margin: 0, fontFamily: PAPER_FONTS_V2.sans, fontSize: 14, lineHeight: 1.55 }}>{resume.summary}</p>
         )}
 
-        {(resume.experience || []).length > 0 && <ResumeSection p={p} title="Experience"/>}
+        {(resume.experience || []).length > 0 && <ResumeSection title="Experience"/>}
         {(resume.experience || []).map((exp, i) => (
           <div key={i} style={{ marginBottom: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
-              <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 15.5 }}>
+              <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 15.5 }}>
                 {[exp.role, exp.company].filter(Boolean).join(' · ')}
               </div>
               {(exp.start || exp.end) && (
-                <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute, whiteSpace: 'nowrap' }}>
+                <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted2, whiteSpace: 'nowrap' }}>
                   {[exp.start, exp.end].filter(Boolean).join(' – ')}
                 </div>
               )}
             </div>
             {exp.location && (
-              <div style={{ fontFamily: PAPER_FONTS.mono, fontSize: 11, color: p.inkMute }}>{exp.location}</div>
+              <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted2 }}>{exp.location}</div>
             )}
             <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
               {(exp.bullets || []).map((b, j) => (
-                <li key={j} style={{ fontFamily: PAPER_FONTS.sans, fontSize: 13.5, lineHeight: 1.5, marginBottom: 3 }}>{b}</li>
+                <li key={j} style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13.5, lineHeight: 1.5, marginBottom: 3 }}>{b}</li>
               ))}
             </ul>
           </div>
         ))}
 
-        {(resume.education || []).length > 0 && <ResumeSection p={p} title="Education"/>}
+        {(resume.education || []).length > 0 && <ResumeSection title="Education"/>}
         {(resume.education || []).map((ed, i) => (
           <div key={i} style={{ marginBottom: 10 }}>
-            <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 14.5 }}>
+            <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 14.5 }}>
               {[[ed.degree, ed.field].filter(Boolean).join(', '), ed.school].filter(Boolean).join(' · ')}
             </div>
             {(ed.notes || []).length > 0 && (
               <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
                 {ed.notes.map((n, j) => (
-                  <li key={j} style={{ fontFamily: PAPER_FONTS.sans, fontSize: 13, color: p.inkSoft }}>{n}</li>
+                  <li key={j} style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, color: TOKENS.inkSoft }}>{n}</li>
                 ))}
               </ul>
             )}
           </div>
         ))}
 
-        {(resume.skills || []).length > 0 && <ResumeSection p={p} title="Skills"/>}
+        {(resume.skills || []).length > 0 && <ResumeSection title="Skills"/>}
         {(resume.skills || []).map((s, i) => (
-          <div key={i} style={{ fontFamily: PAPER_FONTS.sans, fontSize: 13.5, lineHeight: 1.55, marginBottom: 3 }}>
+          <div key={i} style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13.5, lineHeight: 1.55, marginBottom: 3 }}>
             {s.group ? <strong>{s.group}: </strong> : null}{(s.items || []).join(', ')}
           </div>
         ))}
 
-        {(resume.projects || []).length > 0 && <ResumeSection p={p} title="Projects"/>}
+        {(resume.projects || []).length > 0 && <ResumeSection title="Projects"/>}
         {(resume.projects || []).map((pr, i) => (
           <div key={i} style={{ marginBottom: 10 }}>
-            <div style={{ fontFamily: PAPER_FONTS.display, fontSize: 14.5 }}>
+            <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 14.5 }}>
               {pr.link ? (
-                <a href={pr.link} target="_blank" rel="noopener noreferrer" style={{ color: p.ink }}>{pr.name} ↗</a>
+                <a href={pr.link} target="_blank" rel="noopener noreferrer" style={{ color: TOKENS.ink }}>{pr.name} ↗</a>
               ) : pr.name}
             </div>
             <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
               {(pr.bullets || []).map((b, j) => (
-                <li key={j} style={{ fontFamily: PAPER_FONTS.sans, fontSize: 13.5, lineHeight: 1.5 }}>{b}</li>
+                <li key={j} style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13.5, lineHeight: 1.5 }}>{b}</li>
               ))}
             </ul>
           </div>
         ))}
 
         <div style={{ marginTop: 24, display: 'flex', gap: 8 }}>
-          <InkButton p={p} kind="outline" size="sm" onClick={() => downloadResumeBlob(resume, 'pdf').catch(() => {})}>↓ PDF</InkButton>
-          <InkButton p={p} kind="outline" size="sm" onClick={() => downloadResumeBlob(resume, 'docx').catch(() => {})}>↓ Word</InkButton>
+          <DownloadBtn onClick={() => downloadResumeBlob(resume, 'pdf').catch(() => {})}>↓ PDF</DownloadBtn>
+          <DownloadBtn onClick={() => downloadResumeBlob(resume, 'docx').catch(() => {})}>↓ Word</DownloadBtn>
         </div>
       </div>
     </div>
   );
 }
 
+// Small outline button for the modal's downloads — replaces the legacy
+// InkButton so this file no longer depends on primitives.tsx.
+function DownloadBtn({ onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '7px 14px', background: 'transparent', color: TOKENS.ink,
+        border: `1px solid ${TOKENS.ink}`, borderRadius: RADII.buttonTight,
+        fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, cursor: 'pointer',
+      }}>{children}</button>
+  );
+}
+
 // ATS match estimate. When we have the original resume's baseline score we show
 // the lift (before → after, +delta); otherwise just the single score. The score
 // is Claude's own honest estimate against the JD, not a real ATS scan.
-function AtsBadge({ p, before, after, size = 10.5 }) {
+function AtsBadge({ before, after, size = 10.5 }) {
   if (after == null) {
     return (
-      <span style={{ fontFamily: PAPER_FONTS.mono, fontSize: size, color: p.inkMute, letterSpacing: '.06em' }}>
+      <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: size, color: TOKENS.muted2, letterSpacing: '.06em' }}>
         ATS —
       </span>
     );
@@ -2353,21 +2369,21 @@ function AtsBadge({ p, before, after, size = 10.5 }) {
         ? `Estimated ATS match vs this job: your original resume ${before}/100 → tailored ${after}/100`
         : `Estimated ATS match vs this job: ${after}/100`}
       style={{
-        fontFamily: PAPER_FONTS.mono, fontSize: size, letterSpacing: '.06em',
+        fontFamily: PAPER_FONTS_V2.mono, fontSize: size, letterSpacing: '.06em',
         display: 'inline-flex', alignItems: 'baseline', gap: 4, whiteSpace: 'nowrap',
       }}>
-      <span style={{ color: p.inkMute, textTransform: 'uppercase' }}>ATS</span>
+      <span style={{ color: TOKENS.muted2, textTransform: 'uppercase' }}>ATS</span>
       {hasBefore && delta !== 0 && (
         <>
-          <span style={{ color: p.inkMute }}>{before}</span>
-          <span style={{ color: p.inkMute }}>→</span>
+          <span style={{ color: TOKENS.muted2 }}>{before}</span>
+          <span style={{ color: TOKENS.muted2 }}>→</span>
         </>
       )}
-      <span style={{ color: up ? p.leaf : (delta < 0 ? p.stamp : p.leaf) }}>
-        {after}{(!hasBefore || delta === 0) && <span style={{ color: p.inkMute }}>/100</span>}
+      <span style={{ color: up ? TOKENS.green : (delta < 0 ? TOKENS.red : TOKENS.green) }}>
+        {after}{(!hasBefore || delta === 0) && <span style={{ color: TOKENS.muted2 }}>/100</span>}
       </span>
       {hasBefore && delta !== 0 && (
-        <span style={{ color: up ? p.leaf : p.stamp }}>({up ? '+' : ''}{delta})</span>
+        <span style={{ color: up ? TOKENS.green : TOKENS.red }}>({up ? '+' : ''}{delta})</span>
       )}
     </span>
   );
@@ -2417,10 +2433,12 @@ function withHttps(url) {
 
 export default function ComposePage() {
   const router = useRouter();
-  const { p } = usePaperTheme();
+  // The reskinned Desk styles entirely from TOKENS; the only remaining paper-
+  // palette consumer is ChangeList (still on the legacy `Palette` shape), so we
+  // hand it the static light palette rather than the retired usePaperTheme hook.
   return (
     <ComposeV3
-      p={p}
+      p={PAPER_L}
       go={(route) => router.push(`/app/${route}`)}
     />
   );
