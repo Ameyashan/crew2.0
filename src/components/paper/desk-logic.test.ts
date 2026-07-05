@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   SUGGESTION_PILLS,
-  SAMPLE_SHOTS,
   FIRST_TIME_CARDS,
   validateScreenshot,
   imageFromClipboard,
@@ -25,10 +24,6 @@ test("SUGGESTION_PILLS are exactly the three prototype pills, each with a seed",
     ["Apply to a role", "Just a resume", "Find the right person"],
   );
   assert.ok(SUGGESTION_PILLS.every((s) => typeof s.fill === "string" && s.fill.length > 0));
-});
-
-test("SAMPLE_SHOTS covers job / hiring-manager / recruiter", () => {
-  assert.deepEqual(SAMPLE_SHOTS.map((s) => s.kind), ["job", "manager", "recruiter"]);
 });
 
 test("FIRST_TIME_CARDS: three cards, each with chips and a composer seed", () => {
@@ -138,9 +133,14 @@ test("deskHeadline: signed-out pitch / first-time welcome / returning prompt", (
   // No resolved name yet → a bare welcome, never "Welcome, ."
   assert.equal(deskHeadline(true, true, null), "Welcome.");
   assert.equal(deskHeadline(true, true, "   "), "Welcome.");
-  // Returning users get the standing prompt.
-  assert.equal(deskHeadline(true, false, "Sam Sharma"), "What should the crew get done?");
-  // Session still resolving (null) → returning prompt, no wrong-variant flash.
+  // Returning signed-in users get a personalized welcome-back by first name.
+  assert.equal(
+    deskHeadline(true, false, "Sam Sharma"),
+    "Welcome back, Sam — what should the crew get done?",
+  );
+  // Signed-in returning but name not resolved yet → neutral prompt, no "Welcome back, ."
+  assert.equal(deskHeadline(true, false, null), "What should the crew get done?");
+  // Session still resolving (null) → neutral prompt, no wrong-variant flash.
   assert.equal(deskHeadline(null, true, "Sam Sharma"), "What should the crew get done?");
 });
 

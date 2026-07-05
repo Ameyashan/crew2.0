@@ -272,69 +272,12 @@ export function TopBar() {
                   border: `1px solid ${TOKENS.line}`,
                   borderRadius: RADII.panel,
                   boxShadow: SHADOWS.popover,
-                  padding: "14px 16px",
+                  padding: "10px 16px",
                   zIndex: 40,
                   textAlign: "left",
                   animation: "fadeUp .2s ease",
                 }}
               >
-                <div
-                  style={{
-                    fontFamily: PAPER_FONTS_V2.sans,
-                    fontWeight: 500,
-                    fontSize: 13,
-                    lineHeight: 1.35,
-                    color: TOKENS.ink,
-                  }}
-                >
-                  {displayName}
-                </div>
-                {email && (
-                  <div
-                    style={{
-                      fontFamily: PAPER_FONTS_V2.sans,
-                      fontSize: 11.5,
-                      lineHeight: 1.5,
-                      color: TOKENS.muted,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {email}
-                  </div>
-                )}
-                <div
-                  style={{
-                    fontFamily: PAPER_FONTS_V2.mono,
-                    fontWeight: 500,
-                    fontSize: 9.5,
-                    lineHeight: 1,
-                    letterSpacing: ".08em",
-                    color: TOKENS.faint,
-                    marginTop: 6,
-                  }}
-                >
-                  SIGNED IN WITH GOOGLE
-                </div>
-                <Link
-                  href="/app/settings"
-                  onClick={() => setAcctOpen(false)}
-                  role="menuitem"
-                  style={{
-                    display: "block",
-                    fontFamily: PAPER_FONTS_V2.sans,
-                    fontSize: 12.5,
-                    lineHeight: 1,
-                    color: TOKENS.muted,
-                    textDecoration: "none",
-                    borderTop: `1px solid ${TOKENS.lineInset}`,
-                    marginTop: 12,
-                    paddingTop: 12,
-                  }}
-                >
-                  Settings
-                </Link>
                 <button
                   onClick={signOut}
                   role="menuitem"
@@ -349,7 +292,7 @@ export function TopBar() {
                     lineHeight: 1,
                     color: TOKENS.muted,
                     cursor: "pointer",
-                    paddingTop: 10,
+                    padding: "4px 0",
                   }}
                 >
                   Sign out

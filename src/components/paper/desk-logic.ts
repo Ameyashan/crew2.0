@@ -18,17 +18,6 @@ export const SUGGESTION_PILLS = [
 
 export type SuggestionPill = (typeof SUGGESTION_PILLS)[number];
 
-// ── Attach popover sample rows ───────────────────────────────────────────────
-// The three illustrative rows in the "+" attach popover. `kind` mirrors the
-// prototype's sample screenshots; in production these rows document the kinds of
-// screenshots the vision pass reads and open the file picker (we don't ship fake
-// image files — real thumbnails come from the user's upload).
-export const SAMPLE_SHOTS = [
-  { kind: "job", label: "stripe-posting.png", title: "A job posting", sub: "e.g. Staff Product Designer, Design Systems" },
-  { kind: "manager", label: "linkedin-anika.png", title: "A hiring manager's LinkedIn", sub: "the person who'd own the role" },
-  { kind: "recruiter", label: "recruiter-dm.png", title: "A recruiter's DM", sub: "a message about an open role" },
-] as const;
-
 // ── First-time "Things your crew can do" cards ───────────────────────────────
 // Shown only before the account has any run. Tapping one seeds the composer.
 export const FIRST_TIME_CARDS = [
@@ -126,19 +115,20 @@ export function storyNudgeKey(userKey?: string | null): string {
 
 // ── Desk headline ────────────────────────────────────────────────────────────
 // Prototype `deskHeadline` (line 1302): signed-out pitch → first-time welcome →
-// returning prompt. `signedIn` is the tri-state the session probe returns; while
-// it's still resolving (null) we show the returning prompt rather than flashing
-// the wrong variant.
+// returning greeting. `signedIn` is the tri-state the session probe returns.
+// Returning signed-in users get a personalized "Welcome back, {first} — …", but
+// only once we've confirmed the session AND resolved a name; while either is
+// still pending (signedIn null, or name not yet loaded) we fall back to the
+// neutral prompt rather than flashing the wrong variant.
 export function deskHeadline(
   signedIn: boolean | null,
   firstTime: boolean,
   name?: string | null,
 ): string {
   if (signedIn === false) return "A crew of agents for your job hunt.";
-  if (signedIn === true && firstTime) {
-    const first = (name || "").trim().split(/\s+/)[0] || "";
-    return first ? `Welcome, ${first}.` : "Welcome.";
-  }
+  const first = (name || "").trim().split(/\s+/)[0] || "";
+  if (signedIn === true && firstTime) return first ? `Welcome, ${first}.` : "Welcome.";
+  if (signedIn === true && first) return `Welcome back, ${first} — what should the crew get done?`;
   return "What should the crew get done?";
 }
 
