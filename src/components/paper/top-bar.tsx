@@ -139,7 +139,9 @@ export function TopBar() {
         serializePendingRun({
           input: run.input,
           intent: run.intent || "",
-          kind: run.kind ?? null,
+          // Run.kind includes "resume", which PendingRun doesn't model — but
+          // resume runs are never focused here, so narrow to what it accepts.
+          kind: run.kind === "job" || run.kind === "person" ? run.kind : null,
           providedEmail: !!run.providedEmail,
           selectedAgents: Array.isArray(run.selectedAgents) ? run.selectedAgents : [],
           screenshotName: run.screenshot?.name ?? null,
