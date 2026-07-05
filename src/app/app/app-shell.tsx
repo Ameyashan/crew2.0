@@ -2,6 +2,7 @@
 
 import { TopBar } from "@/components/paper/top-bar";
 import { AuthLoadingOverlay } from "@/components/paper/auth-loading";
+import { AuthErrorBanner } from "@/components/paper/auth-error";
 import { TOKENS } from "@/components/paper/tokens";
 import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
 
@@ -27,6 +28,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           when the auth callback's landing cookie is present, then removes itself. */}
       <AuthLoadingOverlay />
       <TopBar />
+      {/* Surfaces ?auth_error from a failed OAuth exchange (the callback routes
+          failures back to the Desk) instead of silently dropping the visitor. */}
+      <AuthErrorBanner />
       <div
         style={{
           flex: 1,
