@@ -1,36 +1,101 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
-import { TOKENS, RADII, SHADOWS } from "@/components/paper/tokens";
-import { InkButton2 } from "@/components/paper/primitives2";
+import { TOKENS, RADII } from "@/components/paper/tokens";
 import { useIsMobile } from "@/lib/use-is-mobile";
-import { relativePosted, visaBadge, sizeLabel, scoreTier } from "@/lib/jobs/format";
-import type { FeedItem } from "@/lib/jobs/types";
+import {
+  postedAgo,
+  compDisplay,
+  fitColors,
+  visaChipLabel,
+  visaChipColors,
+  goalPhrase,
+  filterJobs,
+  NO_FILTERS,
+  type FeedFilters,
+} from "@/lib/jobs/format";
+import { sectorLabel } from "@/lib/jobs/catalog/sectors";
+import type { FeedItem, PreferencesDTO } from "@/lib/jobs/types";
 
-function scoreColor(score: number): string {
-  const tier = scoreTier(score);
-  return tier === "high" ? TOKENS.green : tier === "mid" ? TOKENS.gold : TOKENS.red;
+// A single filter pill (visa / remote / comp). Active = ink bg, paper text.
+function FilterPill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      style={{
+        fontFamily: "system-ui, sans-serif",
+        fontSize: 11.5,
+        lineHeight: 1,
+        color: active ? TOKENS.paper : TOKENS.muted2,
+        background: active ? TOKENS.ink : TOKENS.card,
+        border: `1px solid ${active ? TOKENS.ink : TOKENS.line}`,
+        borderRadius: RADII.pill,
+        padding: "8px 13px",
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </span>
+  );
 }
 
-function JobCard({
-  item,
-  onOpen,
+// A quiet text affordance (Refresh / Edit preferences) — subtle, pill-shaped.
+function QuietPill({
+  children,
+  onClick,
+  disabled,
 }: {
-  item: FeedItem;
-  onOpen: () => void;
+  children: ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
 }) {
-  const posted = relativePosted(item.posted_date, item.posted_date_approx);
-  const visa = visaBadge(item.visa_confidence);
-  const size = sizeLabel(item.company_size);
-  const meta = [posted, item.location, item.compensation, size].filter(Boolean).join("  ·  ");
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        fontFamily: "system-ui, sans-serif",
+        fontSize: 12,
+        lineHeight: 1,
+        color: TOKENS.muted2,
+        background: "transparent",
+        border: `1px solid ${TOKENS.line}`,
+        borderRadius: RADII.button,
+        padding: "9px 14px",
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.6 : 1,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function JobCard({ item, onOpen }: { item: FeedItem; onOpen: () => void }) {
+  const [hover, setHover] = useState(false);
+  const posted = postedAgo(item.posted_date, item.posted_date_approx);
+  const comp = compDisplay(item.compensation);
+  const fit = fitColors(item.score);
+  const visaColors = visaChipColors(item.visa_confidence);
 
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={onOpen}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -39,121 +104,109 @@ function JobCard({
       }}
       style={{
         background: TOKENS.card,
-        border: `1px solid ${TOKENS.lineSoft}`,
+        border: `1px solid ${hover ? TOKENS.faint : TOKENS.lineSoft}`,
         borderRadius: RADII.card,
-        boxShadow: SHADOWS.card,
-        padding: "18px 20px",
+        boxShadow: hover ? "0 2px 12px rgba(60,50,30,.07)" : "none",
+        padding: "20px 24px",
+        display: "flex",
+        gap: 20,
         cursor: "pointer",
-        display: "grid",
-        gridTemplateColumns: "1fr auto",
-        gap: 16,
-        alignItems: "start",
+        transition: "border-color .15s ease, box-shadow .15s ease",
       }}
     >
-      <div style={{ minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
           <span
             style={{
               fontFamily: PAPER_FONTS_V2.mono,
-              fontSize: 10.5,
-              color: TOKENS.red,
+              fontWeight: 500,
+              fontSize: 11,
+              lineHeight: 1,
               letterSpacing: ".1em",
-              textTransform: "uppercase",
+              color: TOKENS.muted,
             }}
           >
             {item.company}
           </span>
-          {item.is_new && (
-            <span
-              style={{
-                fontFamily: PAPER_FONTS_V2.mono,
-                fontSize: 8.5,
-                letterSpacing: ".14em",
-                padding: "2px 8px",
-                borderRadius: RADII.pill,
-                border: `1px solid ${TOKENS.red}`,
-                color: TOKENS.red,
-                whiteSpace: "nowrap",
-              }}
-            >
-              NEW
+          {posted && (
+            <span style={{ fontFamily: "system-ui, sans-serif", fontSize: 11, lineHeight: 1, color: TOKENS.faint }}>
+              posted {posted}
             </span>
           )}
         </div>
         <div
           style={{
             fontFamily: PAPER_FONTS_V2.serif,
-            fontSize: 22,
+            fontWeight: 400,
+            fontSize: 20,
+            lineHeight: 1.3,
             color: TOKENS.ink,
-            lineHeight: 1.1,
-            marginTop: 4,
+            marginBottom: 5,
           }}
         >
           {item.title}
         </div>
-        {meta && (
-          <div
-            style={{
-              fontFamily: PAPER_FONTS_V2.mono,
-              fontSize: 11,
-              color: TOKENS.muted,
-              marginTop: 6,
-              letterSpacing: ".02em",
-            }}
-          >
-            {meta}
-          </div>
-        )}
+        <div style={{ fontFamily: "system-ui, sans-serif", fontSize: 12.5, lineHeight: 1.5, color: TOKENS.muted }}>
+          {item.location ? `${item.location} · ` : ""}
+          <span style={{ color: comp.listed ? TOKENS.green : TOKENS.faint }}>{comp.label}</span>
+        </div>
         {item.reasons && (
           <div
             style={{
-              marginTop: 8,
               fontFamily: PAPER_FONTS_V2.serif,
               fontStyle: "italic",
               fontSize: 14,
-              lineHeight: 1.4,
+              lineHeight: 1.55,
               color: TOKENS.muted2,
+              marginTop: 9,
             }}
           >
             {item.reasons}
           </div>
         )}
-        {visa && (
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flex: "none" }}>
+        <div
+          style={{
+            border: `1px solid ${fit.border}`,
+            color: fit.color,
+            borderRadius: RADII.button,
+            padding: "9px 11px",
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontWeight: 500, fontSize: 17, lineHeight: 1 }}>
+            {item.score}
+          </div>
           <div
             style={{
-              marginTop: 8,
-              display: "inline-block",
               fontFamily: PAPER_FONTS_V2.mono,
-              fontSize: 10,
-              letterSpacing: ".06em",
-              textTransform: "uppercase",
-              color: TOKENS.green,
-              background: TOKENS.greenBg,
-              borderRadius: RADII.pill,
-              padding: "3px 10px",
+              fontWeight: 500,
+              fontSize: 8.5,
+              lineHeight: 1,
+              letterSpacing: ".1em",
+              marginTop: 4,
             }}
           >
-            ✓ {visa}
+            FIT
           </div>
-        )}
+        </div>
+        <span
+          style={{
+            fontFamily: PAPER_FONTS_V2.mono,
+            fontWeight: 500,
+            fontSize: 10,
+            lineHeight: 1,
+            color: visaColors.color,
+            background: visaColors.bg,
+            borderRadius: 4,
+            padding: "5px 8px",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {visaChipLabel(item.visa_confidence)}
+        </span>
       </div>
-      <span
-        style={{
-          display: "inline-block",
-          fontFamily: PAPER_FONTS_V2.mono,
-          fontWeight: 600,
-          fontSize: 15,
-          letterSpacing: ".04em",
-          color: scoreColor(item.score),
-          border: `1px solid ${scoreColor(item.score)}`,
-          borderRadius: RADII.buttonTight,
-          padding: "6px 11px",
-          background: TOKENS.card,
-          whiteSpace: "nowrap",
-        }}
-      >
-        {item.score}
-      </span>
     </div>
   );
 }
@@ -162,15 +215,13 @@ export default function JobsFeedPage() {
   const isMobile = useIsMobile();
   const router = useRouter();
   const [jobs, setJobs] = useState<FeedItem[] | null>(null);
+  const [prefs, setPrefs] = useState<PreferencesDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [onlyNew, setOnlyNew] = useState(false);
+  const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
   const [refreshing, setRefreshing] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
-  const fetchFeed = useCallback(
-    (filterNew: boolean) => fetch(`/api/jobs/feed${filterNew ? "?filter=new" : ""}`).then((r) => r.json()),
-    [],
-  );
+  const fetchFeed = useCallback(() => fetch("/api/jobs/feed").then((r) => r.json()), []);
 
   const applyFeed = useCallback((j: { error?: string; jobs?: FeedItem[] }) => {
     if (j.error) {
@@ -184,17 +235,23 @@ export default function JobsFeedPage() {
 
   useEffect(() => {
     let alive = true;
-    fetchFeed(onlyNew)
+    fetchFeed()
       .then((j) => {
         if (alive) applyFeed(j);
       })
       .catch((e) => {
         if (alive) setError(String(e?.message || e));
       });
+    fetch("/api/jobs/preferences")
+      .then((r) => r.json())
+      .then((j) => {
+        if (alive && j?.preferences) setPrefs(j.preferences as PreferencesDTO);
+      })
+      .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [onlyNew, fetchFeed, applyFeed]);
+  }, [fetchFeed, applyFeed]);
 
   // Re-run the discovery pipeline against the user's saved preferences, then
   // pull the freshly-scored feed. Saving preferences only grows the catalog;
@@ -208,7 +265,7 @@ export default function JobsFeedPage() {
       if (j.error) {
         setError(j.error);
       } else {
-        applyFeed(await fetchFeed(onlyNew));
+        applyFeed(await fetchFeed());
         if (j.reason === "no_preferences") {
           setNote("Set your interests first, then refresh to fill your feed.");
         } else if (j.candidates === 0) {
@@ -224,82 +281,85 @@ export default function JobsFeedPage() {
     } finally {
       setRefreshing(false);
     }
-  }, [fetchFeed, applyFeed, onlyNew]);
+  }, [fetchFeed, applyFeed]);
 
+  const toggle = (key: keyof FeedFilters) => setFilters((f) => ({ ...f, [key]: !f[key] }));
+
+  const visible = useMemo(() => (jobs ? filterJobs(jobs, filters) : []), [jobs, filters]);
   const total = jobs?.length ?? 0;
-  const newCount = jobs?.filter((j) => j.is_new).length ?? 0;
-  const summary =
-    jobs === null
-      ? "Gathering jobs that fit your interests…"
-      : total === 0
-        ? "Nothing matching your interests yet — set or broaden them to fill this up."
-        : `${total} match${total === 1 ? "" : "es"}${newCount ? ` · ${newCount} new` : ""} · ranked by fit`;
+  const goal = goalPhrase((prefs?.interests ?? []).map(sectorLabel));
 
   return (
     <div
       className="scroll"
-      style={{ flex: 1, overflow: "auto", padding: isMobile ? "24px 16px 64px" : "48px 56px 80px", background: TOKENS.paper }}
+      style={{
+        flex: 1,
+        overflow: "auto",
+        maxWidth: 920,
+        width: "100%",
+        margin: "0 auto",
+        boxSizing: "border-box",
+        padding: isMobile ? "28px 18px 60px" : "44px 44px 60px",
+        background: TOKENS.paper,
+      }}
     >
       <div
         style={{
           display: "flex",
           alignItems: "flex-start",
           justifyContent: "space-between",
-          gap: 24,
+          gap: 16,
           flexWrap: "wrap",
+          marginBottom: 8,
+        }}
+      >
+        <div
+          style={{
+            fontFamily: PAPER_FONTS_V2.serif,
+            fontWeight: 400,
+            fontSize: 30,
+            lineHeight: 1.25,
+            letterSpacing: "-.01em",
+            color: TOKENS.ink,
+          }}
+        >
+          Today&apos;s jobs, picked for you
+        </div>
+        <div style={{ display: "flex", gap: 8, flex: "none" }}>
+          <QuietPill onClick={refresh} disabled={refreshing}>
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </QuietPill>
+          <QuietPill onClick={() => router.push("/app/jobs/preferences")}>Edit preferences</QuietPill>
+        </div>
+      </div>
+
+      <div
+        style={{
+          fontFamily: "system-ui, sans-serif",
+          fontSize: 14,
+          lineHeight: 1.7,
+          color: TOKENS.muted,
+          maxWidth: 560,
           marginBottom: 24,
         }}
       >
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div
-            style={{
-              fontFamily: PAPER_FONTS_V2.mono,
-              fontSize: 10.5,
-              color: TOKENS.muted,
-              letterSpacing: ".1em",
-              textTransform: "uppercase",
-              marginBottom: 8,
-            }}
-          >
-            Jobs · picked for you
-          </div>
-          <h1
-            style={{
-              margin: 0,
-              fontFamily: PAPER_FONTS_V2.serif,
-              fontWeight: 400,
-              fontSize: "clamp(40px, 4.8vw, 64px)",
-              lineHeight: 0.95,
-              letterSpacing: "-.02em",
-              color: TOKENS.ink,
-              textWrap: "balance",
-            }}
-          >
-            Today&apos;s jobs, <span style={{ fontStyle: "italic", color: TOKENS.red }}>picked for you.</span>
-          </h1>
-          <p
-            style={{
-              margin: "14px 0 0",
-              fontFamily: PAPER_FONTS_V2.serif,
-              fontStyle: "italic",
-              fontSize: 18,
-              lineHeight: 1.45,
-              color: TOKENS.inkSoft,
-              maxWidth: 720,
-            }}
-          >
-            {summary}
-          </p>
-        </div>
-        <div style={{ flexShrink: 0, display: "flex", gap: 8 }}>
-          <InkButton2 kind="solid" size="sm" onClick={refresh} disabled={refreshing}>
-            {refreshing ? "Refreshing…" : "Refresh"}
-          </InkButton2>
-          <InkButton2 kind="outline" size="sm" onClick={() => router.push("/app/jobs/preferences")}>
-            Edit preferences
-          </InkButton2>
-        </div>
+        {total === 0 && jobs !== null
+          ? "No matches yet — set or broaden your interests to fill this up."
+          : jobs === null
+            ? "Gathering the roles that fit your Story…"
+            : `${total} role${total === 1 ? "" : "s"} ranked against your Story and what you said you're after: `}
+        {jobs !== null && total > 0 && <em>{goal}</em>}
+        {jobs !== null && total > 0 && "."}
       </div>
+
+      {jobs !== null && total > 0 && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 26 }}>
+          <FilterPill label="Sponsors visa" active={filters.sponsorsVisa} onClick={() => toggle("sponsorsVisa")} />
+          <span style={{ width: 1, height: 18, background: TOKENS.line, margin: "0 4px" }} />
+          <FilterPill label="Remote-friendly" active={filters.remote} onClick={() => toggle("remote")} />
+          <FilterPill label="Comp listed" active={filters.compListed} onClick={() => toggle("compListed")} />
+        </div>
+      )}
 
       {note && (
         <div
@@ -318,43 +378,12 @@ export default function JobsFeedPage() {
         </div>
       )}
 
-      {/* New-today toggle */}
-      {jobs !== null && total > 0 && (
-        <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-          {[
-            { v: false, label: "All matches" },
-            { v: true, label: "New today" },
-          ].map((o) => {
-            const active = onlyNew === o.v;
-            return (
-              <button
-                key={o.label}
-                onClick={() => setOnlyNew(o.v)}
-                style={{
-                  padding: "6px 14px",
-                  fontFamily: PAPER_FONTS_V2.mono,
-                  fontSize: 12,
-                  background: active ? TOKENS.ink : "transparent",
-                  color: active ? TOKENS.paper : TOKENS.ink,
-                  border: `1px solid ${active ? TOKENS.ink : TOKENS.line}`,
-                  borderRadius: RADII.pill,
-                  cursor: "pointer",
-                }}
-              >
-                {o.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
       {error ? (
         <div
           style={{
             background: TOKENS.card,
             border: `1px solid ${TOKENS.lineSoft}`,
             borderRadius: RADII.card,
-            boxShadow: SHADOWS.card,
             padding: "20px 22px",
           }}
         >
@@ -370,7 +399,6 @@ export default function JobsFeedPage() {
             textAlign: "center",
             border: `1px dashed ${TOKENS.dashed}`,
             borderRadius: RADII.card,
-            background: "transparent",
           }}
         >
           <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 26, color: TOKENS.ink, lineHeight: 1.1 }}>
@@ -387,25 +415,25 @@ export default function JobsFeedPage() {
               lineHeight: 1.4,
             }}
           >
-            We&apos;re scanning the boards that match your interests. New matches land here every morning — check back shortly.
+            We&apos;re scanning the boards that match your interests. New matches land here every morning — check back
+            shortly.
           </p>
         </div>
-      ) : jobs.length === 0 ? (
+      ) : total === 0 ? (
         <div
           style={{
             padding: "48px 32px",
             textAlign: "center",
             border: `1px dashed ${TOKENS.dashed}`,
             borderRadius: RADII.card,
-            background: "transparent",
           }}
         >
           <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 26, color: TOKENS.ink, lineHeight: 1.1 }}>
-            {onlyNew ? "No new matches today" : "No matches yet"}
+            No matches yet
           </div>
           <p
             style={{
-              margin: "8px auto 0",
+              margin: "8px auto 18px",
               maxWidth: 480,
               fontFamily: PAPER_FONTS_V2.serif,
               fontStyle: "italic",
@@ -414,39 +442,61 @@ export default function JobsFeedPage() {
               lineHeight: 1.4,
             }}
           >
-            {onlyNew
-              ? "Nothing new since your last visit. Switch to All matches to see everything."
-              : "Pick the sectors you care about and we'll fill this feed with roles that fit."}
+            Pick the sectors you care about and we&apos;ll fill this feed with roles that fit.
           </p>
-          <div style={{ marginTop: 18 }}>
-            {onlyNew ? (
-              <div style={{ display: "inline-flex" }}>
-                <InkButton2 kind="solid" onClick={() => setOnlyNew(false)}>
-                  See all matches
-                </InkButton2>
-              </div>
-            ) : (
-              <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-                <InkButton2 kind="solid" onClick={refresh} disabled={refreshing}>
-                  {refreshing ? "Refreshing…" : "Refresh feed"}
-                </InkButton2>
-                <InkButton2 kind="outline" onClick={() => router.push("/app/jobs/preferences")}>
-                  Set your interests
-                </InkButton2>
-              </div>
-            )}
+          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+            <QuietPill onClick={refresh} disabled={refreshing}>
+              {refreshing ? "Refreshing…" : "Refresh feed"}
+            </QuietPill>
+            <QuietPill onClick={() => router.push("/app/jobs/preferences")}>Set your interests</QuietPill>
           </div>
         </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {jobs.map((item) => (
-            <JobCard
-              key={item.match_id || item.job_id}
-              item={item}
-              onOpen={() => router.push(`/app/jobs/${item.job_id}`)}
-            />
-          ))}
+      ) : visible.length === 0 ? (
+        <div
+          style={{
+            padding: "40px 32px",
+            textAlign: "center",
+            border: `1px dashed ${TOKENS.dashed}`,
+            borderRadius: RADII.card,
+          }}
+        >
+          <p
+            style={{
+              margin: 0,
+              fontFamily: PAPER_FONTS_V2.serif,
+              fontStyle: "italic",
+              fontSize: 16,
+              color: TOKENS.inkSoft,
+              lineHeight: 1.4,
+            }}
+          >
+            No matches fit those filters. Loosen them to see the rest of your feed.
+          </p>
         </div>
+      ) : (
+        <>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {visible.map((item) => (
+              <JobCard
+                key={item.match_id || item.job_id}
+                item={item}
+                onOpen={() => router.push(`/app/jobs/${item.job_id}`)}
+              />
+            ))}
+          </div>
+          <div
+            style={{
+              fontFamily: "system-ui, sans-serif",
+              fontSize: 12,
+              lineHeight: 1.6,
+              color: TOKENS.faint,
+              marginTop: 18,
+              textAlign: "center",
+            }}
+          >
+            Refreshes every morning · fit re-ranks as your Story grows
+          </div>
+        </>
       )}
     </div>
   );
