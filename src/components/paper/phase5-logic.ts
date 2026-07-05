@@ -295,6 +295,30 @@ export function runDownloadTiles(run: DetailRun): DownloadTile[] {
   ];
 }
 
+// The all-✓ step rows shown on a completed run's detail view, each tagged with
+// the agent chip the prototype shows next to it (prototype lines 294–305:
+// TRACKER / RESUME / PERSON KHOJI / EMAIL WALLAH / OUTREACH). Pure so the
+// history page stays markup-only.
+export type DetailStep = { title: string; agent: string; sub: string };
+
+export function runDetailSteps(run: { kind?: string | null } | null | undefined): DetailStep[] {
+  if (run?.kind === "job") {
+    return [
+      { title: "Read your input", agent: "TRACKER", sub: "parsed the role and what you're after" },
+      { title: "Tailored your résumé", agent: "RESUME", sub: "woven from your Story, tuned to the posting" },
+      { title: "Found who decides", agent: "PERSON KHOJI", sub: "ranked by who can say yes" },
+      { title: "Verified their email", agent: "EMAIL WALLAH", sub: "alternates held in reserve" },
+      { title: "Drafted your outreach", agent: "OUTREACH", sub: "in your voice, across channels" },
+    ];
+  }
+  return [
+    { title: "Read your input", agent: "TRACKER", sub: "parsed who you're reaching out to" },
+    { title: "Verified the person", agent: "PERSON KHOJI", sub: "confirmed the right match" },
+    { title: "Found contact details", agent: "EMAIL WALLAH", sub: "email verified, alternates held" },
+    { title: "Drafted your outreach", agent: "OUTREACH", sub: "in your voice, across channels" },
+  ];
+}
+
 // ── People tracker ───────────────────────────────────────────────────────────
 // Status chip tone: a reply is the win (green), an unanswered send is pending
 // (amber), everything else is neutral/held. Matches the statuses the People page
@@ -315,6 +339,73 @@ export function personStatusChip(status: string | null | undefined): PeopleChip 
     default:
       return { label: (status || "held").toUpperCase(), tone: "held" };
   }
+}
+
+// The People tracker table (prototype lines 512–527) shows one row per contact,
+// derived from that person's latest interaction and next pending follow-up.
+// These helpers keep the derivation pure and unit-tested; the page turns the
+// tones into token colors.
+export type PersonRowInput = {
+  last_interaction_type?: string | null;
+  last_interaction?: string | null;
+  next_followup_due?: string | null;
+};
+
+// "LAST TOUCH" column: "reply · yesterday", "sent · 4d ago", or "—".
+export function personLastTouch(row: PersonRowInput, now: number = Date.now()): string {
+  const when = relativeWhen(row?.last_interaction, now);
+  if (!when) return "—";
+  const type = row?.last_interaction_type;
+  const word =
+    type === "replied" ? "reply" : type === "sent" ? "sent" : type === "drafted" ? "draft" : "touch";
+  return `${word} · ${when}`;
+}
+
+// "NEXT" column: what happens next, tinted by kind.
+//   'you'    → the ball is in your court (they replied) — ink
+//   'auto'   → an automatic follow-up is queued — muted
+//   'closed' → nothing queued / gone cold — faint
+export type NextTone = "you" | "auto" | "closed";
+
+export function personNextStep(
+  row: PersonRowInput,
+  now: number = Date.now(),
+): { label: string; tone: NextTone } {
+  const type = row?.last_interaction_type;
+  if (type === "replied") return { label: "you: your move", tone: "you" };
+  if (type === "drafted") return { label: "draft held", tone: "auto" };
+  if (type === "sent") {
+    const dueRaw = row?.next_followup_due;
+    if (dueRaw) {
+      const due = new Date(dueRaw);
+      if (Number.isFinite(due.getTime())) {
+        const date = due.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        return { label: `auto follow-up · ${date}`, tone: "auto" };
+      }
+    }
+    // No follow-up queued — cold if the last touch is old, else still awaiting.
+    const last = row?.last_interaction ? new Date(row.last_interaction).getTime() : null;
+    if (last != null && Number.isFinite(last) && now - last > 14 * 86400000) {
+      return { label: "closed", tone: "closed" };
+    }
+    return { label: "auto follow-up queued", tone: "auto" };
+  }
+  return { label: "—", tone: "closed" };
+}
+
+// Maps a person's latest interaction type to the status string
+// `personStatusChip` understands (replied → REPLIED, sent → SENT, else HELD).
+export function interactionToStatus(type: string | null | undefined): string {
+  if (type === "replied") return "replied";
+  if (type === "sent") return "awaiting";
+  if (type === "drafted") return "queued";
+  return "queued";
+}
+
+// A tracker row needs your attention — highlighted `#fdfcf8` bg — when the
+// person has replied and the next move is yours.
+export function trackerRowNeedsAction(row: PersonRowInput): boolean {
+  return row?.last_interaction_type === "replied";
 }
 
 // ── Shared time + text helpers ───────────────────────────────────────────────

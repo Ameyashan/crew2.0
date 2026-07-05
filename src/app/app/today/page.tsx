@@ -111,15 +111,15 @@ function TodayV3({ go }) {
           }}>{headEyebrow}</div>
           <h1 style={{
             margin: 0, fontFamily: PAPER_FONTS_V2.serif, fontWeight: 400,
-            fontSize: 'clamp(40px, 4.8vw, 64px)', lineHeight: 0.95, letterSpacing: '-.02em',
+            fontSize: 30, lineHeight: 1.25, letterSpacing: '-.01em',
             color: TOKENS.ink, textWrap: 'balance',
           }}>
             {headTitle}{' '}
-            <span style={{ fontStyle: 'italic', color: TOKENS.red }}>{headItalic}</span>
+            <span style={{ fontStyle: 'italic', color: TOKENS.muted2 }}>{headItalic}</span>
           </h1>
           <p style={{
-            margin: '14px 0 0', fontFamily: PAPER_FONTS_V2.serif, fontStyle: 'italic',
-            fontSize: 18, lineHeight: 1.45, color: TOKENS.inkSoft, maxWidth: 720,
+            margin: '12px 0 0', fontFamily: PAPER_FONTS_V2.sans,
+            fontSize: 14, lineHeight: 1.7, color: TOKENS.muted, maxWidth: 720,
           }}>{headSub}</p>
         </div>
         {isMobile ? null : (
@@ -141,12 +141,12 @@ function TodayV3({ go }) {
       }}>
         <span>{total - remaining}/{total}</span>
         <div style={{ flex: 1, height: 4, background: TOKENS.line, borderRadius: RADII.pill }}>
-          <div style={{ height: '100%', width: `${((total - remaining) / total) * 100}%`, background: TOKENS.red, borderRadius: RADII.pill, transition: 'width .4s' }}/>
+          <div style={{ height: '100%', width: `${((total - remaining) / total) * 100}%`, background: TOKENS.green, borderRadius: RADII.pill, transition: 'width .4s' }}/>
         </div>
       </div>
 
       {/* Followups */}
-      <SectionLabel en={`Followups due · ${FOLLOWUPS.filter(x => !acted[x.id]).length}`} color={TOKENS.red}/>
+      <SectionLabel en={`Followups due · ${FOLLOWUPS.filter(x => !acted[x.id]).length}`} color={TOKENS.amber}/>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, marginBottom: 32 }}>
         {FOLLOWUPS.map((fu, i) => (
           <FollowupRow
@@ -360,7 +360,7 @@ function ReplyRow({ r, cursor, acted, expanded, onExpand, onAct }) {
               padding: '2px 8px', fontFamily: PAPER_FONTS_V2.mono, fontSize: 9.5, letterSpacing: '.08em',
               color: TOKENS.green, background: TOKENS.greenBg, borderRadius: RADII.pill, border: `1px solid ${TOKENS.line}`, textTransform: 'uppercase',
             }}>● {r.sentiment}</span>
-            {r.intro && <span style={{ padding: '2px 8px', fontFamily: PAPER_FONTS_V2.mono, fontSize: 9.5, color: TOKENS.red, background: TOKENS.chip, borderRadius: RADII.pill, border: `1px solid ${TOKENS.line}` }}>INTRO OFFERED</span>}
+            {r.intro && <span style={{ padding: '2px 8px', fontFamily: PAPER_FONTS_V2.mono, fontSize: 9.5, color: TOKENS.amber, background: TOKENS.chip, borderRadius: RADII.pill, border: `1px solid ${TOKENS.line}` }}>INTRO OFFERED</span>}
             {r.meeting && <span style={{ padding: '2px 8px', fontFamily: PAPER_FONTS_V2.mono, fontSize: 9.5, color: TOKENS.muted2, background: TOKENS.chip, borderRadius: RADII.pill, border: `1px solid ${TOKENS.line}` }}>MEETING · {r.meeting}</span>}
           </div>
           <p style={{

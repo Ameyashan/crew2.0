@@ -10,6 +10,7 @@ import {
   resumeRowChip,
   runDetailTitle,
   runDetailSubline,
+  runDetailSteps,
   runOutcomeRows,
   runDownloadTiles,
   relativeWhen,
@@ -71,20 +72,6 @@ async function downloadResumeBlob(resume, fmt) {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-}
-
-// The all-✓ step list shown on a completed run's detail.
-function detailSteps(run: { kind?: string | null }) {
-  if (run?.kind === "job") {
-    return [
-      "Read your input",
-      "Resolved the opening",
-      "Tailored your résumé",
-      "Found the hiring manager",
-      "Drafted your outreach",
-    ];
-  }
-  return ["Read your input", "Verified the person", "Found contact details", "Drafted your outreach"];
 }
 
 function HistoryV3() {
@@ -207,72 +194,80 @@ function HistoryV3() {
           color: TOKENS.ink,
         }}
       >
-        <div style={{ maxWidth: 720, margin: "0 auto" }}>
+        <div style={{ maxWidth: 820, margin: "0 auto" }}>
           <button
             onClick={() => setDetail(null)}
             style={{
               background: "transparent",
               border: "none",
               color: TOKENS.muted,
-              fontFamily: PAPER_FONTS_V2.mono,
-              fontSize: 12,
-              letterSpacing: ".04em",
+              fontFamily: PAPER_FONTS_V2.sans,
+              fontSize: 13,
               cursor: "pointer",
               padding: 0,
-              marginBottom: 22,
+              marginBottom: 18,
             }}
           >
-            ← all runs
+            ← All runs
           </button>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <MonoLabel>{company}</MonoLabel>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              justifyContent: "space-between",
+              gap: 12,
+              marginBottom: 6,
+            }}
+          >
+            <h1
+              style={{
+                margin: 0,
+                fontFamily: PAPER_FONTS_V2.serif,
+                fontWeight: 400,
+                fontSize: 26,
+                lineHeight: 1.3,
+                letterSpacing: "-.01em",
+                color: TOKENS.ink,
+              }}
+            >
+              {title}
+            </h1>
             <span
               style={{
-                padding: "3px 10px",
-                borderRadius: RADII.pill,
+                padding: "5px 8px",
+                borderRadius: 5,
                 background: TOKENS.greenBg,
                 color: TOKENS.green,
                 fontFamily: PAPER_FONTS_V2.mono,
-                fontSize: 10,
+                fontSize: 10.5,
                 fontWeight: 500,
-                letterSpacing: ".1em",
-                textTransform: "uppercase",
+                whiteSpace: "nowrap",
               }}
             >
-              Done
+              DONE
             </span>
           </div>
-          <h1
-            style={{
-              margin: "6px 0 0",
-              fontFamily: PAPER_FONTS_V2.serif,
-              fontWeight: 400,
-              fontSize: isMobile ? 26 : 30,
-              lineHeight: 1.05,
-              letterSpacing: "-.01em",
-              color: TOKENS.ink,
-            }}
-          >
-            {title}
-          </h1>
           <div
             style={{
-              marginTop: 8,
-              fontFamily: PAPER_FONTS_V2.serif,
-              fontStyle: "italic",
-              fontSize: 15,
+              fontFamily: PAPER_FONTS_V2.sans,
+              fontSize: 13,
+              lineHeight: 1.6,
               color: TOKENS.muted,
+              marginBottom: 28,
             }}
           >
             {runDetailSubline(detail)}
           </div>
 
-          {/* Steps — all done */}
-          <div style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 10 }}>
-            {detailSteps(detail).map((label, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <span
+          {/* Steps — all done, each with its agent chip */}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {runDetailSteps(detail).map((s, i) => (
+              <div
+                key={i}
+                style={{ display: "flex", gap: 16, padding: "15px 0", borderTop: `1px solid ${TOKENS.lineRow}` }}
+              >
+                <div
                   style={{
                     width: 20,
                     height: 20,
@@ -281,15 +276,36 @@ function HistoryV3() {
                     color: TOKENS.paper,
                     display: "grid",
                     placeItems: "center",
-                    fontSize: 11,
+                    fontSize: 10,
+                    fontWeight: 600,
                     flexShrink: 0,
                   }}
                 >
                   ✓
-                </span>
-                <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 14.5, color: TOKENS.ink }}>
-                  {label}
-                </span>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 14.5, fontWeight: 500, color: TOKENS.ink }}>
+                      {s.title}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: PAPER_FONTS_V2.mono,
+                        fontSize: 10,
+                        fontWeight: 500,
+                        color: TOKENS.muted,
+                        background: TOKENS.chip,
+                        borderRadius: 4,
+                        padding: "3px 6px",
+                      }}
+                    >
+                      {s.agent}
+                    </span>
+                  </div>
+                  <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.55, color: TOKENS.muted, marginTop: 3 }}>
+                    {s.sub}
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -297,16 +313,18 @@ function HistoryV3() {
           {/* WHAT CAME OF IT */}
           <div
             style={{
-              marginTop: 28,
+              marginTop: 20,
               background: TOKENS.card,
               border: `1px solid ${TOKENS.lineSoft}`,
               borderRadius: RADII.card,
-              boxShadow: SHADOWS.card,
-              padding: "20px 22px",
+              boxShadow: SHADOWS.elevated,
+              padding: "24px 26px",
             }}
           >
-            <MonoLabel>What came of it</MonoLabel>
-            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+            <MonoLabel size={10} style={{ letterSpacing: ".08em", color: TOKENS.faint }}>
+              What came of it
+            </MonoLabel>
+            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
               {rows.map((row, i) => {
                 const ts = toneStyle(row.tone);
                 return (
@@ -315,39 +333,34 @@ function HistoryV3() {
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 12,
-                      justifyContent: "space-between",
+                      gap: 14,
+                      background: TOKENS.cardWarm,
+                      border: `1px solid ${TOKENS.lineInset}`,
+                      borderRadius: RADII.panelTight,
+                      padding: "13px 16px",
                     }}
                   >
-                    <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 14, color: TOKENS.ink }}
-                      >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13.5, fontWeight: 500, color: TOKENS.ink }}>
                         {row.label}
                       </div>
-                      <div
-                        style={{
-                          fontFamily: PAPER_FONTS_V2.mono,
-                          fontSize: 11,
-                          color: TOKENS.muted,
-                          marginTop: 2,
-                        }}
-                      >
+                      <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, lineHeight: 1.5, color: TOKENS.muted, marginTop: 2 }}>
                         {row.detail}
                       </div>
                     </div>
                     <span
                       style={{
-                        padding: "3px 10px",
-                        borderRadius: RADII.pill,
+                        padding: "4px 8px",
+                        borderRadius: 5,
                         background: ts.bg,
                         color: ts.color,
                         fontFamily: PAPER_FONTS_V2.mono,
                         fontSize: 10,
                         fontWeight: 500,
-                        letterSpacing: ".08em",
+                        letterSpacing: ".04em",
                         textTransform: "uppercase",
                         whiteSpace: "nowrap",
+                        flexShrink: 0,
                       }}
                     >
                       ✓ done
@@ -359,7 +372,7 @@ function HistoryV3() {
 
             {/* Download tiles */}
             {tiles.length > 0 && (
-              <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 {tiles.map((tile) => (
                   <button
                     key={tile.kind}
@@ -367,18 +380,21 @@ function HistoryV3() {
                     style={{
                       display: "flex",
                       alignItems: "center",
+                      justifyContent: "space-between",
                       gap: 8,
-                      padding: "10px 16px",
-                      background: TOKENS.cardWarm,
-                      border: `1px solid ${TOKENS.line}`,
-                      borderRadius: RADII.panelTight,
+                      padding: "14px 16px",
+                      background: TOKENS.card,
+                      border: `1px solid ${TOKENS.lineSoft}`,
+                      borderRadius: RADII.panel,
                       color: TOKENS.ink,
                       fontFamily: PAPER_FONTS_V2.sans,
                       fontSize: 13,
+                      fontWeight: 500,
                       cursor: "pointer",
                     }}
                   >
-                    <span style={{ fontFamily: PAPER_FONTS_V2.mono }}>↓</span> {tile.label}
+                    {tile.label}
+                    <span style={{ fontFamily: PAPER_FONTS_V2.sans, color: TOKENS.muted2 }}>↓</span>
                   </button>
                 ))}
               </div>
@@ -421,35 +437,31 @@ function HistoryV3() {
         color: TOKENS.ink,
       }}
     >
-      <div style={{ marginBottom: 20 }}>
-        <MonoLabel>History · all your runs</MonoLabel>
+      <div style={{ marginBottom: 22 }}>
         <h1
           style={{
-            margin: "8px 0 0",
+            margin: 0,
             fontFamily: PAPER_FONTS_V2.serif,
             fontWeight: 400,
-            fontSize: isMobile ? 30 : 34,
-            lineHeight: 1.05,
+            fontSize: 30,
+            lineHeight: 1.25,
             letterSpacing: "-.01em",
             color: TOKENS.ink,
           }}
         >
-          Every run, everywhere{" "}
-          <span style={{ fontStyle: "italic", color: TOKENS.muted2 }}>you signed in.</span>
+          Your runs
         </h1>
         <p
           style={{
-            margin: "10px 0 0",
-            fontFamily: PAPER_FONTS_V2.serif,
-            fontStyle: "italic",
-            fontSize: 15.5,
-            lineHeight: 1.5,
+            margin: "8px 0 0",
+            fontFamily: PAPER_FONTS_V2.sans,
+            fontSize: 14,
+            lineHeight: 1.7,
             color: TOKENS.muted,
-            maxWidth: 620,
+            maxWidth: 560,
           }}
         >
-          Anything Jugaadu does — a tailored résumé, a screenshot the crew read, a person you reached
-          out to — shows up here, on any device.
+          Every résumé, screenshot, and person the crew has worked on — on any device you sign in on.
         </p>
       </div>
 
