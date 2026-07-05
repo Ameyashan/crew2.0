@@ -8,6 +8,7 @@ import { TOKENS, RADII, SHADOWS } from "./tokens";
 import { supabaseBrowser, signInWithGoogle } from "@/lib/supabase-browser";
 import { useRuns, useFocusedRun, setFocusedRun } from "@/lib/runs-store";
 import { TOP_NAV, nameFromEmail, isNavActive, avatarBg, avatarInitial, crewChip } from "./top-bar-logic";
+import { serializePendingRun, PENDING_RUN_KEY } from "./run-view-logic";
 
 export function TopBar() {
   const pathname = usePathname();
@@ -117,6 +118,38 @@ export function TopBar() {
 
   const isSignedOut = signedIn === false;
 
+  // A signed-out visitor gets one run that lives only in the in-memory store
+  // (anon runs persist nothing). While they're viewing it full-screen, the
+  // wordmark must NOT clear the focus — that would strand the run with no way
+  // back (the "crew running" chip is signed-in only). Keep them on it; the only
+  // forward path is signing in, which replays the run unlocked.
+  const lockWordmark = isSignedOut && !!focusedRunId;
+
+  // Stash the run the signed-out visitor is looking at before the OAuth hop, so
+  // signing in from the top bar (not just the blur gate) re-opens it unlocked on
+  // return — mirrors BlurGateOverlay's sign-in. sessionStorage survives the
+  // same-origin OAuth + onboarding redirect; the module run-store does not.
+  function stashFocusedAnonRun() {
+    if (typeof window === "undefined") return;
+    const run = focusedRunId ? runs.find((r) => r.id === focusedRunId) : null;
+    if (!run || !run.input) return;
+    try {
+      sessionStorage.setItem(
+        PENDING_RUN_KEY,
+        serializePendingRun({
+          input: run.input,
+          intent: run.intent || "",
+          kind: run.kind ?? null,
+          providedEmail: !!run.providedEmail,
+          selectedAgents: Array.isArray(run.selectedAgents) ? run.selectedAgents : [],
+          screenshotName: run.screenshot?.name ?? null,
+        }),
+      );
+    } catch {
+      /* private mode — degrade to a fresh Desk after sign-in */
+    }
+  }
+
   return (
     <header
       style={{
@@ -135,13 +168,21 @@ export function TopBar() {
       {/* Wordmark → Desk (clear any focused run so the composer shows) */}
       <Link
         href="/app/compose"
-        onClick={() => setFocusedRun(null)}
+        onClick={(e) => {
+          // Don't let a signed-out visitor navigate out of their live run.
+          if (lockWordmark) {
+            e.preventDefault();
+            return;
+          }
+          setFocusedRun(null);
+        }}
         style={{
           display: "flex",
           alignItems: "baseline",
           gap: 10,
           textDecoration: "none",
           color: "inherit",
+          cursor: lockWordmark ? "default" : "pointer",
         }}
       >
         <span style={{ fontFamily: PAPER_FONTS_V2.serif, fontWeight: 500, fontSize: 21, lineHeight: 1 }}>
@@ -233,6 +274,7 @@ export function TopBar() {
         {isSignedOut && (
           <button
             onClick={() => {
+              stashFocusedAnonRun();
               signInWithGoogle("/app/compose").catch((e) => console.error("Sign-in failed", e));
             }}
             style={{

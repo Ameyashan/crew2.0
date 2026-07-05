@@ -2,17 +2,22 @@ import { createHash } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 
-// Lightweight per-IP cap on signed-out ("blur-gate teaser") crew runs. A
-// signed-out run executes real LLM + web-search work, so it's uncapped
-// unauthenticated compute without this guard. We record one anon_run_events row
-// per allowed anonymous run and refuse once an IP exceeds the window budget.
+// Per-IP cap on signed-out ("blur-gate teaser") crew runs: one free run, then
+// sign in. A signed-out run executes real LLM + web-search work, so it's
+// uncapped unauthenticated compute without this guard. We record one
+// anon_run_events row per allowed anonymous run and refuse once an IP exceeds
+// the window budget (the client then nudges the visitor to sign in).
 //
 // Deliberately simple: no Redis/Upstash (none in the repo). Counting rows in a
 // small service-role-only table is plenty for an abuse speed-bump, and it holds
 // across serverless instances (unlike an in-memory counter).
 
-const WINDOW_MS = 60 * 60 * 1000; // 1 hour
-const MAX_RUNS_PER_WINDOW = 5;
+// One free run, then the crew asks you to sign in. The window is wide (a day)
+// so "one free try" actually means one — not one an hour — while still letting a
+// shared/NAT'd IP through again eventually. The client turns the resulting 429
+// into ANON_LIMIT_MESSAGE ("You've used up your free tries. Sign in…").
+const WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+const MAX_RUNS_PER_WINDOW = 1;
 
 // Best-effort client IP. Vercel/most proxies set x-forwarded-for as a
 // comma-separated list with the client first; fall back to x-real-ip.

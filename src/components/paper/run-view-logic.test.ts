@@ -434,8 +434,11 @@ test("altsLabel toggles between count and hide", () => {
 });
 
 // ── Gate copy ────────────────────────────────────────────────────────────────
-test("gate copy matches the prototype (amber chip, Google outline button)", () => {
-  assert.equal(GATE_CHIP_LABEL.toUpperCase(), "CREW FINISHED · YOU'RE SIGNED OUT");
+test("gate copy: signed-out + tense-neutral (fires mid-run, not only when done)", () => {
+  // The gate drops the moment the first deliverable lands, so it must not claim
+  // the crew has "finished".
+  assert.match(GATE_CHIP_LABEL.toLowerCase(), /signed out/);
+  assert.doesNotMatch(GATE_CHIP_LABEL.toLowerCase(), /finished|done/);
   assert.equal(GATE_BUTTON_LABEL, "Continue with Google");
   assert.ok(GATE_FOOTNOTE.startsWith("Free"));
 });

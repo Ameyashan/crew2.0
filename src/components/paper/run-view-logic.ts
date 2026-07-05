@@ -453,8 +453,10 @@ export function altsLabel(open: boolean, n: number): string {
 
 // ── Blur gate copy (prototype lines 770–783) ─────────────────────────────────
 // Amber chip + outline Google button, per the prototype (the earlier build used
-// a green chip and a solid ink button — both wrong).
-export const GATE_CHIP_LABEL = "Crew finished · you're signed out";
+// a green chip and a solid ink button — both wrong). Tense-neutral: the gate
+// drops over the results the moment the FIRST deliverable lands (mid-run), not
+// only once the whole crew has finished, so the copy can't claim "finished".
+export const GATE_CHIP_LABEL = "You're signed out · results locked";
 export const GATE_BUTTON_LABEL = "Continue with Google";
 export const GATE_FOOTNOTE =
   "Free — this run is saved to your account the moment you're in.";
