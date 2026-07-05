@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { PAPER_FONTS_V2 } from "./fonts";
 import { TOKENS, RADII, SHADOWS } from "./tokens";
 import { supabaseBrowser, signInWithGoogle } from "@/lib/supabase-browser";
-import { useRuns } from "@/lib/runs-store";
+import { useRuns, useFocusedRun, setFocusedRun } from "@/lib/runs-store";
 import { TOP_NAV, nameFromEmail, isNavActive, avatarBg, avatarInitial, crewChip } from "./top-bar-logic";
 
 export function TopBar() {
@@ -18,6 +18,22 @@ export function TopBar() {
   // old sidebar used, factored into `crewChip`.
   const runs = useRuns();
   const chip = crewChip(runs);
+  // The run the chip should reopen full-screen on the Desk — newest live (or, if
+  // none, errored) non-resume run. Mirrors crewChip's focus selection so the chip
+  // and the run screen agree on which run is "the crew running".
+  const chipRunId = useMemo(() => {
+    const live = runs.filter(
+      (r) => r.kind !== "resume" && (r.stage === "working" || r.stage === "parsing"),
+    );
+    const attention = runs.filter((r) => r.kind !== "resume" && r.stage === "error");
+    const pool = live.length ? live : attention;
+    return pool[0]?.id ?? null; // runs are newest-first
+  }, [runs]);
+  // Hide the chip while the run it points to is already taking over the Desk
+  // (prototype hides "crew running" on the run screen). Still shows on every
+  // other route so it's the way back.
+  const focusedRunId = useFocusedRun();
+  const onRunScreen = !!focusedRunId && isNavActive(pathname, "/app/compose");
 
   // Session probe: /app/* is server-gated to signed-in users, but the bar also
   // renders its signed-out variant for the (future) signed-out Desk. `null` =
@@ -116,9 +132,10 @@ export function TopBar() {
         color: TOKENS.ink,
       }}
     >
-      {/* Wordmark → Desk */}
+      {/* Wordmark → Desk (clear any focused run so the composer shows) */}
       <Link
         href="/app/compose"
+        onClick={() => setFocusedRun(null)}
         style={{
           display: "flex",
           alignItems: "baseline",
@@ -162,6 +179,7 @@ export function TopBar() {
               <Link
                 key={n.id}
                 href={n.href}
+                onClick={n.id === "desk" ? () => setFocusedRun(null) : undefined}
                 style={{
                   padding: "8px 12px",
                   borderRadius: RADII.pill,
@@ -182,10 +200,14 @@ export function TopBar() {
             );
           })}
 
-        {/* Live-runs chip: green while working, amber when something needs eyes. */}
-        {!isSignedOut && chip && (
+        {/* Live-runs chip: green while working, amber when something needs eyes.
+            Reopens the run full-screen on the Desk (matches the prototype). */}
+        {!isSignedOut && chip && !onRunScreen && (
           <button
-            onClick={() => router.push(chip.target)}
+            onClick={() => {
+              if (chip.target === "/app/compose" && chipRunId) setFocusedRun(chipRunId);
+              router.push(chip.target);
+            }}
             style={{
               marginLeft: 10,
               display: "inline-flex",

@@ -299,6 +299,35 @@ test("buildRunSteps: pulling flips the active resume row to the pull title", () 
   assert.equal(resume.title, "Choosing what to pull from your Story");
 });
 
+test("buildRunSteps: skipResume renders a skipped resume row and makes person the active step", () => {
+  const rows = buildRunSteps({
+    stage: "working",
+    kind: "job",
+    progress: {},
+    skipResume: true,
+  });
+  const resume = rows.find((r) => r.id === "resume");
+  assert.equal(resume.state, "skipped");
+  assert.equal(resume.agent, "RESUME");
+  assert.match(resume.title, /skipped resume/i);
+  assert.match(resume.title, /hiring manager/i);
+  // The skipped row must NOT consume the single active slot — person is active.
+  const person = rows.find((r) => r.id === "person");
+  assert.equal(person.state, "active");
+  assert.equal(rows.filter((r) => r.state === "active").length, 1);
+});
+
+test("buildRunSteps: skipResume never falsely flips resume to done when the run completes", () => {
+  const rows = buildRunSteps({
+    stage: "done",
+    kind: "job",
+    progress: { person: 100, email: 100, outreach: 100 },
+    skipResume: true,
+  });
+  const resume = rows.find((r) => r.id === "resume");
+  assert.equal(resume.state, "skipped");
+});
+
 test("buildRunSteps: a stepError renders an error row and doesn't block later rows", () => {
   const rows = buildRunSteps({
     stage: "done",

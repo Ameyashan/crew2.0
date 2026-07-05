@@ -9,6 +9,8 @@ import { useIsMobile } from "@/lib/use-is-mobile";
 import { ChangeList } from "@/components/resume/ChangeList";
 import {
   useRuns,
+  useFocusedRun,
+  setFocusedRun,
   startRun,
   startImageRun,
   dismissRun,
@@ -118,6 +120,10 @@ function ComposeV3({ p, go }) {
   const [screenshot, setScreenshot] = useState(null);
   const runs = useRuns();
   const isMobile = useIsMobile();
+  // Which run is showing full-screen (replacing the Desk). Shared via the module
+  // store so the top bar's "crew running" chip and Desk pill toggle the same
+  // signal — no route change (see runs-store `useFocusedRun`).
+  const focusedRunId = useFocusedRun();
   // Tri-state: null while resolving, then a boolean. Drives the headline
   // variant and the signed-out blur gate on completed runs.
   const signedIn = useSignedIn();
@@ -187,6 +193,11 @@ function ComposeV3({ p, go }) {
 
   const storyIsEmpty = deriveStoryIsEmpty(profile);
   const liveNonResume = runs.filter((run) => run.kind !== 'resume');
+  // The run to show full-screen instead of the Desk. Falls back to the Desk when
+  // nothing is focused or the focused run was dismissed / not in the store.
+  const focusedRun = focusedRunId
+    ? liveNonResume.find((run) => run.id === focusedRunId) || null
+    : null;
   const firstTime = isFirstTime(composeRuns.length, resumeRuns.length) && liveNonResume.length === 0;
   const earlier = deskEarlierRuns(composeRuns, resumeRuns, 4);
   // Prototype shows the Story nudge for signed-in accounts only.
@@ -227,12 +238,15 @@ function ComposeV3({ p, go }) {
     try { sessionStorage.removeItem(PENDING_RUN_KEY); } catch { /* private mode */ }
     if (pending.input && pending.input.trim()) {
       const kind = pending.kind && pending.kind !== 'fuzzy' ? pending.kind : classifyKind(pending.input);
-      startRun(pending.input, {
+      const restoredId = startRun(pending.input, {
         intent: pending.intent,
         providedEmail: pending.providedEmail,
         kind: kind === 'job' ? 'job' : 'person',
         selectedAgents: pending.selectedAgents,
       });
+      // Reopen the run full-screen (now unlocked) rather than dropping the user
+      // on a fresh Desk after the OAuth round-trip.
+      if (restoredId) setFocusedRun(restoredId);
     }
   }, [signedIn]);
 
@@ -256,26 +270,59 @@ function ComposeV3({ p, go }) {
     // Either a typed link/name/description OR an attached screenshot is enough.
     if (!hasText && !file) return;
 
+    let startedId = null;
     if (file) {
       // Screenshot-first: the vision pass decides job vs person and extracts a
       // query. The full job-flow crew rides along; picks that don't apply to
       // the resolved kind are silently dropped server-side.
-      startImageRun(file, {
+      startedId = startImageRun(file, {
         text: input, providedEmail: haveEmail,
         selectedAgents: Array.from(defaultSelectionFor('job', haveEmail)),
       });
     } else {
       const kind = classifyKind(input) === 'job' ? 'job' : 'person';
-      startRun(input, {
+      startedId = startRun(input, {
         providedEmail: haveEmail, kind,
         selectedAgents: Array.from(defaultSelectionFor(kind, haveEmail)),
       });
     }
+    // Take over the screen with the new run (matches the prototype's run view).
+    if (startedId) setFocusedRun(startedId);
     // clear so the next link can be pasted immediately
     setInput(''); setHaveEmail(false); setScreenshot(null);
   }
 
   const sidePad = isMobile ? 16 : 44;
+
+  // ─── Run screen: a focused run takes over the whole Desk (prototype line 536):
+  // centered column, fadeUp entrance, steps that reveal one at a time. The
+  // composer/first-time/earlier-runs are hidden until "Back to the Desk". ───
+  if (focusedRun) {
+    return (
+      <div className="scroll" style={{
+        flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column',
+        background: TOKENS.paper, color: TOKENS.ink,
+      }}>
+        <style>{DESK_HOVER_CSS}</style>
+        <div key={focusedRun.id} style={{
+          flex: 1, maxWidth: 1100, margin: '0 auto', width: '100%', boxSizing: 'border-box',
+          padding: `40px ${sidePad}px 60px`, animation: 'fadeUp .4s ease',
+        }}>
+          <button
+            type="button"
+            className="rv-back"
+            onClick={() => setFocusedRun(null)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 22,
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, color: TOKENS.muted, padding: 0,
+            }}
+          >← Back to the Desk</button>
+          <RunCard p={p} run={focusedRun} go={go} storyIsEmpty={storyIsEmpty} signedIn={signedIn}/>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="scroll" style={{
@@ -328,18 +375,9 @@ function ComposeV3({ p, go }) {
         )}
       </div>
 
-      {/* ─── live runs: one prototype run section per run, newest on top (resume
-          runs render on /app/resume) ─── */}
-      {liveNonResume.length > 0 && (
-        <div style={{
-          padding: `12px ${sidePad}px 32px`, maxWidth: 1060, margin: '0 auto', width: '100%',
-          boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 36,
-        }}>
-          {liveNonResume.map((run) => (
-            <RunCard key={run.id} p={p} run={run} go={go} storyIsEmpty={storyIsEmpty} signedIn={signedIn}/>
-          ))}
-        </div>
-      )}
+      {/* Live runs no longer stack under the composer — an active run takes over
+          the whole screen (see the focusedRun branch above). The top-bar
+          "crew running" chip reopens it. */}
 
       {/* ─── first-time: "Things your crew can do" 3-card grid (no runs yet) ─── */}
       {firstTime && (
@@ -525,7 +563,11 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
   // collapses it.
   const resumeSelected = run.kind === 'job'
     && (!Array.isArray(run.selectedAgents) || run.selectedAgents.length === 0 || run.selectedAgents.includes('resume'));
-  const showPull = run.kind === 'job' && run.stage === 'working' && thin && resumeSelected
+  // Signed-out job runs never run Resume Darzi server-side, so its step shows as
+  // "skipped" and the pull-review panel (which pulls from a Story they don't
+  // have) is moot. `signedIn` is tri-state: only skip once we know it's false.
+  const skipResume = signedIn === false && run.kind === 'job';
+  const showPull = run.kind === 'job' && run.stage === 'working' && thin && resumeSelected && !skipResume
     && (run.progress?.resume ?? 0) < 100 && !run.stepErrors?.resume && !pullDone;
   useEffect(() => {
     if (!showPull || signedIn !== false) return;
@@ -542,6 +584,7 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
     screenshot: !!run.screenshot,
     parsedLabel,
     thin,
+    skipResume,
     pulling: showPull,
     peopleCount,
     personLabel: stepPerson?.name || null,
@@ -709,10 +752,18 @@ function StepRow({ s }) {
           fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, fontWeight: 600, lineHeight: 1, flex: 'none',
         }}>!</div>
       )}
+      {s.state === 'skipped' && (
+        <div style={{
+          width: 20, height: 20, borderRadius: 99, border: `1px dashed ${TOKENS.line}`, color: TOKENS.faint,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box',
+          fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, fontWeight: 500, lineHeight: 1, flex: 'none',
+        }}>–</div>
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{
-            fontFamily: PAPER_FONTS_V2.sans, fontSize: 14.5, fontWeight: 500, lineHeight: 1.35, color: TOKENS.ink,
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 14.5, fontWeight: 500, lineHeight: 1.35,
+            color: s.state === 'skipped' ? TOKENS.muted : TOKENS.ink,
           }}>{s.title}</span>
           <span style={{
             fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, lineHeight: 1,

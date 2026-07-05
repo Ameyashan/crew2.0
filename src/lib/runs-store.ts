@@ -138,6 +138,41 @@ export function useRuns(): Run[] {
   );
 }
 
+/* ─────────────────────── focused run (in-page run screen) ─────────────────────── */
+// Which run the Desk is showing full-screen instead of the composer. Kept in the
+// module (not React state / the URL) so the top bar and the compose page share
+// one source of truth without a route change: submitting focuses the new run,
+// "Back to the Desk" / the Desk nav pill clear it, the "crew running" chip
+// re-focuses it. A full page reload resets it (back to the Desk), same as `runs`.
+
+let focusedRunId: string | null = null;
+const focusSubscribers = new Set<() => void>();
+
+function emitFocus() {
+  for (const s of focusSubscribers) s();
+}
+
+function subscribeFocus(cb: () => void) {
+  focusSubscribers.add(cb);
+  return () => {
+    focusSubscribers.delete(cb);
+  };
+}
+
+export function setFocusedRun(id: string | null) {
+  if (focusedRunId === id) return;
+  focusedRunId = id;
+  emitFocus();
+}
+
+export function useFocusedRun(): string | null {
+  return useSyncExternalStore(
+    subscribeFocus,
+    () => focusedRunId,
+    () => null,
+  );
+}
+
 /* ─────────────────────── pending-run registry ─────────────────────── */
 // The server inserts compose_runs up front and keeps running after the client
 // disconnects (phone locked / tab backgrounded), persisting the result. The
@@ -454,6 +489,7 @@ export function dismissRun(id: string) {
   controllers.get(id)?.abort();
   controllers.delete(id);
   runs = runs.filter((r) => r.id !== id);
+  if (focusedRunId === id) setFocusedRun(null);
   emit();
 }
 
@@ -461,6 +497,7 @@ export function clearAllRuns() {
   for (const c of controllers.values()) c.abort();
   controllers.clear();
   runs = [];
+  setFocusedRun(null);
   emit();
 }
 
