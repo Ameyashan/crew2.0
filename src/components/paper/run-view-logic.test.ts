@@ -17,6 +17,8 @@ import {
   RUN_AGENT_CHIPS,
   RUN_STEP_ORDER,
   buildRunSteps,
+  STEP_ACTIVITY,
+  stepActivityPhrase,
   runViewTitle,
   truncateIntent,
   ANGLE_PILLS,
@@ -366,6 +368,62 @@ test("buildRunSteps: single person found uses the name as the title", () => {
   const person = rows.find((r) => r.id === "person");
   assert.equal(person.title, "Dev Raghavan found");
   assert.equal(person.sub, "Design manager · Razorpay");
+});
+
+test("buildRunSteps: a re-pick re-running multiple steps keeps every row visible", () => {
+  // The flicker bug: on a re-pick the résumé is still weaving (active) while
+  // person/email/outreach reset below 100. The old single-active model hid the
+  // reset rows behind the weaving résumé; now every in-flight row stays up.
+  const rows = buildRunSteps({
+    stage: "working",
+    kind: "job",
+    progress: { resume: 40, person: 100, email: 10, outreach: 10 },
+  });
+  const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
+  assert.equal(byId.resume.state, "active");
+  assert.equal(byId.person.state, "done");
+  assert.equal(byId.email.state, "active");
+  assert.equal(byId.outreach.state, "active");
+  // Nothing vanished — all four agent rows plus parse are present.
+  assert.deepEqual(rows.map((r) => r.id), ["parse", "resume", "person", "email", "outreach"]);
+});
+
+test("buildRunSteps: résumé still weaving after the crew finishes stays the lone active row", () => {
+  // The common job-run shape from the video: everything done, résumé weaving.
+  const rows = buildRunSteps({
+    stage: "working",
+    kind: "job",
+    progress: { resume: 30, person: 100, email: 100, outreach: 100 },
+  });
+  assert.equal(rows.filter((r) => r.state === "active").length, 1);
+  assert.equal(rows.find((r) => r.id === "resume").state, "active");
+});
+
+test("buildRunSteps: nothing started yet lights only the first upcoming step", () => {
+  const rows = buildRunSteps({ stage: "working", kind: "job", progress: {} });
+  assert.equal(rows.filter((r) => r.state === "active").length, 1);
+  assert.equal(rows[rows.length - 1].id, "resume"); // résumé leads a job run
+});
+
+// ── Live agent activity ticker ───────────────────────────────────────────────
+test("stepActivityPhrase: cycles a step's phrases and wraps", () => {
+  const phrases = STEP_ACTIVITY.person;
+  assert.ok(phrases.length > 1);
+  assert.equal(stepActivityPhrase("person", 0), phrases[0]);
+  assert.equal(stepActivityPhrase("person", 1), phrases[1]);
+  assert.equal(stepActivityPhrase("person", phrases.length), phrases[0]); // wraps
+});
+
+test("stepActivityPhrase: unknown step narrates nothing", () => {
+  assert.equal(stepActivityPhrase("nope", 0), "");
+  assert.equal(stepActivityPhrase("parse", -1), STEP_ACTIVITY.parse[STEP_ACTIVITY.parse.length - 1]);
+});
+
+test("STEP_ACTIVITY: every pipeline agent has phrases", () => {
+  for (const id of ["parse", "resume", "person", "email", "outreach"]) {
+    assert.ok(Array.isArray(STEP_ACTIVITY[id]) && STEP_ACTIVITY[id].length > 0, id);
+    for (const p of STEP_ACTIVITY[id]) assert.ok(typeof p === "string" && p.length > 0);
+  }
 });
 
 // ── Run title ────────────────────────────────────────────────────────────────

@@ -55,6 +55,7 @@ import {
   parsePendingRun,
   PENDING_RUN_KEY,
   buildRunSteps,
+  stepActivityPhrase,
   runViewTitle,
   ANGLE_PILLS,
   handoffCta,
@@ -734,6 +735,33 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
 // per-agent failure gets an amber ! circle. Title 14.5/500 + mono agent chip,
 // muted sub underneath (prototype lines 549–565).
 
+// Rotating "what the agent is doing right now" caption, shown only while a step
+// is active. Advances on its own ~2.4s timer so the line keeps moving — the
+// reassurance an LLM search UI gives ("refining search · looking for people").
+function StepActivity({ id }) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 2400);
+    return () => clearInterval(t);
+  }, []);
+  const phrase = stepActivityPhrase(id, tick);
+  if (!phrase) return null;
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 7, marginTop: 5,
+      fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, lineHeight: 1.4,
+      color: TOKENS.faint, letterSpacing: '.02em',
+    }}>
+      <span style={{
+        width: 5, height: 5, borderRadius: 999, background: TOKENS.gold, flex: 'none',
+        animation: 'pulse 1.4s ease-in-out infinite',
+      }}/>
+      {/* keyed so each phrase fades in as it swaps */}
+      <span key={phrase} style={{ animation: 'fadeUp .3s ease' }}>{phrase}…</span>
+    </div>
+  );
+}
+
 function StepRow({ s }) {
   return (
     <div style={{
@@ -784,6 +812,7 @@ function StepRow({ s }) {
             color: s.state === 'error' ? TOKENS.amber : TOKENS.muted, marginTop: 3,
           }}>{s.sub}</div>
         )}
+        {s.state === 'active' && <StepActivity id={s.id}/>}
       </div>
     </div>
   );
@@ -1161,6 +1190,10 @@ function PeoplePanel({ run, go, thin, onSent }) {
   const isMobile = useIsMobile();
   const contacts = run.contacts || null;
   const hasDual = !!(contacts && (contacts.poster || contacts.hiring_manager));
+  // A re-pick is mid-flight: the previous contact's email + drafts were cleared
+  // in the store, so the panel reads "drafting for {name}…" until the new copy
+  // lands — never the old person's message under the new name.
+  const picking = run.picking || null;
 
   // Dual-contact (screenshot) runs: the poster and the sourced hiring manager
   // each hold their own research / email / drafts.
@@ -1483,7 +1516,7 @@ function PeoplePanel({ run, go, thin, onSent }) {
                 <div style={{
                   fontFamily: PAPER_FONTS_V2.mono, fontSize: 13.5, lineHeight: 1.3, color: emailShown ? TOKENS.ink : TOKENS.faint,
                   overflowWrap: 'anywhere',
-                }}>{emailShown || 'no public address found'}</div>
+                }}>{emailShown || (picking ? `finding an address for ${picking}…` : 'no public address found')}</div>
               </div>
               {primaryChip && (
                 <span style={{
@@ -1605,7 +1638,9 @@ function PeoplePanel({ run, go, thin, onSent }) {
               }}>
                 {redrafting && !body
                   ? 'Rewriting…'
-                  : body || 'The draft for this channel appears here once the outreach agent finishes.'}
+                  : picking && !body
+                    ? `Drafting for ${picking}…`
+                    : body || 'The draft for this channel appears here once the outreach agent finishes.'}
               </div>
             )}
 
