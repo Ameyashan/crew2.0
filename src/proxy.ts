@@ -99,6 +99,23 @@ export async function proxy(req: NextRequest) {
   // try-before-sign-in Desk with the blur gate. The old marketing page lives
   // on at /home for anyone who still wants it.
   if (pathname === "/") {
+    // OAuth handoff can land back on the site ROOT rather than /auth/callback:
+    // Supabase falls back to the project's Site URL (e.g. http://jugaadu.app)
+    // when the browser-sent redirectTo (…/auth/callback) isn't in the redirect
+    // allow-list, so the provider ?code / ?error arrives here as `/?code=…`.
+    // The Desk redirect below sets url.search = "" — that STRIPS the code, so
+    // exchangeCodeForSession never runs, no session is written, and the visitor
+    // bounces to the Desk still signed-out with no error shown (the exact
+    // "sign-in silently fails" symptom). Hand these off to /auth/callback with
+    // the query intact so the exchange still happens.
+    const params = req.nextUrl.searchParams;
+    if (params.has("code") || params.has("error")) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/auth/callback";
+      const r = NextResponse.redirect(url);
+      for (const c of res.cookies.getAll()) r.cookies.set(c);
+      return r;
+    }
     return redirectPreservingCookies("/app/compose");
   }
 

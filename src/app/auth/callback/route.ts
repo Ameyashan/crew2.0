@@ -11,6 +11,18 @@ export async function GET(req: NextRequest) {
   const code = url.searchParams.get("code");
   const next = url.searchParams.get("next") || "/app/compose";
 
+  // The provider (or Supabase) can bounce back with ?error instead of a code —
+  // the user declined consent, the provider rejected the request, etc. The proxy
+  // forwards these here from the site root too. Surface them on the Desk rather
+  // than silently landing the visitor there signed-out with no explanation.
+  const providerError =
+    url.searchParams.get("error_description") || url.searchParams.get("error");
+  if (providerError && !code) {
+    url.pathname = "/app/compose";
+    url.search = `?auth_error=${encodeURIComponent(providerError)}`;
+    return NextResponse.redirect(url);
+  }
+
   // exchangeCodeForSession writes the session (sb-<ref>-auth-token…) cookies via
   // the client's setAll. We must land those on the *redirect response we return*
   // or the browser never receives the session and the user bounces back to the
