@@ -795,11 +795,17 @@ function StepRow({ s }) {
           fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, fontWeight: 500, lineHeight: 1, flex: 'none',
         }}>–</div>
       )}
+      {s.state === 'pending' && (
+        <div style={{
+          width: 20, height: 20, borderRadius: 99, border: `1.5px solid ${TOKENS.line}`,
+          background: TOKENS.card, boxSizing: 'border-box', flex: 'none',
+        }}/>
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{
             fontFamily: PAPER_FONTS_V2.sans, fontSize: 14.5, fontWeight: 500, lineHeight: 1.35,
-            color: s.state === 'skipped' ? TOKENS.muted : TOKENS.ink,
+            color: s.state === 'pending' ? TOKENS.faint : s.state === 'skipped' ? TOKENS.muted : TOKENS.ink,
           }}>{s.title}</span>
           <span style={{
             fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, lineHeight: 1,
@@ -809,7 +815,7 @@ function StepRow({ s }) {
         {s.sub && (
           <div style={{
             fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.55,
-            color: s.state === 'error' ? TOKENS.amber : TOKENS.muted, marginTop: 3,
+            color: s.state === 'error' ? TOKENS.amber : s.state === 'pending' ? TOKENS.faint : TOKENS.muted, marginTop: 3,
           }}>{s.sub}</div>
         )}
         {s.state === 'active' && <StepActivity id={s.id}/>}

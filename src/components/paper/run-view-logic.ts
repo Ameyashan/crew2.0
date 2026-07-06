@@ -187,7 +187,7 @@ export const RUN_STEP_ORDER: Record<"job" | "person", string[]> = {
   person: ["parse", "person", "email", "outreach"],
 };
 
-export type RunStepState = "done" | "active" | "error" | "skipped";
+export type RunStepState = "done" | "active" | "error" | "skipped" | "pending";
 export type RunStepRow = {
   id: string;
   title: string;
@@ -368,6 +368,29 @@ export function buildRunSteps(input: BuildRunStepsInput): RunStepRow[] {
     outreach: "Outreach drafting hit a snag",
   };
 
+  // Copy for a step that hasn't started yet — shown as a muted "pending" row so
+  // the user sees the whole roadmap upfront instead of steps popping in later.
+  // Infinitive ("to-do") phrasing, no "…", since nothing is happening yet.
+  const queuedRow = (id: string): { title: string; sub: string } => {
+    switch (id) {
+      case "resume":
+        return {
+          title: "Weave your resume",
+          sub: input.pulling
+            ? "from what we pull from your Story"
+            : "tailored to what the posting asks for",
+        };
+      case "person":
+        return { title: "Find who could say yes", sub: "who owns the decision on the team" };
+      case "email":
+        return { title: "Check the email address", sub: "verify patterns · alternates held in reserve" };
+      case "outreach":
+        return { title: "Draft the outreach", sub: "email, LinkedIn and X · in your voice" };
+      default:
+        return { title: "Up next", sub: "" };
+    }
+  };
+
   // A step is "in progress" once it has started (progress between 5 and 100) and
   // the run is still working. We surface EVERY in-progress step as active — not
   // just the first — so a re-pick that re-runs person/email/outreach at once
@@ -424,9 +447,13 @@ export function buildRunSteps(input: BuildRunStepsInput): RunStepRow[] {
       const a = activeRow(id);
       rows.push({ id, title: a.title, sub: a.sub, agent: RUN_AGENT_CHIPS[id] || id.toUpperCase(), state: "active" });
       upcomingPlaced = true;
+    } else if (stage === "working") {
+      // Not started yet — render a muted pending placeholder so the full pipeline
+      // (the roadmap) is visible from the start; the row flips to active in place
+      // when the crew reaches it, instead of popping in out of nowhere.
+      const q = queuedRow(id);
+      rows.push({ id, title: q.title, sub: q.sub, agent: RUN_AGENT_CHIPS[id] || id.toUpperCase(), state: "pending" });
     }
-    // queued (not-yet-started) steps after the active one stay hidden, per the
-    // prototype — rows appear as the crew reaches them.
   }
   return rows;
 }
@@ -454,6 +481,15 @@ export function truncateIntent(s: string, max = 64): string {
   const t = (s || "").trim();
   if (t.length <= max) return t;
   return `${t.slice(0, max - 1).trimEnd()}…`;
+}
+
+// Normalized cache key for a candidate name — trim, collapse inner whitespace,
+// lowercase — so "Yaoyuan  Liu", "YAOYUAN LIU" and "Yaoyuan Liu" resolve to one
+// entry at both the write and read sites of the per-candidate draft cache
+// (runs-store.ts). Lives here (not in the store) so it's unit-testable under
+// `node --test`, which can't load the "use client" store module.
+export function normalizeCandidateKey(name: string | null | undefined): string {
+  return (name || "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 // ── Angle pills (prototype lines 742–747) ────────────────────────────────────

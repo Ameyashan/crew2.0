@@ -21,6 +21,7 @@ import {
   stepActivityPhrase,
   runViewTitle,
   truncateIntent,
+  normalizeCandidateKey,
   ANGLE_PILLS,
   CHANNEL_NAMES,
   SENT_CHANNEL_WORD,
@@ -225,17 +226,17 @@ test("buildRunSteps: parsing → single active TRACKER row", () => {
   assert.equal(shot[0].title, "Reading your screenshot…");
 });
 
-test("buildRunSteps: working shows done rows then exactly one active row", () => {
+test("buildRunSteps: working shows done rows, one active row, remaining steps pending", () => {
   const rows = buildRunSteps({
     stage: "working",
     kind: "person",
     progress: { person: 100, email: 40 },
   });
-  assert.deepEqual(rows.map((r) => r.id), ["parse", "person", "email"]);
-  assert.deepEqual(rows.map((r) => r.state), ["done", "done", "active"]);
+  assert.deepEqual(rows.map((r) => r.id), ["parse", "person", "email", "outreach"]);
+  assert.deepEqual(rows.map((r) => r.state), ["done", "done", "active", "pending"]);
   assert.equal(rows[2].title, "Verifying emails…");
-  // outreach (queued, untouched) is hidden
-  assert.ok(!rows.some((r) => r.id === "outreach"));
+  // outreach (not started yet) is shown as a pending roadmap row, not hidden
+  assert.equal(rows.find((r) => r.id === "outreach").state, "pending");
 });
 
 test("buildRunSteps: done marks every selected step done with real subs", () => {
@@ -399,10 +400,35 @@ test("buildRunSteps: résumé still weaving after the crew finishes stays the lo
   assert.equal(rows.find((r) => r.id === "resume").state, "active");
 });
 
-test("buildRunSteps: nothing started yet lights only the first upcoming step", () => {
+test("buildRunSteps: nothing started yet lights the first step, rest pending", () => {
   const rows = buildRunSteps({ stage: "working", kind: "job", progress: {} });
-  assert.equal(rows.filter((r) => r.state === "active").length, 1);
-  assert.equal(rows[rows.length - 1].id, "resume"); // résumé leads a job run
+  // Exactly one active row, and it's the résumé (job runs lead with resume).
+  const active = rows.filter((r) => r.state === "active");
+  assert.equal(active.length, 1);
+  assert.equal(active[0].id, "resume");
+  // The rest of the pipeline is visible as pending roadmap rows (no pop-in).
+  assert.equal(rows.find((r) => r.id === "person").state, "pending");
+  assert.equal(rows.find((r) => r.id === "email").state, "pending");
+  assert.equal(rows.find((r) => r.id === "outreach").state, "pending");
+});
+
+test("buildRunSteps: queued steps render as pending while one is active", () => {
+  // The reported scenario: résumé still weaving, person done, email/outreach
+  // not yet started — the whole roadmap is on screen.
+  const rows = buildRunSteps({ stage: "working", kind: "job", progress: { resume: 40, person: 100 } });
+  assert.deepEqual(rows.map((r) => r.id), ["parse", "resume", "person", "email", "outreach"]);
+  assert.deepEqual(rows.map((r) => r.state), ["done", "active", "done", "pending", "pending"]);
+  // Every pending row carries real copy.
+  for (const r of rows.filter((x) => x.state === "pending")) {
+    assert.ok(r.title.length > 0 && r.sub.length > 0, r.id);
+  }
+});
+
+test("normalizeCandidateKey: trims, collapses whitespace, lowercases", () => {
+  assert.equal(normalizeCandidateKey("  Yaoyuan   Liu "), "yaoyuan liu");
+  assert.equal(normalizeCandidateKey("YAOYUAN LIU"), normalizeCandidateKey("Yaoyuan Liu"));
+  assert.equal(normalizeCandidateKey(null), "");
+  assert.equal(normalizeCandidateKey(undefined), "");
 });
 
 // ── Live agent activity ticker ───────────────────────────────────────────────
