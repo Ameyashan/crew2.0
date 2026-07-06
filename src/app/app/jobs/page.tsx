@@ -17,6 +17,7 @@ import {
   type FeedFilters,
 } from "@/lib/jobs/format";
 import { sectorLabel } from "@/lib/jobs/catalog/sectors";
+import { CompanyLogo } from "@/components/paper/CompanyLogo";
 import type { FeedItem, PreferencesDTO } from "@/lib/jobs/types";
 
 // A single filter pill (visa / remote / comp). Active = ink bg, paper text.
@@ -114,6 +115,7 @@ function JobCard({ item, onOpen }: { item: FeedItem; onOpen: () => void }) {
         transition: "border-color .15s ease, box-shadow .15s ease",
       }}
     >
+      <CompanyLogo company={item.company} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
           <span
