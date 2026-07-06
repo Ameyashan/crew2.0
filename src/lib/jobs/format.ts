@@ -165,6 +165,30 @@ export function sourceHost(url: string | null): string {
   }
 }
 
+// Best-effort company domain guessed from a display name, e.g. "Y Combinator"
+// -> "ycombinator.com". We don't store a real domain anywhere, so this is only
+// used to *try* a brand-logo lookup; the UI always falls back to a monogram
+// when the guess misses, so a wrong guess is harmless. Common corporate
+// suffixes are dropped before collapsing to a slug.
+export function companyDomain(company: string | null): string | null {
+  if (!company) return null;
+  const cleaned = company
+    .toLowerCase()
+    .replace(/[.,]/g, " ")
+    .replace(/\b(inc|llc|ltd|co|corp|corporation|group|holdings|labs|technologies|technology|the)\b/g, " ")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]/g, "");
+  return cleaned ? `${cleaned}.com` : null;
+}
+
+// First alphanumeric character of a company name, uppercased — the monogram
+// shown when no logo is available. Falls back to "?" for empty/odd names.
+export function companyMonogram(company: string | null): string {
+  if (!company) return "?";
+  const ch = company.trim().replace(/[^A-Za-z0-9]/g, "").charAt(0);
+  return ch ? ch.toUpperCase() : "?";
+}
+
 // Client-side feed filters mapped onto the prototype's pill row.
 export interface FeedFilters {
   sponsorsVisa: boolean;

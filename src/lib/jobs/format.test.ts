@@ -16,6 +16,8 @@ import {
   goalPhrase,
   whyBullets,
   sourceHost,
+  companyDomain,
+  companyMonogram,
   jobPassesFilters,
   filterJobs,
   NO_FILTERS,
@@ -121,6 +123,24 @@ test("sourceHost extracts a clean host, falls back safely", () => {
   assert.equal(sourceHost("https://boards.lever.co/acme"), "boards.lever.co");
   assert.equal(sourceHost("not a url"), "source");
   assert.equal(sourceHost(null), "source");
+});
+
+// ── Company logo helpers ─────────────────────────────────────────────────────
+test("companyDomain guesses a slug domain, drops suffixes, falls back safely", () => {
+  assert.equal(companyDomain("Robinhood"), "robinhood.com");
+  assert.equal(companyDomain("Y Combinator"), "ycombinator.com");
+  assert.equal(companyDomain("Goldman Sachs"), "goldmansachs.com");
+  assert.equal(companyDomain("Acme, Inc."), "acme.com");
+  assert.equal(companyDomain(""), null);
+  assert.equal(companyDomain(null), null);
+});
+
+test("companyMonogram returns the first letter, uppercased, with a fallback", () => {
+  assert.equal(companyMonogram("Anthropic"), "A");
+  assert.equal(companyMonogram("openai"), "O");
+  assert.equal(companyMonogram("  stripe"), "S");
+  assert.equal(companyMonogram("—"), "?");
+  assert.equal(companyMonogram(null), "?");
 });
 
 // ── Feed filters ─────────────────────────────────────────────────────────────
