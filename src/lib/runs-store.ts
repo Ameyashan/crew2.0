@@ -60,6 +60,16 @@ export type Run = {
   // rewritten ('email' | 'linkedin' | 'x'), or null when idle.
   redrafting?: string | null;
   redraftError?: string | null;
+  // Re-pick state (job runs): the name of the candidate a re-pick is currently
+  // drafting for, or null when idle. While set, the person panel clears the
+  // previous contact's email/drafts and reads "drafting for {name}…" instead of
+  // showing the old person's message.
+  picking?: string | null;
+  // Latches once the user re-picks a candidate. The main run's stream is kept
+  // alive (so the résumé finishes) but must no longer overwrite the person /
+  // email / drafts the pick now owns — this flag tells the final consolidation
+  // patch to preserve them.
+  repicked?: boolean;
   // "Steer the draft" — free-form directive applied to all three channels at
   // once. `steering` is true while the parallel redraft is in flight.
   // `steerHistory` is a session-scoped list of recent directives (newest first,
@@ -122,6 +132,12 @@ export type Run = {
 const EMPTY: Run[] = [];
 let runs: Run[] = [];
 const controllers = new Map<string, AbortController>();
+// Re-pick streams get their OWN controller registry, keyed by run id. A re-pick
+// must be cancellable (rapid clicks supersede each other) WITHOUT aborting the
+// run's main stream — which may still be weaving the résumé (the long pole).
+// Sharing `controllers` here is what used to kill an in-flight résumé the moment
+// the user clicked a different candidate, leaving it stuck at "Weaving…".
+const pickControllers = new Map<string, AbortController>();
 const subscribers = new Set<() => void>();
 
 function emit() {
@@ -501,6 +517,8 @@ function relaunchResumeRun(id: string) {
 export function dismissRun(id: string) {
   controllers.get(id)?.abort();
   controllers.delete(id);
+  pickControllers.get(id)?.abort();
+  pickControllers.delete(id);
   runs = runs.filter((r) => r.id !== id);
   if (focusedRunId === id) setFocusedRun(null);
   emit();
@@ -509,6 +527,8 @@ export function dismissRun(id: string) {
 export function clearAllRuns() {
   for (const c of controllers.values()) c.abort();
   controllers.clear();
+  for (const c of pickControllers.values()) c.abort();
+  pickControllers.clear();
   runs = [];
   setFocusedRun(null);
   emit();
@@ -602,6 +622,9 @@ export function retryRun(id: string, picked?: unknown) {
 function relaunchRun(id: string, picked?: unknown) {
   const run = runs.find((r) => r.id === id);
   forgetPending(run?.composeRunId);
+  // Cancel any in-flight re-pick so it can't patch onto the fresh stream.
+  pickControllers.get(id)?.abort();
+  pickControllers.delete(id);
   patch(id, () => ({
     stage: "working",
     progress: {},
@@ -613,6 +636,9 @@ function relaunchRun(id: string, picked?: unknown) {
     stepErrors: {},
     suggestedKind: null,
     reconnecting: false,
+    // Clear re-pick state — a fresh stream owns the person/drafts again.
+    picking: null,
+    repicked: false,
     // Drop the stale id so the fresh stream registers its own.
     composeRunId: null,
   }));
@@ -627,6 +653,8 @@ export function switchRunToJob(id: string) {
   if (!run || run.kind === "job") return;
   controllers.get(id)?.abort();
   controllers.delete(id);
+  pickControllers.get(id)?.abort();
+  pickControllers.delete(id);
   forgetPending(run.composeRunId);
   patch(id, () => ({
     kind: "job",
@@ -642,6 +670,8 @@ export function switchRunToJob(id: string) {
     stepErrors: {},
     suggestedKind: null,
     reconnecting: false,
+    picking: null,
+    repicked: false,
     composeRunId: null,
   }));
   launch(id);
@@ -772,13 +802,26 @@ export async function pickCandidate(
       };
     });
 
-  // Reflect the click immediately, then light the email/outreach bars.
-  patchPicked({ person: newPerson(dual ? run.contacts?.hiring_manager?.person : run.person) });
-  patch(id, (r) => ({ progress: { ...r.progress, person: 100, email: 10, outreach: 10 } }));
+  // Reflect the click immediately: swap in the picked person AND clear the
+  // previous contact's email + drafts, so the panel never keeps showing the old
+  // person's message under the new name. `picking` flags the in-flight re-draft
+  // so the cards read "drafting for {name}…" until the new copy lands.
+  patchPicked({
+    person: newPerson(dual ? run.contacts?.hiring_manager?.person : run.person),
+    enrichment: null,
+    drafts: [],
+  });
+  patch(id, (r) => ({
+    picking: picked.name || null,
+    repicked: true,
+    progress: { ...r.progress, person: 100, email: 10, outreach: 10 },
+  }));
 
-  controllers.get(id)?.abort();
+  // Cancel any prior in-flight re-pick, but NOT the run's main stream (which may
+  // still be weaving the résumé) — that's why picks use their own registry.
+  pickControllers.get(id)?.abort();
   const controller = new AbortController();
-  controllers.set(id, controller);
+  pickControllers.set(id, controller);
   try {
     const res = await fetch("/api/compose/apply", {
       method: "POST",
@@ -822,7 +865,10 @@ export async function pickCandidate(
         }
         if (evt.type === "step") {
           const k = evt.id;
-          if (evt.status === "start") patch(id, (r) => ({ progress: { ...r.progress, [k]: 10 } }));
+          // The person is already chosen on a re-pick, so keep its row settled at
+          // "done" — don't let the server's person "start" event drop it back to
+          // 10 and read as "searching…" again.
+          if (evt.status === "start" && k !== "person") patch(id, (r) => ({ progress: { ...r.progress, [k]: 10 } }));
           else if (evt.status === "done" || evt.status === "skipped")
             patch(id, (r) => ({ progress: { ...r.progress, [k]: 100 } }));
           if (k === "person" && evt.status === "done" && evt.data) collectedPerson = evt.data;
@@ -838,14 +884,16 @@ export async function pickCandidate(
       enrichment: collectedEnrichment || undefined,
       drafts: collectedDrafts.length ? collectedDrafts : undefined,
     });
-    patch(id, (r) => ({ progress: { ...r.progress, person: 100, email: 100, outreach: 100 } }));
+    patch(id, (r) => ({ picking: null, progress: { ...r.progress, person: 100, email: 100, outreach: 100 } }));
   } catch (e) {
-    if (controller.signal.aborted) return; // dismissed/cleared
+    if (controller.signal.aborted) return; // superseded by a newer pick
     // Keep the existing package; just restore the bars and log.
-    patch(id, (r) => ({ progress: { ...r.progress, email: 100, outreach: 100 } }));
+    patch(id, (r) => ({ picking: null, progress: { ...r.progress, email: 100, outreach: 100 } }));
     console.error("[pickCandidate]", e);
   } finally {
-    controllers.delete(id);
+    // Only clear the registry if this controller is still the current one — a
+    // newer pick may have replaced it while we were streaming.
+    if (pickControllers.get(id) === controller) pickControllers.delete(id);
   }
 }
 
@@ -1276,9 +1324,12 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
         }
       }
       patch(id, (r) => ({
-        drafts: collectedDrafts.length ? collectedDrafts : r.drafts,
-        enrichment: collectedEnrichment || r.enrichment,
-        person: collectedPerson || r.person,
+        // If the user re-picked a different candidate while the résumé was still
+        // weaving, that pick now owns the person/email/drafts — don't let this
+        // final consolidation clobber it back to the originally-sourced contact.
+        drafts: r.repicked ? r.drafts : (collectedDrafts.length ? collectedDrafts : r.drafts),
+        enrichment: r.repicked ? r.enrichment : (collectedEnrichment || r.enrichment),
+        person: r.repicked ? r.person : (collectedPerson || r.person),
         candidates: collectedCandidates ?? r.candidates,
         // Map the API's target_role/target_company onto the card's role/company
         // so a successful parse replaces the preview.
@@ -1293,7 +1344,10 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           ats_score_before: bundle.ats_score_before ?? r.parsed?.ats_score_before,
           resume: bundle.resume ?? r.parsed?.resume,
         },
-        progress: { resume: 100, person: 100, email: 100, outreach: 100 },
+        // A re-pick may still be drafting — keep its in-flight bars if so.
+        progress: r.repicked && r.picking
+          ? { ...r.progress, resume: 100 }
+          : { resume: 100, person: 100, email: 100, outreach: 100 },
         stage: "done",
       }));
       return;

@@ -131,6 +131,55 @@ export const RUN_AGENT_CHIPS: Record<string, string> = {
   outreach: "OUTREACH",
 };
 
+// ── Live agent activity ticker ───────────────────────────────────────────────
+// While a step is active, we rotate a short "what the agent is doing right now"
+// caption under its title — the same reassurance an LLM search UI gives with
+// "refining search · looking for people". These are cosmetic narration, cycled
+// on a timer by the component; the pipeline itself doesn't report sub-steps, so
+// the phrases are hand-authored per agent to read like plausible live work.
+export const STEP_ACTIVITY: Record<string, string[]> = {
+  parse: ["reading your request", "picking the right crew", "checking the tracker"],
+  resume: [
+    "reading the job description",
+    "matching your Story to the role",
+    "picking the strongest bullets",
+    "tightening the language",
+    "scoring against ATS keywords",
+    "weaving the final draft",
+  ],
+  person: [
+    "scanning the team",
+    "reading titles & tenure",
+    "working out who decides",
+    "checking who's still there",
+    "ranking the shortlist",
+  ],
+  email: [
+    "testing address patterns",
+    "checking the mail server",
+    "scoring deliverability",
+    "holding alternates in reserve",
+  ],
+  outreach: [
+    "finding the sharpest hook",
+    "drafting the email",
+    "adapting it for LinkedIn",
+    "cutting a version for X",
+    "matching your voice",
+  ],
+};
+
+// The activity caption to show for a step on a given tick. `tick` is a
+// monotonically increasing counter the component bumps on an interval; we cycle
+// through the step's phrases so the line keeps moving while the agent works.
+// Returns "" for steps with no phrases (nothing to narrate).
+export function stepActivityPhrase(id: string, tick: number): string {
+  const phrases = STEP_ACTIVITY[id];
+  if (!phrases || phrases.length === 0) return "";
+  const i = ((Math.trunc(tick) % phrases.length) + phrases.length) % phrases.length;
+  return phrases[i];
+}
+
 // Step order per run kind. `parse` always leads; agent steps are filtered to
 // the user's frozen selection when one exists.
 export const RUN_STEP_ORDER: Record<"job" | "person", string[]> = {
@@ -319,7 +368,23 @@ export function buildRunSteps(input: BuildRunStepsInput): RunStepRow[] {
     outreach: "Outreach drafting hit a snag",
   };
 
-  let activePlaced = false;
+  // A step is "in progress" once it has started (progress between 5 and 100) and
+  // the run is still working. We surface EVERY in-progress step as active — not
+  // just the first — so a re-pick that re-runs person/email/outreach at once
+  // keeps all their rows on screen instead of collapsing them into one (the
+  // flicker where rows vanished and popped back). Only when nothing is actively
+  // running do we light the next not-yet-started step as the single "upcoming"
+  // row, preserving the one-row-at-a-time reveal on a fresh run.
+  const isRunning = (id: string): boolean => {
+    if (stage !== "working") return false;
+    if (id === "resume" && input.skipResume) return false;
+    if (input.stepErrors?.[id]) return false;
+    const pct = progress[id] ?? 0;
+    return pct >= 5 && pct < 100;
+  };
+  const anyRunning = order.some((id) => id !== "parse" && isRunning(id));
+
+  let upcomingPlaced = false;
   for (const id of order) {
     if (id === "parse") continue;
     // Signed-out job runs skip Resume Darzi entirely (the server never runs it):
@@ -350,10 +415,15 @@ export function buildRunSteps(input: BuildRunStepsInput): RunStepRow[] {
     if (pct >= 100 || stage === "done") {
       const d = doneRow(id);
       rows.push({ id, title: d.title, sub: d.sub, agent: RUN_AGENT_CHIPS[id] || id.toUpperCase(), state: "done" });
-    } else if (stage === "working" && !activePlaced) {
+    } else if (stage === "working" && isRunning(id)) {
+      // Actively running — always shown, however many are in flight at once.
       const a = activeRow(id);
       rows.push({ id, title: a.title, sub: a.sub, agent: RUN_AGENT_CHIPS[id] || id.toUpperCase(), state: "active" });
-      activePlaced = true;
+    } else if (stage === "working" && !anyRunning && !upcomingPlaced) {
+      // Nothing running yet — light the next step as the single upcoming row.
+      const a = activeRow(id);
+      rows.push({ id, title: a.title, sub: a.sub, agent: RUN_AGENT_CHIPS[id] || id.toUpperCase(), state: "active" });
+      upcomingPlaced = true;
     }
     // queued (not-yet-started) steps after the active one stay hidden, per the
     // prototype — rows appear as the crew reaches them.
