@@ -3,6 +3,7 @@
 
 import { useSyncExternalStore } from "react";
 import { detectKind } from "@/lib/kind-detect";
+import { normalizeCandidateKey } from "@/components/paper/run-view-logic";
 
 // Shown when a signed-out visitor exceeds the anonymous-run cap (HTTP 429 from
 // the compose/tailor routes). Nudges them to sign in rather than leaking a raw
@@ -121,6 +122,11 @@ export type Run = {
   // Set when the person flow couldn't identify anyone AND the input looks like
   // a job posting — the error card offers a one-click "run as job" switch.
   suggestedKind?: "job" | null;
+  // Session-scoped cache of generated outreach per shortlist candidate, keyed by
+  // normalizeCandidateKey(name). Lets re-selecting a previously-drafted person
+  // restore instantly instead of re-streaming /api/compose/apply. In-memory only
+  // (wiped on a full reload, like the rest of the store); single-contact job runs.
+  draftsByCandidate?: Record<string, { person: unknown; enrichment: unknown; drafts: unknown[] }>;
 };
 
 /* ─────────────────────── module store ─────────────────────── */
@@ -802,6 +808,26 @@ export async function pickCandidate(
       };
     });
 
+  // Already drafted this candidate this session? Restore instantly from the
+  // per-candidate cache — no clear-to-[], no fetch/stream — so switching back to
+  // a person shows their saved draft immediately instead of re-drafting.
+  const cacheKey = normalizeCandidateKey(picked.name);
+  const cached = run.draftsByCandidate?.[cacheKey];
+  if (cached && Array.isArray(cached.drafts) && cached.drafts.length) {
+    pickControllers.get(id)?.abort();
+    patchPicked({
+      person: cached.person ?? newPerson(dual ? run.contacts?.hiring_manager?.person : run.person),
+      enrichment: cached.enrichment,
+      drafts: cached.drafts,
+    });
+    patch(id, (r) => ({
+      picking: null,
+      repicked: true,
+      progress: { ...r.progress, person: 100, email: 100, outreach: 100 },
+    }));
+    return;
+  }
+
   // Reflect the click immediately: swap in the picked person AND clear the
   // previous contact's email + drafts, so the panel never keeps showing the old
   // person's message under the new name. `picking` flags the in-flight re-draft
@@ -884,7 +910,24 @@ export async function pickCandidate(
       enrichment: collectedEnrichment || undefined,
       drafts: collectedDrafts.length ? collectedDrafts : undefined,
     });
-    patch(id, (r) => ({ picking: null, progress: { ...r.progress, person: 100, email: 100, outreach: 100 } }));
+    patch(id, (r) => ({
+      picking: null,
+      progress: { ...r.progress, person: 100, email: 100, outreach: 100 },
+      // Cache this candidate's freshly-drafted outreach so re-selecting them
+      // later restores instantly.
+      ...(collectedDrafts.length
+        ? {
+            draftsByCandidate: {
+              ...(r.draftsByCandidate || {}),
+              [cacheKey]: {
+                person: collectedPerson ?? (dual ? r.contacts?.hiring_manager?.person : r.person),
+                enrichment: collectedEnrichment,
+                drafts: collectedDrafts,
+              },
+            },
+          }
+        : {}),
+    }));
   } catch (e) {
     if (controller.signal.aborted) return; // superseded by a newer pick
     // Keep the existing package; just restore the bars and log.
@@ -1331,6 +1374,21 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
         enrichment: r.repicked ? r.enrichment : (collectedEnrichment || r.enrichment),
         person: r.repicked ? r.person : (collectedPerson || r.person),
         candidates: collectedCandidates ?? r.candidates,
+        // Seed the per-candidate cache with the originally-sourced best match, so
+        // switching back to it after picking an alternate restores instantly.
+        // (collectedPerson/Drafts always hold the best match, even after a
+        // re-pick; naturally no-ops for dual-contact runs where they stay empty.)
+        draftsByCandidate:
+          collectedPerson?.name && collectedDrafts.length
+            ? {
+                ...(r.draftsByCandidate || {}),
+                [normalizeCandidateKey(collectedPerson.name)]: {
+                  person: collectedPerson,
+                  enrichment: collectedEnrichment,
+                  drafts: collectedDrafts,
+                },
+              }
+            : r.draftsByCandidate,
         // Map the API's target_role/target_company onto the card's role/company
         // so a successful parse replaces the preview.
         parsed: {
