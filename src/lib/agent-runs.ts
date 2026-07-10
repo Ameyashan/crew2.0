@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { maybeUserId } from "@/lib/user-context";
+import { trackServer } from "@/lib/analytics/server";
 
 // Sonnet 4.6 pricing (USD per million tokens). Update if model changes.
 const PRICING: Record<string, { input: number; output: number }> = {
@@ -30,11 +31,25 @@ export async function logAgentRun(run: AgentRunLog) {
       ? estimateCost(run.model, run.input_tokens, run.output_tokens)
       : null;
 
+  // Read the run's owner once. maybeUserId() is null for anonymous (blur-gate)
+  // runs; it throws only outside a user context, which logAgentRun never is.
+  const userId = maybeUserId();
+
+  // Product-analytics event for EVERY run, signed-in or anon — this is the
+  // single busiest choke point, so instrumenting it here gives the
+  // cofounder-analytics agent per-agent usage + success rates for free. Anon
+  // runs get a null-owned event (they never reach the agent_runs insert below).
+  await trackServer(
+    "run_completed",
+    { agent_type: run.agent_type, outcome: run.outcome, latency_ms: run.latency_ms },
+    { userId },
+  );
+
   try {
-    // Anonymous (blur-gate) runs persist nothing — there's no account to bill
-    // the usage to, so skip the log. Kept inside the try so this stays as
-    // no-throw as it was: an out-of-context call is caught, not propagated.
-    const userId = maybeUserId();
+    // Anonymous (blur-gate) runs persist nothing to agent_runs — there's no
+    // account to bill the usage to, so skip the cost log. (The product_events
+    // row above still captured that the run happened.) Kept inside the try so
+    // this stays no-throw: an unexpected error is caught, not propagated.
     if (!userId) return;
     await supabaseAdmin().from("agent_runs").insert({
       user_id: userId,

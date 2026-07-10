@@ -3,6 +3,8 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { ResumeDoc } from "@/components/resume/ResumeDoc";
 import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
 
+import { trackServer } from "@/lib/analytics/server";
+
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
@@ -15,6 +17,10 @@ export async function POST(req: NextRequest) {
 
   const buf = await renderToBuffer(<ResumeDoc resume={resume} />);
   const filename = filenameFor(resume, "pdf");
+
+  // Product-analytics: a resume export is a key activation signal.
+  // Unauthenticated route (see security follow-up), so null owner.
+  void trackServer("resume_export", { format: "pdf" });
 
   return new Response(new Uint8Array(buf), {
     headers: {

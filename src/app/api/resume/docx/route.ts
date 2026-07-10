@@ -12,6 +12,8 @@ import {
 } from "docx";
 import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
 
+import { trackServer } from "@/lib/analytics/server";
+
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
@@ -25,6 +27,11 @@ export async function POST(req: NextRequest) {
   const doc = buildDoc(resume);
   const buf = await Packer.toBuffer(doc);
   const filename = filenameFor(resume, "docx");
+
+  // Product-analytics: a resume export is a key activation signal.
+  // These routes are unauthenticated (see the security follow-up to gate
+  // them), so the event records with a null owner.
+  void trackServer("resume_export", { format: "docx" });
 
   return new Response(new Uint8Array(buf), {
     headers: {

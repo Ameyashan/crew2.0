@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getProfile, upsertProfile, type ProfilePatch } from "@/lib/profile";
 import { extractUserContext } from "@/lib/agents/extract-context";
 import { withUser } from "@/lib/auth";
+import { trackServer } from "@/lib/analytics/server";
 
 export const runtime = "nodejs";
 
@@ -55,6 +56,9 @@ export async function POST(req: NextRequest) {
   if ("resume_text" in body) patch.resume_text = body.resume_text ?? null;
   if ("resume_filename" in body) patch.resume_filename = body.resume_filename ?? null;
   if (body.onboarded) patch.onboarded_at = new Date().toISOString();
+
+  // Activation analytics: crossing onboarding is the key funnel step.
+  if (body.onboarded) await trackServer("onboarding_complete");
 
   await upsertProfile(patch);
   return Response.json({ ok: true });
