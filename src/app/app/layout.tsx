@@ -5,8 +5,14 @@ import { runWithUser } from "@/lib/user-context";
 import { getProfile } from "@/lib/profile";
 import { isAnonAllowedPath } from "@/components/paper/run-view-logic";
 import AppShell from "./app-shell";
+import type { Metadata } from "next";
 
 export const runtime = "nodejs";
+
+// The signed-in app is private — keep it out of search indexes.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 // Session-gated pages can't be statically prerendered — the gate reads the
 // request's cookies, and building without Supabase env vars would fail the
 // prerender pass anyway.

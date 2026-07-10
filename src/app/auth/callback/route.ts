@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { trackServer } from "@/lib/analytics/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { getProfile } from "@/lib/profile";
 import { runWithUser } from "@/lib/user-context";
@@ -85,6 +86,9 @@ export async function GET(req: NextRequest) {
       ? await runWithUser(userId, () => getProfile())
       : null;
     if (!profile?.onboarded_at) target = "/onboarding";
+    // Activation analytics: a brand-new user (no profile row yet) is a
+    // signup; anyone with a profile is a returning sign_in.
+    if (userId) await trackServer(profile ? "sign_in" : "signup", {}, { userId });
   } catch {
     target = "/onboarding";
   }
