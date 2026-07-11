@@ -8,8 +8,15 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization");
   const expected = process.env.CRON_SECRET;
-  // Vercel Cron sends `Authorization: Bearer <CRON_SECRET>`. Allow either.
-  if (expected && auth !== `Bearer ${expected}` && req.headers.get("x-cron-secret") !== expected) {
+  // Fail CLOSED: a missing CRON_SECRET disables the endpoint (503) rather than
+  // leaving it open to the internet. Previously the guard was skipped entirely
+  // when the secret was unset. CRON_SECRET is set in Vercel prod, so this is a
+  // no-op today and a backstop if it ever gets removed. Vercel Cron sends
+  // `Authorization: Bearer <CRON_SECRET>`; a manual caller may pass x-cron-secret.
+  if (!expected) {
+    return Response.json({ error: "cron secret not configured" }, { status: 503 });
+  }
+  if (auth !== `Bearer ${expected}` && req.headers.get("x-cron-secret") !== expected) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
