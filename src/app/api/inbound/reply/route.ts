@@ -35,14 +35,21 @@ function pickInReplyTo(p: InboundPayload): string | null {
 }
 
 export async function POST(req: NextRequest) {
-  // Provider-side secret — set a long random string in env, configure the
-  // webhook to pass it as ?token= so random pokes get 401'd.
+  // Provider-side secret. FAIL CLOSED: without a configured token the endpoint
+  // is disabled (503) rather than accepting arbitrary unauthenticated POSTs that
+  // write to `replies`/`interactions`. Inbound isn't wired to a mail provider
+  // yet; when it is, set INBOUND_WEBHOOK_TOKEN in Vercel and configure the
+  // provider webhook to pass it as ?token=<secret> so random pokes get 401'd.
   const expected = process.env.INBOUND_WEBHOOK_TOKEN;
-  if (expected) {
-    const got = new URL(req.url).searchParams.get("token");
-    if (got !== expected) {
-      return Response.json({ error: "unauthorized" }, { status: 401 });
-    }
+  if (!expected) {
+    return Response.json(
+      { error: "inbound webhook not configured" },
+      { status: 503 },
+    );
+  }
+  const got = new URL(req.url).searchParams.get("token");
+  if (got !== expected) {
+    return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
   const payload = (await req.json().catch(() => ({}))) as InboundPayload;
