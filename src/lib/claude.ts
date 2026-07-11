@@ -707,6 +707,77 @@ export async function parseJobMeta(job_url: string): Promise<JobMeta> {
   };
 }
 
+const PARSE_JOB_META_FROM_TEXT_SYSTEM = `You read a single job description that the user has pasted and extract only three fields.
+
+Identify:
+- "role": the target role/job title exactly as written (e.g. "Senior Backend Engineer"). null if it isn't stated.
+- "company": the hiring company. null if it isn't stated.
+- "team": the team/department/org this role sits in (e.g. "Research", "Product", "Platform"). null if the text doesn't say.
+
+Rules:
+- Do NOT summarize the posting, list skills, or tailor anything. Only these three fields.
+- NEVER fabricate. If a field isn't in the text, return it as null.
+
+Output strict JSON only, no prose, no markdown fences:
+{ "role": string|null, "company": string|null, "team": string|null }`;
+
+// Text variant of parseJobMeta: pull role/company/team straight from a job
+// description the user pasted (e.g. copied out of a login-walled board like Work
+// at a Startup). No web_search — the JD is already in hand.
+export async function parseJobMetaFromText(text: string): Promise<JobMeta> {
+  const jd = (text || "").trim();
+  if (!jd) return { role: null, company: null, team: null };
+
+  const started = Date.now();
+  let out = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 300,
+      system: PARSE_JOB_META_FROM_TEXT_SYSTEM,
+      // Bound the input so a pasted wall of text can't blow the token budget.
+      messages: [{ role: "user", content: `# Job description\n${jd.slice(0, 12000)}` }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") out += block.text;
+    }
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: "compose:parse_job_meta_text",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { chars: jd.length },
+    });
+  }
+
+  let parsed: Partial<JobMeta> = {};
+  try {
+    parsed = JSON.parse(extractJson(out)) as Partial<JobMeta>;
+  } catch {
+    parsed = {};
+  }
+  return {
+    role: parsed.role ?? null,
+    company: parsed.company ?? null,
+    team: parsed.team ?? null,
+  };
+}
+
 // ---------- FIND JOB OPENING ----------
 // When a screenshot names a role + company but the link can't be fetched (a
 // LinkedIn / lnkd.in share, or a screenshot with no visible URL), search the

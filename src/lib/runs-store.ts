@@ -119,6 +119,13 @@ export type Run = {
   // Per-agent non-fatal errors (e.g. the résumé branch failed but the rest of
   // the crew finished). Keyed like `progress` (resume | person | email | outreach).
   stepErrors?: Record<string, string>;
+  // Set when the job board is login-walled but we can still run off a pasted JD
+  // (Work at a Startup, etc.). Holds the board label; the run view renders a
+  // paste-the-description box that re-launches the crew via submitJobText().
+  needsJobText?: { label: string } | null;
+  // The job description the user pasted for a login-walled board — forwarded to
+  // /api/compose/apply as job_text so the whole crew runs off it.
+  jobText?: string;
   // Set when the person flow couldn't identify anyone AND the input looks like
   // a job posting — the error card offers a one-click "run as job" switch.
   suggestedKind?: "job" | null;
@@ -1009,6 +1016,41 @@ export async function regenerateResume(id: string, notes: string) {
   }
 }
 
+// Re-launch a login-walled job run with the job description the user pasted.
+// Stores the text on the run (forwarded to /api/compose/apply as job_text),
+// clears the paste prompt + prior stub results, resets the bars, and streams the
+// whole crew again — this time off the pasted brief, so the résumé tailors and
+// the hiring-manager pipeline gets a real role/company to search.
+export function submitJobText(id: string, text: string) {
+  const run = runs.find((r) => r.id === id);
+  if (!run || run.kind !== "job") return;
+  const trimmed = (text || "").trim();
+  if (!trimmed) return;
+
+  // Cancel any still-open stream for this run before relaunching.
+  controllers.get(id)?.abort();
+
+  patch(id, (r) => ({
+    jobText: trimmed,
+    needsJobText: null,
+    stage: "working",
+    error: null,
+    stepErrors: {},
+    // Back to a fresh crew run: only the parse step is settled.
+    progress: { parse: 100 },
+    drafts: null,
+    enrichment: null,
+    person: null,
+    candidates: null,
+    contacts: null,
+    tailor: null,
+    // Keep any preview role/company we already showed; the stream overwrites it.
+    parsed: r.parsed,
+  }));
+
+  launch(id);
+}
+
 // "Another angle" — rewrite the draft for one channel with a preset directive
 // ("make it shorter", "more founder-like", a fresh angle, …). Hits the
 // lightweight /api/compose/redraft endpoint (no research / email re-lookup) and
@@ -1250,6 +1292,9 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           job_url: jobUrl || undefined,
           intent: run.intent || undefined,
           agents: run.selectedAgents || undefined,
+          // A pasted JD for a login-walled board (Work at a Startup) — runs the
+          // whole crew off this text instead of the unreadable URL.
+          job_text: run.jobText || undefined,
           // Screenshot-job context: lets the server resolve the real opening and
           // reach out to both the poster and the hiring manager.
           person_name: run.screenshotPersonName || undefined,
@@ -1282,6 +1327,13 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           }
           if (evt.type === "compose_run" && typeof evt.id === "string") {
             setComposeRunId(id, evt.id, run);
+            continue;
+          }
+          if (evt.type === "needs_job_text") {
+            // Login-walled board (Work at a Startup): the run finishes with the
+            // résumé row prompting for a paste. Flag it so the view renders the
+            // paste-the-JD box that re-launches the crew off the pasted text.
+            patch(id, () => ({ needsJobText: { label: String(evt.label || "This board") } }));
             continue;
           }
           if (evt.type === "progress" && evt.id === "resume") {
