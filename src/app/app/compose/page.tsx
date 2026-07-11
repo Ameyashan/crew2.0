@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PAPER_L } from "@/components/paper/palette";
 import { openGmailCompose } from "@/lib/gmail";
+import { track } from "@/lib/analytics/client";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { ChangeList } from "@/components/resume/ChangeList";
 import {
@@ -1333,6 +1334,9 @@ function PeoplePanel({ run, go, thin, onSent }) {
 
   function openChannel() {
     if (!body) return;
+    // Analytics: the user is being handed off to actually send — the real
+    // send-intent signal (84 drafts had 0 recorded sends; this measures it).
+    track('draft_opened_channel', { channel });
     if (channel === 'email') {
       openGmailCompose({ to: emailShown, subject, body });
     } else if (channel === 'linkedin') {
@@ -1345,6 +1349,7 @@ function PeoplePanel({ run, go, thin, onSent }) {
 
   function confirmSent() {
     setHandoffOpen(false);
+    track('message_sent', { channel });
     // Real send confirmation: marks the draft sent, logs the interaction, queues
     // the follow-up — the person lands in People (existing endpoint).
     if (draft?.id) {

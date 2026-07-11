@@ -23,6 +23,11 @@ export const PRODUCT_EVENTS = {
     latency_ms?: number;
   },
   resume_export: {} as { format: "pdf" | "docx" },
+  // Outreach send funnel. draft_opened_channel = the user was handed off to
+  // Gmail/LinkedIn/X to actually send (the real send-intent moment).
+  // message_sent = they confirmed they sent it (writes an interactions row).
+  draft_opened_channel: {} as { channel: string },
+  message_sent: {} as { channel: string },
   // Signed-out funnel (blur gate)
   blur_gate_hit: {},
   blur_gate_signin_click: {},
