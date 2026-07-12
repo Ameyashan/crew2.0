@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { runResumeTailorStreamPersisted } from "@/lib/agents/resume-tailor/persisted";
 import { runReachOutStream } from "@/lib/agents/reach-out";
-import { sourceHiringManagers, parseJobMeta, findJobOpening, type JobMeta } from "@/lib/claude";
-import { authWalledJobHost } from "@/lib/job-url";
+import { sourceHiringManagers, parseJobMeta, parseJobMetaFromText, findJobOpening, type JobMeta } from "@/lib/claude";
+import { authWalledJobHost, pasteJdJobHost } from "@/lib/job-url";
 import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
 import { supabaseAdmin } from "@/lib/supabase";
 import { resolveUserId } from "@/lib/auth";
@@ -32,6 +32,12 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const job_url = (body?.job_url ?? "").toString().trim();
   const intent = body?.intent ? body.intent.toString() : undefined;
+  // The job description the user pasted, for boards we can't auto-read (Work at
+  // a Startup and friends — the résumé error tells them to paste it in). When
+  // present, the whole crew runs off THIS text: the résumé reads it directly
+  // instead of web_searching the URL, and the people pipeline parses
+  // role/company/team out of it rather than fetching the posting.
+  const job_text = body?.job_text ? body.job_text.toString().trim() : "";
   // A screenshot-driven job run may name the person who posted the role (the
   // recruiter / hiring manager who announced it). When present, we reach out to
   // them directly instead of sourcing a hiring manager from scratch.
@@ -448,6 +454,23 @@ export async function POST(req: NextRequest) {
           return;
         }
 
+        // ── Step 0b: read-gated boards we can still run off a pasted JD (Work at
+        // a Startup, etc.). If the user hasn't pasted the description yet, don't
+        // burn a doomed web_search — tell the client to show the paste box. The
+        // people branch still runs (and honestly dead-ends without a company),
+        // and pasting the JD + re-running gives the full crew a real brief.
+        const pasteJd = pasteJdJobHost(job_url);
+        const pastedPosting = job_text ? { text: job_text } : null;
+        const resumeNeedsPaste = !!pasteJd && !pastedPosting;
+        if (resumeNeedsPaste) {
+          send({
+            type: "needs_job_text",
+            id: "resume",
+            label: pasteJd,
+            message: `${pasteJd} postings sit behind a login, so Jugaadu can't read them. Paste the job description below and re-run to tailor your resume.`,
+          });
+        }
+
         // ── Run the resume tailor and the people pipeline CONCURRENTLY.
         // Person Khoji (+ Email Wallah + Outreach Bhai) only needs the job's
         // role/company/team, which we read straight off the posting with a fast
@@ -468,10 +491,29 @@ export async function POST(req: NextRequest) {
         // resume so the outer scope can record it — assignments inside this
         // closure aren't visible to the outer flow analysis.
         const resumeTask = async (): Promise<TailoredResume | null> => {
+          // Read-gated board, no pasted JD yet: skip the doomed tailoring pass and
+          // report the paste prompt on the résumé row. Settle the meta promise so
+          // the people branch's fallback await can't hang.
+          if (resumeNeedsPaste) {
+            send({
+              type: "step",
+              id: "resume",
+              status: "error",
+              message: `${pasteJd} postings are behind a login — paste the job description and re-run to tailor your resume.`,
+            });
+            settleResumeMeta(null);
+            return null;
+          }
           send({ type: "step", id: "resume", status: "start" });
           let resume: TailoredResume | null = null;
           try {
-            for await (const evt of runResumeTailorStreamPersisted({ job_url, page_count: 2 })) {
+            for await (const evt of runResumeTailorStreamPersisted({
+              job_url,
+              // A pasted JD (login-walled board) is read directly — the tailor
+              // never web_searches the unreadable URL.
+              job_posting: pastedPosting ?? undefined,
+              page_count: 2,
+            })) {
               if (evt.type === "step" && evt.id === "tailor" && evt.status === "done") {
                 resume = evt.data.resume;
               }
@@ -527,12 +569,19 @@ export async function POST(req: NextRequest) {
           // of sitting "queued…" until the resume finishes.
           send({ type: "step", id: "person", status: "start" });
 
-          // Fast path: pull role/company/team straight off the posting. Fall
-          // back to the resume's own meta only if this flakes.
-          let meta = await parseJobMeta(job_url).catch((e) => {
-            console.error("[apply] parseJobMeta failed", e);
-            return null as JobMeta | null;
-          });
+          // Fast path: pull role/company/team straight off the posting. When the
+          // user pasted a JD (login-walled board), read it out of that text
+          // instead of web_searching the unreadable URL. Fall back to the
+          // resume's own meta only if this flakes.
+          let meta = pastedPosting
+            ? await parseJobMetaFromText(job_text).catch((e) => {
+                console.error("[apply] parseJobMetaFromText failed", e);
+                return null as JobMeta | null;
+              })
+            : await parseJobMeta(job_url).catch((e) => {
+                console.error("[apply] parseJobMeta failed", e);
+                return null as JobMeta | null;
+              });
           if (!meta?.company) meta = await resumeMetaReady;
 
           const role = meta?.role ?? null;

@@ -22,6 +22,7 @@ import {
   regenerateResume,
   regenerateDraft,
   steerAllChannels,
+  submitJobText,
   jobHost,
   beginAuthNavigation,
 } from "@/lib/runs-store";
@@ -695,6 +696,9 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
           </span>
         </div>
       )}
+
+      {/* ─── login-walled board (Work at a Startup): paste the JD to run the crew ─── */}
+      {run.needsJobText && run.stage !== 'working' && <PasteJdPanel run={run}/>}
 
       {/* ─── error state: message + shortlist picker + retry ─── */}
       {run.stage === 'error' && <RunErrorBlock run={run}/>}
@@ -1853,6 +1857,65 @@ function RunErrorBlock({ run }) {
           border: `1px solid ${TOKENS.line}`, borderRadius: RADII.button, padding: '11px 15px',
           cursor: 'pointer', transition: 'border-color .15s, color .15s',
         }}>↻ Retry</button>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────── paste-the-JD (login-walled boards) ─────────────────── */
+
+// Shown when a run's board is login-walled (Work at a Startup, etc.): the crew
+// can't read the posting, so we ask for the description and re-run the whole
+// crew off it via submitJobText. Its own textarea state; the store owns the run.
+function PasteJdPanel({ run }) {
+  const [text, setText] = useState('');
+  const busy = run.stage === 'working';
+  const label = run.needsJobText?.label || 'This board';
+  return (
+    <div style={{
+      marginTop: 12, maxWidth: 820,
+      background: TOKENS.amberWash, border: `1px solid ${TOKENS.amberLine}`,
+      borderRadius: RADII.panel, padding: '14px 16px', boxSizing: 'border-box',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <span style={{
+          fontFamily: PAPER_FONTS_V2.mono, fontSize: 9.5, fontWeight: 500, letterSpacing: '.08em',
+          textTransform: 'uppercase', color: TOKENS.amber, flexShrink: 0,
+        }}>{label}</span>
+        <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.5, color: TOKENS.muted2 }}>
+          {label} postings sit behind a login, so the crew can&apos;t read them. Paste the job
+          description and re-run — your resume and the hiring-manager search go off this text.
+        </span>
+      </div>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        disabled={busy}
+        placeholder="Paste the full job description here…"
+        rows={6}
+        style={{
+          width: '100%', boxSizing: 'border-box', resize: 'vertical',
+          fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, lineHeight: 1.55, color: TOKENS.ink,
+          background: TOKENS.card, border: `1px solid ${TOKENS.lineSoft}`, borderRadius: RADII.panelTight,
+          padding: '11px 13px', outline: 'none',
+        }}
+      />
+      <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button
+          className="rv-ink"
+          disabled={!text.trim() || busy}
+          onClick={() => { submitJobText(run.id, text); }}
+          style={{
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, fontWeight: 500, lineHeight: 1,
+            color: TOKENS.paper, background: TOKENS.ink, border: 'none',
+            borderRadius: RADII.button, padding: '11px 15px',
+            cursor: text.trim() && !busy ? 'pointer' : 'default',
+            opacity: !text.trim() || busy ? 0.6 : 1, transition: 'background .15s',
+          }}
+        >{busy ? 'Running the crew…' : 'Run the crew with this description →'}</button>
+        <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, color: TOKENS.muted }}>
+          runs resume + hiring-manager search
+        </span>
       </div>
     </div>
   );
