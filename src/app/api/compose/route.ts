@@ -248,6 +248,15 @@ export async function POST(req: NextRequest) {
               .from("compose_runs")
               .update({
                 person_id: personId,
+                // Backfill the effective intent: an explicit one wins, else the
+                // intent research synthesized from the paste/screenshot (the
+                // one-box "who + why" path stores null up front). Keeps the
+                // history subline honest about what the draft was geared toward.
+                intent:
+                  input.intent ??
+                  (person as { outreach_intent?: string | null } | null)
+                    ?.outreach_intent ??
+                  null,
                 output: { person, enrichment, candidates, drafts },
                 outcome,
                 error: errorMessage,
