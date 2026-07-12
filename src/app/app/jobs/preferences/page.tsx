@@ -127,6 +127,7 @@ export default function JobsPreferencesPage() {
   const [pins, setPins] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -159,6 +160,7 @@ export default function JobsPreferencesPage() {
     if (!prefs) return;
     setSaving(true);
     setSaved(false);
+    setSaveError(null);
     try {
       const res = await fetch("/api/jobs/preferences", {
         method: "PUT",
@@ -166,11 +168,18 @@ export default function JobsPreferencesPage() {
         body: JSON.stringify(prefs),
       });
       const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // Only claim success when the server actually accepted the save.
+        throw new Error(j?.error || `save failed: ${res.status}`);
+      }
       if (j?.preferences) {
         setPrefs({ ...DEFAULTS, ...j.preferences });
         setPins(Array.isArray(j.preferences.pins) ? j.preferences.pins : pins);
       }
       setSaved(true);
+    } catch (e) {
+      setSaveError("Couldn't save — please try again.");
+      console.error("[jobs/preferences] save failed", e);
     } finally {
       setSaving(false);
     }
@@ -341,9 +350,14 @@ export default function JobsPreferencesPage() {
             <InkButton2 kind="solid" disabled={saving} onClick={save} style={{ padding: "12px 20px", fontSize: 15 }}>
               {saving ? "Saving…" : "Save preferences"}
             </InkButton2>
-            {saved && (
+            {saved && !saveError && (
               <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 12, color: TOKENS.green }}>
                 ✓ Saved · applies to your next refresh
+              </span>
+            )}
+            {saveError && (
+              <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 12, color: TOKENS.red }}>
+                {saveError}
               </span>
             )}
           </div>

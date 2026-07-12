@@ -621,6 +621,7 @@ function GoalsEditor({ profile, saveProfile, onClose }) {
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState(null);
+  const [saveError, setSaveError] = useState(null);
 
   useEffect(() => {
     fetch("/api/profile")
@@ -639,20 +640,50 @@ export default function SettingsPage() {
   }
 
   async function saveProfile(patch) {
+    // Optimistic update, but surface a hint if the write doesn't land so a
+    // silent failure doesn't leave the user thinking a change was saved.
+    const prev = profile;
     const next = { ...(profile || {}), ...patch };
     setProfile(next);
+    setSaveError(null);
     try {
-      await fetch("/api/profile", {
+      const res = await fetch("/api/profile", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(patch),
       });
-    } catch {
-      // optimistic — silently swallow
+      if (!res.ok) throw new Error(`save failed: ${res.status}`);
+    } catch (e) {
+      setProfile(prev);
+      setSaveError("Couldn't save that change — please try again.");
+      console.error("[settings] save failed", e);
     }
   }
 
   return (
-    <SettingsV3 profile={profile} saveProfile={saveProfile} reloadProfile={reloadProfile} />
+    <>
+      {saveError && (
+        <div
+          role="alert"
+          style={{
+            position: "fixed",
+            bottom: 20,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 50,
+            background: TOKENS.ink,
+            color: TOKENS.paper,
+            fontFamily: PAPER_FONTS_V2.mono,
+            fontSize: 12,
+            padding: "10px 16px",
+            borderRadius: RADII.buttonTight,
+            boxShadow: SHADOWS.card,
+          }}
+        >
+          {saveError}
+        </div>
+      )}
+      <SettingsV3 profile={profile} saveProfile={saveProfile} reloadProfile={reloadProfile} />
+    </>
   );
 }
