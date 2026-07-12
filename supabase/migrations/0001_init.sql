@@ -110,6 +110,26 @@ create index if not exists agent_runs_user_idx on agent_runs(user_id);
 create index if not exists agent_runs_agent_idx on agent_runs(agent_type);
 create index if not exists agent_runs_created_idx on agent_runs(created_at desc);
 
+-- user_profile: one row per account holding the sender's own context — resume
+-- text, LinkedIn, writing voice, follow-up cadence, and onboarding state. The
+-- app upserts this row lazily (on first resume upload or when onboarding
+-- finishes) and the /app gate keys off onboarded_at, so the whole first-time
+-- flow depends on this table. Defined here so the schema provisions cleanly from
+-- migrations alone; 0002 extends it with context_prompt/context_structured.
+-- Idempotent (create table if not exists) — a no-op on the live project where
+-- this table already exists.
+create table if not exists user_profile (
+  user_id         uuid primary key,
+  full_name       text,
+  linkedin_url    text,
+  resume_text     text,
+  resume_filename text,
+  writing_samples text,                                         -- JSON-encoded string[] in practice
+  followup_days   integer,
+  onboarded_at    timestamptz,
+  updated_at      timestamptz not null default now()
+);
+
 -- daily_digests: snapshot per cron run, used to badge the Today page.
 create table if not exists daily_digests (
   id              uuid primary key default gen_random_uuid(),
