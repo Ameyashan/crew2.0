@@ -207,10 +207,11 @@ test("RUN_AGENT_CHIPS maps every pipeline step to a prototype chip", () => {
   assert.equal(RUN_AGENT_CHIPS.person, "PERSON KHOJI");
   assert.equal(RUN_AGENT_CHIPS.email, "EMAIL WALLAH");
   assert.equal(RUN_AGENT_CHIPS.outreach, "OUTREACH");
+  assert.equal(RUN_AGENT_CHIPS.application, "SAWAAL JAWAAB");
 });
 
 test("RUN_STEP_ORDER: job includes resume, person flow doesn't", () => {
-  assert.deepEqual(RUN_STEP_ORDER.job, ["parse", "resume", "person", "email", "outreach"]);
+  assert.deepEqual(RUN_STEP_ORDER.job, ["parse", "resume", "person", "email", "outreach", "application"]);
   assert.deepEqual(RUN_STEP_ORDER.person, ["parse", "person", "email", "outreach"]);
 });
 
@@ -249,8 +250,9 @@ test("buildRunSteps: done marks every selected step done with real subs", () => 
     personLabel: "Anika Mehta",
     emailVerdict: "96% verified",
     draftCount: 3,
+    questionCount: 2,
   });
-  assert.equal(rows.length, 5);
+  assert.equal(rows.length, 6);
   assert.ok(rows.every((r) => r.state === "done"));
   const resume = rows.find((r) => r.id === "resume");
   assert.equal(resume.title, "Resume woven from your Story");
@@ -262,6 +264,8 @@ test("buildRunSteps: done marks every selected step done with real subs", () => 
   assert.match(email.sub, /96% verified/);
   const outreach = rows.find((r) => r.id === "outreach");
   assert.match(outreach.title, /email, LinkedIn, X/);
+  const application = rows.find((r) => r.id === "application");
+  assert.equal(application.title, "2 application questions found");
 });
 
 test("buildRunSteps: selectedAgents filters agent rows (parse always stays)", () => {
@@ -341,7 +345,7 @@ test("buildRunSteps: a stepError renders an error row and doesn't block later ro
   const resume = rows.find((r) => r.id === "resume");
   assert.equal(resume.state, "error");
   assert.equal(resume.sub, "resume branch failed");
-  assert.equal(rows.filter((r) => r.state === "done").length, 4); // parse + 3 agents
+  assert.equal(rows.filter((r) => r.state === "done").length, 5); // parse + 3 agents + application
 });
 
 test("buildRunSteps: done person step with nothing found says so honestly", () => {
@@ -385,8 +389,9 @@ test("buildRunSteps: a re-pick re-running multiple steps keeps every row visible
   assert.equal(byId.person.state, "done");
   assert.equal(byId.email.state, "active");
   assert.equal(byId.outreach.state, "active");
-  // Nothing vanished — all four agent rows plus parse are present.
-  assert.deepEqual(rows.map((r) => r.id), ["parse", "resume", "person", "email", "outreach"]);
+  // Nothing vanished — all four agent rows plus parse are present (application
+  // detection sits at the end as a pending roadmap row).
+  assert.deepEqual(rows.map((r) => r.id), ["parse", "resume", "person", "email", "outreach", "application"]);
 });
 
 test("buildRunSteps: résumé still weaving after the crew finishes stays the lone active row", () => {
@@ -416,8 +421,8 @@ test("buildRunSteps: queued steps render as pending while one is active", () => 
   // The reported scenario: résumé still weaving, person done, email/outreach
   // not yet started — the whole roadmap is on screen.
   const rows = buildRunSteps({ stage: "working", kind: "job", progress: { resume: 40, person: 100 } });
-  assert.deepEqual(rows.map((r) => r.id), ["parse", "resume", "person", "email", "outreach"]);
-  assert.deepEqual(rows.map((r) => r.state), ["done", "active", "done", "pending", "pending"]);
+  assert.deepEqual(rows.map((r) => r.id), ["parse", "resume", "person", "email", "outreach", "application"]);
+  assert.deepEqual(rows.map((r) => r.state), ["done", "active", "done", "pending", "pending", "pending"]);
   // Every pending row carries real copy.
   for (const r of rows.filter((x) => x.state === "pending")) {
     assert.ok(r.title.length > 0 && r.sub.length > 0, r.id);
@@ -446,7 +451,7 @@ test("stepActivityPhrase: unknown step narrates nothing", () => {
 });
 
 test("STEP_ACTIVITY: every pipeline agent has phrases", () => {
-  for (const id of ["parse", "resume", "person", "email", "outreach"]) {
+  for (const id of ["parse", "resume", "person", "email", "outreach", "application"]) {
     assert.ok(Array.isArray(STEP_ACTIVITY[id]) && STEP_ACTIVITY[id].length > 0, id);
     for (const p of STEP_ACTIVITY[id]) assert.ok(typeof p === "string" && p.length > 0);
   }

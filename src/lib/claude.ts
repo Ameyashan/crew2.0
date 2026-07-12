@@ -778,6 +778,307 @@ export async function parseJobMetaFromText(text: string): Promise<JobMeta> {
   };
 }
 
+// ---------- APPLICATION QUESTIONS ----------
+// Detect the free-text/essay questions an application asks ("Why <company>?",
+// "Tell us about a project you're proud of"). The best source is the ATS form
+// itself (Greenhouse exposes it — see extractApplicationQuestions in job-fetch),
+// but many postings also name the prompts inline ("In your cover letter, tell us
+// why…"). This is the text fallback for boards that don't expose the form.
+
+const DETECT_QUESTIONS_SYSTEM = `You read one job posting's text and pull out the FREE-TEXT / ESSAY questions the application explicitly asks the applicant to answer in writing.
+
+Include ONLY questions the text actually states the applicant must answer — for example:
+- "Why do you want to work here / at <company>?"
+- "Tell us about a project you're proud of."
+- "What draws you to this role?"
+- a required cover-letter prompt with a specific question.
+
+Do NOT include:
+- generic responsibilities, requirements, or "nice to have" bullets (these are not questions),
+- mechanical form fields (work authorization, salary/compensation, start date, visa/sponsorship, "how did you hear about us", demographic/EEO questions),
+- anything you are inferring or inventing. If the posting doesn't spell out an essay question, return an empty list.
+
+Rewrite each into a clean, standalone question as the applicant would see it. Deduplicate.
+
+Output strict JSON only, no prose, no markdown fences:
+{ "questions": string[] }`;
+
+// Text-only extraction of essay questions from a pasted / fetched JD body.
+// Mirrors parseJobMetaFromText: no web_search, strict JSON, best-effort (returns
+// [] on any parse/model failure so callers never hard-fail on it).
+export async function detectApplicationQuestions(text: string): Promise<string[]> {
+  const jd = (text || "").trim();
+  if (!jd) return [];
+
+  const started = Date.now();
+  let out = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 400,
+      system: DETECT_QUESTIONS_SYSTEM,
+      messages: [{ role: "user", content: `# Job posting\n${jd.slice(0, 12000)}` }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") out += block.text;
+    }
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: "compose:detect_application_questions",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { chars: jd.length },
+    });
+  }
+
+  let parsed: { questions?: unknown } = {};
+  try {
+    parsed = JSON.parse(extractJson(out)) as { questions?: unknown };
+  } catch {
+    parsed = {};
+  }
+  const list = Array.isArray(parsed.questions) ? parsed.questions : [];
+  const seen = new Set<string>();
+  const cleaned: string[] = [];
+  for (const q of list) {
+    const s = typeof q === "string" ? q.trim() : "";
+    if (!s) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    cleaned.push(s);
+  }
+  return cleaned.slice(0, 8);
+}
+
+// ---------- ANSWER AN APPLICATION QUESTION ----------
+// Draft a full first-person answer to one supplemental question, grounded in the
+// applicant's own background (profile / resume / stories) and, for "why this
+// company / role" prompts, current public facts pulled via web_search. Voice is
+// enforced the same way outreach is: lint for AI tells, one rewrite pass on hits.
+
+export interface AnswerQuestionInput {
+  question: string;
+  job_context?: { role?: string | null; company?: string | null } | null;
+  // The applicant's background, assembled by senderContextFromProfile().
+  sender_context?: string;
+  // Extra grounding material: polished achievement bullets (story_entries).
+  stories?: string[];
+  sender_full_name?: string;
+}
+
+export interface AnswerQuestionResult {
+  answer: string;
+  model: string;
+}
+
+function answerQuestionSystem(): string {
+  return `You are helping a job applicant answer a supplemental application question in their own voice. You write the FIRST-PERSON answer as if the applicant wrote it — ready to paste into the form with light editing.
+
+${antiAiWritingGuide("prose")}
+
+Hard rules on truth:
+- Ground every claim about the applicant ONLY in the background provided below. NEVER invent jobs, projects, numbers, schools, or skills they didn't give you. If the background is thin, write a shorter, honest answer rather than padding it with invented specifics.
+- For "why this company / role / team" questions, you may use the web_search tool to ground the answer in real, current, specific facts about the company (what they build, a recent launch, their mission) — then connect those to the applicant's actual background. Reference ONE concrete, real thing about the company, not vague praise.
+- Write as the applicant ("I"), never about them in the third person, and never address them ("you should…").
+
+Craft:
+- Answer the question that was asked, directly, in the first sentence.
+- Length: 120–220 words unless the question clearly wants shorter. Tight and specific beats long and generic.
+- One concrete, real detail (a project they actually did, a real fact about the company) is worth more than three adjectives.
+- No greeting, no sign-off, no meta-commentary ("Here is my answer"). Just the answer prose.
+
+Output strict JSON only, no markdown fences:
+{ "answer": string }`;
+}
+
+export async function answerApplicationQuestion(
+  input: AnswerQuestionInput,
+): Promise<AnswerQuestionResult> {
+  const started = Date.now();
+
+  const jc = input.job_context;
+  const userBlocks: string[] = [];
+  userBlocks.push(`# Question to answer\n${input.question}`);
+  if (jc && (jc.role || jc.company)) {
+    userBlocks.push(
+      `# Role being applied to\n${[jc.role && `Role: ${jc.role}`, jc.company && `Company: ${jc.company}`]
+        .filter(Boolean)
+        .join("\n")}`,
+    );
+  }
+  if (input.sender_context) {
+    userBlocks.push(`# Applicant background (ground the answer ONLY in this)\n${input.sender_context}`);
+  }
+  const stories = (input.stories ?? []).filter((s) => s && s.trim()).slice(0, 8);
+  if (stories.length) {
+    userBlocks.push(`# Applicant's achievements to draw on\n${stories.map((s) => `- ${s}`).join("\n")}`);
+  }
+  if (!input.sender_context && !stories.length) {
+    userBlocks.push(
+      `# Applicant background\n(No background on file — write an honest, general answer and do not invent specifics.)`,
+    );
+  }
+
+  // "Why <company>?"-style prompts benefit from real, current facts about the
+  // company; give the model web_search for those. Cheap cap — the grounding is a
+  // sentence or two, not a research report.
+  const wantsCompanyFacts =
+    !!jc?.company && /\b(why|company|team|role|mission|product|excites|interests|draws)\b/i.test(input.question);
+
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+
+  const runOnce = async (): Promise<string> => {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 900,
+      system: answerQuestionSystem(),
+      ...(wantsCompanyFacts
+        ? {
+            tools: [
+              {
+                type: "web_search_20250305",
+                name: "web_search",
+                max_uses: 2,
+              } as unknown as Anthropic.Messages.Tool,
+            ],
+          }
+        : {}),
+      messages: [{ role: "user", content: userBlocks.join("\n\n") }],
+    });
+    inTokens += resp.usage.input_tokens;
+    outTokens += resp.usage.output_tokens;
+    let t = "";
+    for (const block of resp.content) {
+      if (block.type === "text") t += block.text;
+    }
+    return t;
+  };
+
+  try {
+    text = await runOnce();
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: "compose:answer_application_question",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { question: input.question.slice(0, 200), web_search: wantsCompanyFacts },
+    });
+  }
+
+  let answer = "";
+  try {
+    answer = String((JSON.parse(extractJson(text)) as { answer?: unknown }).answer ?? "").trim();
+  } catch {
+    answer = text.trim();
+  }
+
+  // Voice enforcement: if the deterministic linter catches AI tells, do ONE
+  // rewrite pass that fixes exactly those while keeping meaning and length.
+  const violations = lintAntiAi(answer);
+  if (answer && violations.length) {
+    const humanized = await humanizeAnswer({
+      answer,
+      violations,
+      signOffName: input.sender_full_name,
+    }).catch(() => null);
+    if (humanized) answer = humanized;
+  }
+
+  return { answer, model: MODEL };
+}
+
+// Rewrite an application answer to strip the AI tells the linter flagged, while
+// keeping meaning, every fact, voice, and roughly the same length. Best-effort —
+// the caller keeps the original on any failure.
+async function humanizeAnswer(opts: {
+  answer: string;
+  violations: AntiAiViolation[];
+  signOffName?: string;
+}): Promise<string | null> {
+  const started = Date.now();
+  const system = `You are an editor. Rewrite the application answer below to remove the AI-sounding tells listed, while keeping its meaning, every fact, the applicant's first-person voice, and roughly the same length (never longer). Do not add new claims or invent specifics. Preserve proper nouns and names exactly, even if a name contains a flagged word.
+
+${antiAiWritingGuide("prose")}
+
+Output strict JSON only, no markdown fences:
+{ "answer": string }`;
+  const userPrompt = [
+    `# Tells to fix (each MUST be gone in your rewrite)`,
+    describeViolations(opts.violations),
+    `\n# Current answer\n${opts.answer}`,
+  ].join("\n");
+
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 900,
+      system,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") text += block.text;
+    }
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: "compose:answer_application_question:humanize",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { tells: opts.violations.map((v) => v.match) },
+    });
+  }
+
+  let rewritten = "";
+  try {
+    rewritten = String((JSON.parse(extractJson(text)) as { answer?: unknown }).answer ?? "").trim();
+  } catch {
+    rewritten = text.trim();
+  }
+  return rewritten || null;
+}
+
 // ---------- FIND JOB OPENING ----------
 // When a screenshot names a role + company but the link can't be fetched (a
 // LinkedIn / lnkd.in share, or a screenshot with no visible URL), search the
