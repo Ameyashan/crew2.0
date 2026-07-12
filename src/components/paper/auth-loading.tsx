@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { PAPER_FONTS_V2 } from "./fonts";
 import { TOKENS, RADII } from "./tokens";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { stitchAnonToAccount } from "@/lib/analytics/client";
 import { nameFromEmail, avatarBg, avatarInitial } from "./top-bar-logic";
 import {
   AUTH_LOADING_MS,
@@ -47,6 +48,9 @@ export function AuthLoadingOverlay() {
       .then(({ data }) => {
         const u = data?.user;
         if (!u) return;
+        // This is the one-shot post-OAuth moment — stitch the pre-signup
+        // anonymous events to the freshly authenticated account.
+        stitchAnonToAccount();
         if (u.email) setEmail(u.email);
         const meta = (u.user_metadata ?? {}) as Record<string, unknown>;
         const resolved =

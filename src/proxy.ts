@@ -79,7 +79,9 @@ export async function proxy(req: NextRequest) {
       signedIn = !!user;
     } catch {
       // Auth server unreachable — fall back to cookie presence rather than
-      // logging everyone out on a blip.
+      // logging everyone out on a blip. This fails open by design: the /app
+      // layout re-validates the session with getUser() on entry, so an invalid
+      // cookie that slips past here is still caught before any /app page renders.
       signedIn = true;
     }
   }
