@@ -56,25 +56,26 @@ burst — and always records what it posted.
 
 ## Produce each run — ONE post, by slot
 
-The Routine fires at ~00:00 / 06:00 / 12:00 / 18:00 UTC. Pick the post type from
-the slot so the four daily posts form a rotating mix (derive the slot from the
-current UTC hour; if run manually, pick the type least-recently used in the
-archive):
+The Routine fires 4×/day (every 6 hours). Pick the post type by **which slot of
+the day this is** — count how many posts are already logged in today's
+`docs/cofounder/x-posts/YYYY-MM-DD.md` (0 → first run of the day, 1 → second, and
+so on), so the four daily posts form a rotating mix regardless of the exact clock
+times. If run manually, pick the type least-recently used in the archive.
 
-- **Slot 0 (~00 UTC) — What shipped:** one concrete recent change, framed as a
+- **Slot 0 (first run) — What shipped:** one concrete recent change, framed as a
   capability, not a commit message ("The crew now scores a live jobs feed against
   your story", not "Added job-fit scoring"). If nothing meaningful shipped since
   the last few runs, use a positioning/insight post instead of inventing a
   changelog line.
-- **Slot 1 (~06 UTC) — "Normal Tuesday" proof:** one thing the product does
+- **Slot 1 (second run) — "Normal Tuesday" proof:** one thing the product does
   today, told as a short before/after or mini-story (cold-applying with no
   callbacks → find the hiring manager and message them).
-- **Slot 2 (~12 UTC) — Positioning / insight:** the "filled before they're
+- **Slot 2 (third run) — Positioning / insight:** the "filled before they're
   posted" truth, or a sharp job-hunt observation that earns a follow even from
   someone who never signs up.
-- **Slot 3 (~18 UTC) — One live agent, in depth:** rotate Resume Darzi → Person
-  Khoji → Email Wallah → Outreach Bhai across days (pick the one least-recently
-  featured in the archive).
+- **Slot 3 (fourth run) — One live agent, in depth:** rotate Resume Darzi →
+  Person Khoji → Email Wallah → Outreach Bhai across days (pick the one
+  least-recently featured in the archive).
 
 **Rules for the post:**
 - **≤ 280 weighted characters** (X counts each URL as 23 and each emoji/CJK char
