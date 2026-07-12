@@ -49,6 +49,11 @@ export interface ResearchResult {
   // currently_at_company answers the expect_company check (null when none given).
   identity_consistent?: boolean;
   currently_at_company?: boolean | null;
+  // Output-only: a ≤1-sentence synthesis of what the DRAFT should convey (the
+  // sender's goal), derived from the pasted free_text / intent line / screenshot.
+  // null when the input is identity-only (a bare name/URL) with no stated goal.
+  // Does NOT influence identity selection — see RESEARCH_SYSTEM.
+  outreach_intent?: string | null;
   raw: string;
 }
 
@@ -77,12 +82,14 @@ Output strict JSON, no prose before or after:
   "candidates": [{ "name": string, "role"?: string, "company"?: string, "linkedin"?: string }],
   "match_confidence": "high" | "medium" | "low",
   "identity_consistent": boolean,
-  "currently_at_company": boolean | null
+  "currently_at_company": boolean | null,
+  "outreach_intent": string | null
 }
 
 - "identity_consistent": true ONLY if name, role, company, links.linkedin, and every context line describe ONE person. If you mixed sources, set it false and return name = null + candidates.
 - "currently_at_company": when an Expected company is given, true only if you confirmed this person works there NOW; false if they have moved on or were never there; null if no Expected company was given or you cannot tell.
 - Set match_confidence "high" ONLY when an authoritative source confirms BOTH the name AND a distinguishing feature (the linkedin profile, company, role, or location) AND identity_consistent is true.
+- "outreach_intent": AFTER you have locked identity, emit a short (≤1 sentence) statement of what the sender's outreach message should convey — their goal or angle — synthesized from the pasted context, the Intent line, and/or the screenshot. This is used only to steer the draft; it does NOT change which person you pick. Return null when the input is identity-only (just a name or URL with no stated reason to reach out).
 
 Rules for context_lines:
 - Exactly 3 lines, each tied to the SAME person you confirmed above.
@@ -204,6 +211,12 @@ function parseResearch(text: string, input: ResearchInput): ResearchResult {
     match_confidence: force ? "low" : parsed.match_confidence,
     identity_consistent: parsed.identity_consistent,
     currently_at_company: parsed.currently_at_company ?? null,
+    // No point conveying an intent for a person we refuse to draft (force).
+    outreach_intent: force
+      ? null
+      : typeof parsed.outreach_intent === "string" && parsed.outreach_intent.trim()
+        ? parsed.outreach_intent.trim()
+        : null,
     raw: text,
   };
 }

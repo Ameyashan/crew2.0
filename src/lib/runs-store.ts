@@ -433,7 +433,19 @@ export function startImageRun(
         kind === "job"
           ? (hasJobUrl ? data.job_url : ([detRole, detCompany].filter(Boolean).join(" at ") || personName || typed || run.input))
           : (data.query || typed || run.input);
-      const mergedIntent = run.intent || (data.intent ? String(data.intent) : undefined);
+      // On the person flow, when the vision pass resolved identity from the image
+      // (data.query), any typed text is the user's "why" — it wasn't consumed as
+      // the identity — so route it to intent instead of dropping it. A typed
+      // string the vision pass echoed back as the query is skipped (typed ===
+      // resolvedInput). If it differs it still lands here and acts as a
+      // disambiguation signal for research — the safety valve for "typed a name,
+      // screenshotted a post". When the image yields no query, typed becomes
+      // resolvedInput (→ research free_text) and the server synthesizes the intent.
+      const usedImageQuery = kind === "person" && !!data.query;
+      const typedAsIntent =
+        usedImageQuery && typed && typed !== resolvedInput ? typed : undefined;
+      const mergedIntent =
+        run.intent || typedAsIntent || (data.intent ? String(data.intent) : undefined);
       const parsed =
         kind === "job"
           ? { ...inferJobV3(hasJobUrl ? data.job_url : (detCompany || "")), role: detRole || undefined, company: detCompany || undefined }
@@ -1663,7 +1675,15 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           // per-agent rather than all at once on the final "complete" event.
           if (evt.id === "research" && evt.status === "done" && evt.data) {
             collectedPerson = evt.data;
-            patch(id, () => ({ person: evt.data }));
+            // Surface the intent research synthesized from the paste/screenshot so
+            // the run subline reflects what the draft is geared toward, without a
+            // reload. An intent the user supplied explicitly still wins.
+            const derivedIntent = (evt.data as { outreach_intent?: string | null })
+              .outreach_intent;
+            patch(id, (r) => ({
+              person: evt.data,
+              intent: r.intent || derivedIntent || undefined,
+            }));
           }
           if (evt.id === "email_lookup" && evt.data) {
             collectedEnrichment = evt.data;

@@ -2390,7 +2390,7 @@ function DeskComposer({ input, setInput, screenshot, setScreenshot, onGo, fillCo
           // is covered by the same branch.
           if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onGo(); }
         }}
-        placeholder="Paste a job link or a screenshot, log what you shipped, or just say it…"
+        placeholder="Paste a job link, a name or profile, or a screenshot — and say why you're reaching out…"
         rows={2}
         style={{
           width: '100%', border: 'none', resize: 'none', outline: 'none',

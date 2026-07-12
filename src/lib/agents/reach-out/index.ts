@@ -113,6 +113,18 @@ export async function* runReachOutStream(
       return;
     }
 
+    // The angle the draft should take. An explicitly-supplied intent (typed "why",
+    // a screenshot-synthesized intent, or the job flow's role@company) always
+    // wins. Otherwise, on the person flow, fall back to the intent research
+    // synthesized from the pasted text / screenshot — this is what makes a plain
+    // "Jane Doe — congratulate on the raise, ask about hiring" one-box paste come
+    // out geared toward that goal without a separate intent field. Gated off the
+    // job flow so a job application's anchor (job_context) is never diluted.
+    const effectiveIntent =
+      input.intent?.trim() ||
+      (input.job_context ? undefined : ctx.outreach_intent?.trim()) ||
+      undefined;
+
     // Employer-of-record. The research model derives `company`/`role` from web
     // search, which can rank a PAST employer as current. A structured people-data
     // provider (Apollo → PeopleDataLabs → Proxycurl, keyed on the LinkedIn URL)
@@ -288,7 +300,7 @@ export async function* runReachOutStream(
         draft({
           person_context: ctx,
           channel: c,
-          intent: input.intent,
+          intent: effectiveIntent,
           job_context: input.job_context,
           sender_context: senderCtx || undefined,
           sender_writing_samples: profile?.writing_samples ?? undefined,
@@ -327,7 +339,7 @@ export async function* runReachOutStream(
           channel,
           subject: result.subject,
           body: result.body,
-          intent: input.intent ?? null,
+          intent: effectiveIntent ?? null,
           status: "generated" as const,
           model: result.model,
           compose_run_id: input.compose_run_id ?? null,
