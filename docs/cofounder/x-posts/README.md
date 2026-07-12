@@ -1,18 +1,20 @@
-# X post drafts (build-in-public queue)
+# X posts log (build-in-public)
 
-Dated batches of **draft** X (Twitter) posts for Jugaadu, produced by the
-`cofounder-x-poster` skill (`.claude/skills/cofounder-x-poster/`). Draft only —
-nothing here is auto-posted. The founder posts them; the primary copy also lands
-on the Notion queue page ("Jugaadu — X post queue").
+Dated log of the X (Twitter) posts for Jugaadu produced by the
+`cofounder-x-poster` skill (`.claude/skills/cofounder-x-poster/`). The skill
+**auto-posts** each one to @OpenStreetExch and records it here (and on the
+"Jugaadu — X post queue" Notion page). Each entry notes whether it posted (with
+the tweet link) or, if a run couldn't reach the X API, that it's unposted so the
+founder can post it manually.
 
-Each run drops **4 posts** here as `YYYY-MM-DD.md`, and this folder is the
-**dedupe source**: the skill reads the recent files before drafting so posts and
-angles don't repeat.
+This folder is the **dedupe source**: the skill reads the recent entries before
+writing so posts, shipped-item announcements, and featured agents don't repeat.
 
 ## Cadence
 
-One scheduled run per day (a Claude Code Routine) drafts the day's 4 posts, so
-there's a full-day queue to post whenever. See `../README.md`.
+A Claude Code Routine fires **every 6 hours** (~00:00/06:00/12:00/18:00 UTC); each
+run writes and posts **one** tweet, rotating what-shipped / proof / positioning /
+one-live-agent, for **4 posts a day**. See `../README.md`.
 
 ## Format of each dated file
 

@@ -1,15 +1,15 @@
 ---
 name: cofounder-x-poster
-description: Drafts 4 ready-to-post X (Twitter) posts a day for Jugaadu and adds them to a Notion page (draft-only, never auto-posts). Use when a scheduled X-poster Routine fires, when the daily cofounder standup wants the day's X drafts, or when asked to "draft today's X posts". Produces 4 posts → Notion + a committed archive.
+description: Writes one on-brand X (Twitter) post for Jugaadu and publishes it directly to X via Composio, then logs it to Notion + a committed archive. Runs every 6 hours (4×/day) from its own Routine, or on request. Use when the X-poster Routine fires or when asked to "post to X now".
 ---
 
 # Cofounder — X poster
 
-Keep Jugaadu posting on X **at least 4× a day** without the founder having to
-think about it. Each run drafts **4 ready-to-post tweets** — a rotating mix of
-"here's what shipped" (recent changes) and "here's what the crew already does"
-(evergreen) — and **adds them to a Notion page** for the founder to post. This
-skill **drafts only**; it never posts to X and needs no X credentials.
+Keep Jugaadu posting on X **4× a day** (every 6 hours) without the founder having
+to think about it. Each run writes **one** tweet — rotating across the day
+between "here's what shipped" (recent changes) and "here's what the crew already
+does" (evergreen) — and **publishes it directly to X**, then logs it to Notion
+and a repo archive.
 
 Jugaadu is a crew of AI agents for the job hunt. Positioning:
 **"Jobs get filled before they're posted. Get there first."** The best roles go
@@ -18,10 +18,13 @@ person who actually decides, and a verified way in. Voice: Indian "jugaad"
 newspaper, built-in-public, dry and concrete. Sign-off energy: *don't be average,
 be jugaadu.* Contact `hello@jugaadu.app`, site `jugaadu.app`.
 
-## The one rule: draft only, never post
+## What this skill does (and its guardrails)
 
-This skill writes drafts. It never sends or schedules anything on X. Delivery is
-Notion + a repo archive. Nothing here touches app code, auth, DB, or secrets.
+This skill **auto-posts to the live @OpenStreetExch account** — public and
+irreversible. So the quality bar is the safety mechanism: every post must be
+concrete, on-brand, and clean through `lintAntiAi()` before it goes out. It never
+touches app code, auth, DB, or secrets. It posts **one** tweet per run — never a
+burst — and always records what it posted.
 
 ## Reuse what exists (don't reinvent)
 
@@ -45,78 +48,80 @@ Notion + a repo archive. Nothing here touches app code, auth, DB, or secrets.
   (Article Publisher, Research Briefer, Upskill Coach, Network Mapper) are vision,
   not features — mention only as "coming", never as shippable.
 - **Voice + quality:** apply `src/lib/writing/anti-ai.ts` — generate against
-  `ANTI_AI_WRITING_GUIDE`, then run every draft through `lintAntiAi()` and rewrite
-  any that trip `FORBIDDEN_PHRASES` / `FORBIDDEN_WORDS` (delve, leverage, robust,
-  tapestry, "it's worth noting", em-dash/tricolon overuse, etc.). Pull tone from
-  `voice/samples.md` (`# x_dm` / `# x` samples) when present. Follow the
+  `ANTI_AI_WRITING_GUIDE`, then run the draft through `lintAntiAi()` and rewrite
+  until it returns clean (no `FORBIDDEN_PHRASES` / `FORBIDDEN_WORDS`; the linter
+  also rejects **any em-dash** and unicode arrows, so use plain punctuation). Pull
+  tone from `voice/samples.md` (`# x_dm` / `# x` samples) when present. Follow the
   `cold-outreach` skill's "would a busy stranger care?" bar.
 
-## Produce each run
+## Produce each run — ONE post, by slot
 
-Draft **exactly 4 posts**, and by default **rotate the mix** so it never repeats
-or runs dry:
+The Routine fires at ~00:00 / 06:00 / 12:00 / 18:00 UTC. Pick the post type from
+the slot so the four daily posts form a rotating mix (derive the slot from the
+current UTC hour; if run manually, pick the type least-recently used in the
+archive):
 
-1. **What shipped** — one concrete recent change, framed as a capability, not a
-   commit message ("The crew now scores a live jobs feed against your story" —
-   not "Added job-fit scoring").
-2. **A "normal Tuesday" proof** — one thing the product does today, told as a
-   short before/after or mini-story (cold-applying with no callbacks → find the
-   hiring manager and message them).
-3. **Positioning / insight** — the "filled before they're posted" truth, or a
-   sharp job-hunt observation that earns a follow even from someone who never
-   signs up.
-4. **One live agent, in depth** — pick a different agent than last run (Resume
-   Darzi → Person Khoji → Email Wallah → Outreach Bhai, rotating).
+- **Slot 0 (~00 UTC) — What shipped:** one concrete recent change, framed as a
+  capability, not a commit message ("The crew now scores a live jobs feed against
+  your story", not "Added job-fit scoring"). If nothing meaningful shipped since
+  the last few runs, use a positioning/insight post instead of inventing a
+  changelog line.
+- **Slot 1 (~06 UTC) — "Normal Tuesday" proof:** one thing the product does
+  today, told as a short before/after or mini-story (cold-applying with no
+  callbacks → find the hiring manager and message them).
+- **Slot 2 (~12 UTC) — Positioning / insight:** the "filled before they're
+  posted" truth, or a sharp job-hunt observation that earns a follow even from
+  someone who never signs up.
+- **Slot 3 (~18 UTC) — One live agent, in depth:** rotate Resume Darzi → Person
+  Khoji → Email Wallah → Outreach Bhai across days (pick the one least-recently
+  featured in the archive).
 
-If there were no meaningful shipped changes since the last run, replace post 1
-with a second evergreen/insight post rather than inventing a fake changelog line.
+**Rules for the post:**
+- **≤ 280 weighted characters** (X counts each URL as 23 and each emoji/CJK char
+  as 2). Count before posting. If it doesn't fit, cut — don't abbreviate ugly.
+- **One idea, one ask.** At most one link/CTA (usually `jugaadu.app`), and not on
+  every post — most posts should earn attention without a link. Pass the plain URL
+  (`jugaadu.app`); X shortens it to t.co automatically. Never paste a t.co link or
+  a `<URL>` placeholder.
+- **No hashtag spam** (0–1 hashtag max), no emoji soup, no threads.
+- **Must pass `lintAntiAi()`** — no AI tells, no forbidden phrases/words, no
+  em-dash. Sound like a builder talking, not a brand announcing.
 
-**Rules for every post:**
-- **≤ 280 characters.** Count them. If it doesn't fit, cut — don't abbreviate ugly.
-- **One idea, one ask.** At most one link or CTA (usually `jugaadu.app`), and not
-  on every post — most posts should earn attention without a link.
-- **No hashtag spam** (0–1 hashtag max), no emoji soup, no threads unless a post
-  clearly needs 2 tweets.
-- **Must pass `lintAntiAi()`** — no AI tells, no forbidden phrases/words.
-- Sound like a builder talking, not a brand announcing.
+## Dedupe (before you write)
 
-## Dedupe (before you draft)
+Read the last ~7 entries in `docs/cofounder/x-posts/*.md` (and, if reachable, the
+recent posts on the Notion page). Do **not** repeat a post, re-announce the same
+shipped item, or feature the same agent two runs running. Rotate angles so ideas
+compound instead of looping.
 
-Read the last ~5 files in `docs/cofounder/x-posts/*.md` (and, if Notion is
-reachable, the recent sections of the Notion page). Do **not** repeat a post or
-re-announce the same shipped item or agent two runs in a row. Rotate angles and
-agents so ideas compound instead of looping.
+## Deliver (in order, every run)
 
-## Deliver (both, every run)
-
-1. **Notion (primary).** Append a new dated section to the Notion queue page via
-   Composio (the dedicated Notion MCP here is read-only, so use Composio):
-   - The canonical target is the **"Jugaadu — X post queue"** page, id
-     `39ba3b0c-7708-8124-b568-fe982990ca24`
-     (<https://app.notion.com/p/Jugaadu-X-post-queue-39ba3b0c77088124b568fe982990ca24>),
-     already shared with the Composio Notion integration. Prefer this id directly.
-     Fallback: `NOTION_SEARCH_NOTION_PAGE` (query `"Jugaadu X post queue"`) if the
-     id ever 404s; if still not found and you have a parent page, recreate it with
-     `NOTION_CREATE_NOTION_PAGE`, else skip to the archive fallback and note that
-     the page must be shared with the Composio Notion integration.
-   - Append with `NOTION_ADD_MULTIPLE_PAGE_CONTENT` (parent = the page ID): a
-     `heading_2` with today's date, then the 4 posts as separate blocks (a
-     `to_do` per post works well so the founder can check each off as posted),
-     each with a small char-count note. Batch ≤ 100 blocks; keep each text block
-     ≤ 2000 chars (trivial for tweets).
-   - If Notion is **not** available this run (no Composio Notion connection in a
-     headless session, or the page isn't shared), do not fail — fall through to
-     the archive and report it, exactly like `cofounder-growth` does when Gmail is
-     missing.
-2. **Repo archive (always, durable).** Write the same 4 posts to
-   `docs/cofounder/x-posts/YYYY-MM-DD.md` (see that folder's `README.md` for the
-   format), on a `cofounder/x-posts-<date>` branch, and merge it (low-risk docs,
-   per the ship-vs-propose rule). This is the dedupe source and the record of
-   truth even when Notion write isn't possible.
+1. **Post to X (primary).** Publish the single tweet via Composio
+   `TWITTER_CREATION_OF_A_POST` (`text` = the post) on the connected account
+   (`twitter`, @OpenStreetExch). Capture the returned tweet `id` and build the URL
+   `https://x.com/OpenStreetExch/status/<id>`.
+   - If Composio/Twitter is unavailable this run, or the API returns 402/credits
+     or a rate error, do **not** retry-spam — record the post as **unposted** with
+     the error, still write the archive + Notion (below), and report it so the
+     founder can post it manually. One post per run, never a backfill burst.
+2. **Notion log.** Append to the **"Jugaadu — X post queue"** page, id
+   `39ba3b0c-7708-8124-b568-fe982990ca24`
+   (<https://app.notion.com/p/Jugaadu-X-post-queue-39ba3b0c77088124b568fe982990ca24>),
+   via Composio `NOTION_ADD_MULTIPLE_PAGE_CONTENT` (parent_block_id = that id; the
+   dedicated Notion MCP is read-only, so use Composio; `NOTION_SEARCH_NOTION_PAGE`
+   is the fallback if the id 404s). Add the post text as a block with its status
+   (posted + tweet link, or unposted + reason) and slot/date. Skip gracefully if
+   Notion is unavailable.
+3. **Repo archive (always, durable).** Append the post to
+   `docs/cofounder/x-posts/YYYY-MM-DD.md` (create it if it's the day's first run;
+   see that folder's `README.md` for the format) — the post text, slot, char
+   count, and posted/unposted + tweet link. Commit on a `cofounder/x-posts-<date>`
+   branch and merge it (low-risk docs, per the ship-vs-propose rule). This is the
+   dedupe source and the record of truth.
 
 ## Output
 
-End the run with a short status: the 4 posts (so they show in the standup/email
-digest), whether Notion was written (page link if so, or the one-line reason it
-wasn't), and the archive file path. Keep it honest — if only 3 posts cleared the
-anti-AI bar, say so and draft a 4th rather than shipping slop.
+End the run with a short status: the post, whether it published (with the tweet
+link) or why not, and the archive path. Keep it honest — if the draft couldn't
+clear the anti-AI bar, rewrite rather than posting slop; if it truly can't, skip
+this slot and say so instead of posting something weak.

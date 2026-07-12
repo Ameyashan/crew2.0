@@ -15,7 +15,7 @@ Each worker either **ships a small change** (a PR, auto-merged when low-risk) or
 | Daily | SEO improvements | `cofounder-seo` | PR (metadata) / brief (strategy) |
 | Daily | User activity & journey review, add missing tracking | `cofounder-analytics` | PR (new tags) / brief (funnel) |
 | Daily | Marketing & outreach ideas | `cofounder-growth` | brief |
-| Daily | 4 build-in-public X post drafts | `cofounder-x-poster` | 4 drafts → Notion + archive |
+| Every 6h | Post 1 build-in-public tweet to X | `cofounder-x-poster` | auto-posts to X + Notion/archive log |
 | Weekly | Market & competitive analysis | `cofounder-market-analysis` | brief |
 | — | Manager: decides, delegates, reports | `cofounder-orchestrator` | standup digest |
 
@@ -26,11 +26,14 @@ Two scheduled **Routines** (Claude Code cron triggers) spin up a fresh session:
 - **Daily** (~08:00) → invokes `cofounder-orchestrator` with `mode=daily`
   (security, seo, analytics, growth).
 - **Weekly** (Mon ~08:00) → `mode=weekly` (adds market-analysis).
-- **X posts** (own daily Routine, ~08:30) → invokes `cofounder-x-poster` to
-  draft the day's **4 build-in-public X posts** and add them to the "Jugaadu — X
-  post queue" Notion page (draft only, never auto-posts; copies archived under
-  `docs/cofounder/x-posts/`). Kept on its own trigger so posting cadence isn't
-  coupled to the standup.
+- **X posts** (own Routine, **every 6 hours** — ~00:00/06:00/12:00/18:00 UTC) →
+  invokes `cofounder-x-poster` to write **one build-in-public tweet** and
+  **publish it directly to X** (@OpenStreetExch, via Composio's
+  `TWITTER_CREATION_OF_A_POST`), then log it to the "Jugaadu — X post queue"
+  Notion page and archive a copy under `docs/cofounder/x-posts/`. Four runs a day
+  = 4 posts, rotating what-shipped / proof / positioning / one-live-agent. Kept on
+  its own trigger so posting cadence isn't coupled to the standup. Requires the
+  Composio Twitter connection (funded X API credits) to be active.
 
 Each run ends with a **standup digest**: what shipped, what needs the founder's
 call, the briefs, and the single biggest next lever — emailed to
