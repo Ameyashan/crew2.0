@@ -91,10 +91,14 @@ agents so ideas compound instead of looping.
 
 1. **Notion (primary).** Append a new dated section to the Notion queue page via
    Composio (the dedicated Notion MCP here is read-only, so use Composio):
-   - Find the page: `NOTION_SEARCH_NOTION_PAGE` (query `"Jugaadu — X post queue"`).
-     If it doesn't exist and you have a parent page, create it with
-     `NOTION_CREATE_NOTION_PAGE`; otherwise skip to the archive fallback and note
-     that the page must be shared with the Composio Notion integration.
+   - The canonical target is the **"Jugaadu — X post queue"** page, id
+     `39ba3b0c-7708-8124-b568-fe982990ca24`
+     (<https://app.notion.com/p/Jugaadu-X-post-queue-39ba3b0c77088124b568fe982990ca24>),
+     already shared with the Composio Notion integration. Prefer this id directly.
+     Fallback: `NOTION_SEARCH_NOTION_PAGE` (query `"Jugaadu X post queue"`) if the
+     id ever 404s; if still not found and you have a parent page, recreate it with
+     `NOTION_CREATE_NOTION_PAGE`, else skip to the archive fallback and note that
+     the page must be shared with the Composio Notion integration.
    - Append with `NOTION_ADD_MULTIPLE_PAGE_CONTENT` (parent = the page ID): a
      `heading_2` with today's date, then the 4 posts as separate blocks (a
      `to_do` per post works well so the founder can check each off as posted),
