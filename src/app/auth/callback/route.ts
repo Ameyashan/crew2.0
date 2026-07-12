@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
   const pending: { name: string; value: string; options: CookieOptions }[] = [];
 
   let userId: string | null = null;
+  let authUser: { created_at?: string; last_sign_in_at?: string } | null = null;
   if (code) {
     const supabaseUrl =
       process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
@@ -77,6 +78,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(url);
     }
     userId = data.user?.id ?? null;
+    authUser = data.user
+      ? {
+          created_at: data.user.created_at,
+          last_sign_in_at: data.user.last_sign_in_at,
+        }
+      : null;
   }
 
   // Route past the landing for returning users; send first-timers to onboarding.
@@ -86,9 +93,14 @@ export async function GET(req: NextRequest) {
       ? await runWithUser(userId, () => getProfile())
       : null;
     if (!profile?.onboarded_at) target = "/onboarding";
-    // Activation analytics: a brand-new user (no profile row yet) is a
-    // signup; anyone with a profile is a returning sign_in.
-    if (userId) await trackServer(profile ? "sign_in" : "signup", {}, { userId });
+    // Activation analytics: derive signup vs sign_in from the auth user itself,
+    // not the (lazily-created) profile row — otherwise a user who signs in but
+    // never finishes onboarding has no row and gets re-counted as a "signup" on
+    // every login. Supabase stamps created_at ≈ last_sign_in_at only on the very
+    // first session, so that window marks the true signup.
+    if (userId) {
+      await trackServer(isFirstLogin(authUser) ? "signup" : "sign_in", {}, { userId });
+    }
   } catch {
     target = "/onboarding";
   }
@@ -112,12 +124,18 @@ export async function GET(req: NextRequest) {
       sameSite: "lax",
     });
   }
-  if (target !== "/onboarding") {
-    res.cookies.set("crew_onboarded", "1", {
-      path: "/",
-      maxAge: 60 * 60 * 24 * 365,
-      sameSite: "lax",
-    });
-  }
   return res;
+}
+
+// First sign-in vs a return visit, from the auth user's timestamps. Supabase
+// sets last_sign_in_at ≈ created_at on the first session and bumps only
+// last_sign_in_at thereafter, so a tight window between them means "brand new".
+// Falls back to false (treat as a returning sign_in) when timestamps are absent.
+function isFirstLogin(
+  u: { created_at?: string; last_sign_in_at?: string } | null,
+): boolean {
+  const created = u?.created_at ? new Date(u.created_at).getTime() : NaN;
+  const last = u?.last_sign_in_at ? new Date(u.last_sign_in_at).getTime() : NaN;
+  if (!Number.isFinite(created) || !Number.isFinite(last)) return false;
+  return Math.abs(last - created) < 5000; // within 5s → first session
 }

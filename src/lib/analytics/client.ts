@@ -31,6 +31,25 @@ function anonId(): string | null {
   }
 }
 
+// One-shot anon→account stitch, fired right after sign-in. Hands this browser's
+// anon id to the server so it can backfill user_id onto the pre-signup events
+// (see /api/analytics/identify). Fire-and-forget; never throws or blocks.
+export function stitchAnonToAccount(): void {
+  if (typeof window === "undefined") return;
+  const id = anonId();
+  if (!id) return;
+  try {
+    void fetch("/api/analytics/identify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ anon_id: id }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* ignore */
+  }
+}
+
 export function track<E extends ProductEventName>(
   event: E,
   props: ProductEventProps<E> = {} as ProductEventProps<E>,
