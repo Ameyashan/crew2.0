@@ -6,7 +6,12 @@ import { useRouter } from "next/navigation";
 import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
 import { TOKENS, RADII, SHADOWS } from "@/components/paper/tokens";
 import { AuthLoadingOverlay } from "@/components/paper/auth-loading";
-import { onboardingDonePatch } from "@/components/paper/phase5-logic";
+import {
+  onboardingDonePatch,
+  onboardingSkipPatch,
+  onboardingCompletedCount,
+} from "@/components/paper/phase5-logic";
+import { SECTORS } from "@/lib/jobs/catalog/sectors";
 
 // The four agents shown as chips on step 1 (prototype lines 115–118).
 const AGENT_CHIPS = ["resume", "person khoji", "email wallah", "outreach"];
@@ -18,15 +23,33 @@ const GOAL_PRESETS = [
   "Meet the people who can open doors for me.",
 ];
 
+const TOTAL_STEPS = 4;
+
 function OnboardingV3({ onDone }) {
-  const [step, setStep] = useState(1); // 1 | 2 | 3
+  const [step, setStep] = useState(1); // 1 | 2 | 3 | 4
   const [resume, setResume] = useState(null); // { name, seeded } | null
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [goal, setGoal] = useState("");
   const [customMode, setCustomMode] = useState(false);
+  const [interests, setInterests] = useState([]); // sector ids
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+
+  // The "n added" hint reuses the shared onboarding progress helper — the same
+  // rule Settings and the tests share. Only resume / goal / interests are
+  // collectable in this wizard, so the count tops out below its theoretical max.
+  const completed = onboardingCompletedCount({
+    resume,
+    linkedin: "",
+    samples: [],
+    goals: goal,
+    interests,
+  });
+
+  function toggleInterest(id) {
+    setInterests((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  }
 
   async function handleUpload(file) {
     if (!file) return;
@@ -62,8 +85,44 @@ function OnboardingV3({ onDone }) {
         ),
       });
       if (!res.ok) throw new Error(`profile save failed: ${res.status}`);
-      // Soft signal the middleware reads to skip the landing for returning users.
-      document.cookie = "crew_onboarded=1; path=/; max-age=31536000; samesite=lax";
+      // Persist the picked interests to the jobs-preferences store so the first
+      // feed isn't empty. Fire-and-forget: the PUT also kicks off a bounded
+      // catalog-coverage pass server-side that can take a moment, and the
+      // profile is already marked onboarded, so we don't block the Desk on it.
+      // Client-side router nav keeps this request alive.
+      if (interests.length) {
+        void fetch("/api/jobs/preferences", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            interests,
+            posted_within: "any",
+            company_sizes: [],
+            locations: [],
+            visa_required: false,
+          }),
+        }).catch((e) => console.error("[onboarding] preferences save failed", e));
+      }
+      onDone();
+    } catch (e) {
+      setSubmitError(String(e?.message || e));
+      setSubmitting(false);
+    }
+  }
+
+  // Skip setup entirely: mark the account onboarded (nothing else) so the /app
+  // gate stops bouncing back here, landing on the Desk with a thin Story.
+  async function skip() {
+    if (submitting) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const res = await fetch("/api/profile", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(onboardingSkipPatch()),
+      });
+      if (!res.ok) throw new Error(`profile save failed: ${res.status}`);
       onDone();
     } catch (e) {
       setSubmitError(String(e?.message || e));
@@ -72,12 +131,12 @@ function OnboardingV3({ onDone }) {
   }
 
   function next() {
-    if (step < 3) setStep(step + 1);
+    if (step < TOTAL_STEPS) setStep(step + 1);
     else finish();
   }
 
   const dot = (n) => (n <= step ? TOKENS.ink : TOKENS.line);
-  const nextLabel = step === 3 ? "Open the Desk →" : "Next →";
+  const nextLabel = step === TOTAL_STEPS ? "Open the Desk →" : "Next →";
 
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 24px" }}>
@@ -118,7 +177,7 @@ function OnboardingV3({ onDone }) {
               color: TOKENS.faint,
             }}
           >
-            STEP {step} OF 3
+            STEP {step} OF {TOTAL_STEPS}
           </span>
         </div>
 
@@ -214,7 +273,7 @@ function OnboardingV3({ onDone }) {
                   : resume
                     ? resume.seeded
                       ? `${resume.seeded} ${resume.seeded === 1 ? "entry" : "entries"} extracted into your Story…`
-                      : "saved to your Story…"
+                      : "Resume saved — you can add Story entries any time."
                     : "PDF, DOCX, or TXT · or skip for now"}
               </div>
             </label>
@@ -311,17 +370,87 @@ function OnboardingV3({ onDone }) {
           </div>
         )}
 
+        {/* ── Step 4 — interests → job feed ── */}
+        {step === 4 && (
+          <div>
+            <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 30, lineHeight: 1.25, letterSpacing: "-.01em" }}>
+              Which worlds should we watch?
+            </div>
+            <div
+              style={{
+                fontFamily: PAPER_FONTS_V2.sans,
+                fontSize: 14,
+                lineHeight: 1.7,
+                color: TOKENS.muted2,
+                margin: "16px 0 24px",
+              }}
+            >
+              Pick the sectors you care about — they decide which companies the crew scans for
+              openings. You can change these any time from Jobs.
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 30 }}>
+              {SECTORS.map((s) => {
+                const active = interests.includes(s.id);
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => toggleInterest(s.id)}
+                    style={{
+                      padding: "8px 14px",
+                      fontFamily: PAPER_FONTS_V2.mono,
+                      fontSize: 13,
+                      background: active ? TOKENS.ink : "transparent",
+                      color: active ? TOKENS.paper : TOKENS.ink,
+                      border: `1px solid ${active ? TOKENS.ink : TOKENS.line}`,
+                      borderRadius: RADII.pill,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {s.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* footer */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", gap: 6 }}>
-            {[1, 2, 3].map((n) => (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {[1, 2, 3, 4].map((n) => (
               <span key={n} style={{ width: 18, height: 4, borderRadius: 2, background: dot(n) }} />
             ))}
+            {completed > 0 && (
+              <span
+                style={{
+                  fontFamily: PAPER_FONTS_V2.mono,
+                  fontSize: 10.5,
+                  color: TOKENS.faint,
+                  marginLeft: 6,
+                }}
+              >
+                {completed} added
+              </span>
+            )}
           </div>
           <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
             {submitError && (
               <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.red }}>
                 {submitError}
+              </span>
+            )}
+            {step === 1 && (
+              <span
+                onClick={submitting ? undefined : skip}
+                style={{
+                  fontFamily: PAPER_FONTS_V2.sans,
+                  fontSize: 13,
+                  color: TOKENS.faint2,
+                  cursor: submitting ? "wait" : "pointer",
+                }}
+              >
+                Skip setup
               </span>
             )}
             {step === 2 && (
