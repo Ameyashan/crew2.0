@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { runResumeTailorStreamPersisted } from "@/lib/agents/resume-tailor/persisted";
 import { runReachOutStream } from "@/lib/agents/reach-out";
-import { sourceHiringManagers, parseJobMeta, parseJobMetaFromText, findJobOpening, type JobMeta } from "@/lib/claude";
+import { sourceHiringManagers, parseJobMeta, parseJobMetaFromText, findJobOpening, detectApplicationQuestions, type JobMeta } from "@/lib/claude";
+import { fetchAtsPosting } from "@/lib/job-fetch";
 import { authWalledJobHost, pasteJdJobHost } from "@/lib/job-url";
 import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -58,6 +59,11 @@ export async function POST(req: NextRequest) {
   // (hiring manager → verified email → drafted outreach) forms the teaser.
   const resumeEnabled = !!userId && agentEnabled(agents, "resume");
   const personEnabled = agentEnabled(agents, "person");
+  // Sawaal Jawaab (application Q&A): detect the essay questions the application
+  // asks. Detection is cheap and runs alongside the other branches; the answers
+  // themselves are drafted on demand (/api/compose/answers). Anonymous runs skip
+  // it — a signed-out visitor has no profile to ground answers in.
+  const questionsEnabled = !!userId && agentEnabled(agents, "application");
 
   // Re-pick: when the user clicks a different candidate in the UI, we re-run
   // only the email + draft for that person (no resume, no sourcing).
@@ -144,6 +150,10 @@ export async function POST(req: NextRequest) {
       let collectedEnrichment: unknown = null;
       let collectedCandidates: unknown[] | null = null;
       let collectedTailored: TailoredResume | null = null;
+      // Detected supplemental essay questions (Sawaal Jawaab). Persisted onto the
+      // job_applications row + compose_runs.output so the on-demand "Draft
+      // answers" button and /app/history can rebuild the card.
+      let collectedQuestions: string[] = [];
       // Dual-contact (screenshot) mode: the poster and the hiring manager, each
       // with their own research + email + drafts. Persisted to compose_runs.output
       // so /app/history can rebuild the toggle. Empty for legacy single-contact runs.
@@ -262,6 +272,59 @@ export async function POST(req: NextRequest) {
           (e) => { console.error("[apply] findJobOpening failed", e); return null; },
         );
         return { url: found?.job_url ?? null, team: found?.team ?? null };
+      };
+
+      // Detect the application's essay questions from whatever JD text we can
+      // read cheaply: the pasted JD, or a known ATS posting (Greenhouse exposes
+      // the real form questions; Lever/others fall back to reading them out of
+      // the JD body). Arbitrary web postings aren't fetched here — the UI's paste
+      // fallback covers those. Always best-effort: returns [] on any failure.
+      const detectQuestions = async (opts: {
+        url?: string | null;
+        pastedText?: string | null;
+      }): Promise<string[]> => {
+        const dedupe = (arr: string[]) => {
+          const seen = new Set<string>();
+          const out: string[] = [];
+          for (const q of arr) {
+            const s = (q ?? "").trim();
+            if (!s || seen.has(s.toLowerCase())) continue;
+            seen.add(s.toLowerCase());
+            out.push(s);
+          }
+          return out.slice(0, 8);
+        };
+        try {
+          if (opts.pastedText && opts.pastedText.trim()) {
+            return dedupe(await detectApplicationQuestions(opts.pastedText));
+          }
+          if (opts.url) {
+            const fetched = await fetchAtsPosting(opts.url).catch(() => null);
+            if (fetched) {
+              const fromForm = fetched.questions ?? [];
+              const fromText = fetched.text
+                ? await detectApplicationQuestions(fetched.text).catch(() => [])
+                : [];
+              return dedupe([...fromForm, ...fromText]);
+            }
+          }
+        } catch (e) {
+          console.error("[apply] detectQuestions failed", e);
+        }
+        return [];
+      };
+
+      // Emit the "questions" bar's start/done around a detection pass. Shared by
+      // the main and screenshot paths; failure is non-fatal (empty question set).
+      const runQuestionsDetection = async (opts: {
+        url?: string | null;
+        pastedText?: string | null;
+      }) => {
+        if (!questionsEnabled) return;
+        send({ type: "step", id: "application", status: "start" });
+        const questions = await detectQuestions(opts);
+        collectedQuestions = questions;
+        send({ type: "step", id: "application", status: "done", data: { questions } });
       };
 
       try {
@@ -396,7 +459,11 @@ export async function POST(req: NextRequest) {
             await Promise.allSettled([posterTask, hmTask]);
           };
 
-          const [resumeSettled] = await Promise.allSettled([resumeTask(), peopleTask()]);
+          const [resumeSettled] = await Promise.allSettled([
+            resumeTask(),
+            peopleTask(),
+            runQuestionsDetection({ url: openingUrl }),
+          ]);
           collectedTailored = resumeSettled.status === "fulfilled" ? resumeSettled.value : null;
 
           // Mirror the primary (poster, else hiring manager) onto the legacy
@@ -418,6 +485,9 @@ export async function POST(req: NextRequest) {
                   user_id: userId,
                   job_url: openingUrl || job_url || null,
                   job_json: collectedTailored?.meta ?? null,
+                  application_qa: collectedQuestions.length
+                    ? { questions: collectedQuestions, answers: [] }
+                    : null,
                   resume_generation_id: resumeGenerationId,
                   person_id: personId,
                   draft_id: draftId,
@@ -656,11 +726,22 @@ export async function POST(req: NextRequest) {
           resumeEnabled ? resumeTask() : Promise.resolve(null);
         const peoplePromise: Promise<void> =
           personEnabled ? peopleTask() : Promise.resolve();
+        // Sawaal Jawaab detection runs in parallel too. On read-gated boards with
+        // no pasted JD, there's no cheap text to read — it lands empty and the UI
+        // shows the paste-questions fallback.
+        const questionsPromise: Promise<void> = runQuestionsDetection({
+          url: pastedPosting ? null : job_url,
+          pastedText: pastedPosting ? job_text : null,
+        });
 
-        // Wait for BOTH branches before recording/closing. allSettled (not all)
-        // so a thrown error in one branch can't leave the other enqueuing onto a
+        // Wait for ALL branches before recording/closing. allSettled (not all)
+        // so a thrown error in one branch can't leave the others enqueuing onto a
         // closed stream — each branch already surfaces its own errors via send().
-        const [resumeSettled] = await Promise.allSettled([resumePromise, peoplePromise]);
+        const [resumeSettled] = await Promise.allSettled([
+          resumePromise,
+          peoplePromise,
+          questionsPromise,
+        ]);
         const tailored: TailoredResume | null =
           resumeSettled.status === "fulfilled" ? resumeSettled.value : null;
         collectedTailored = tailored;
@@ -675,6 +756,9 @@ export async function POST(req: NextRequest) {
                 user_id: userId,
                 job_url,
                 job_json: tailored?.meta ?? null,
+                application_qa: collectedQuestions.length
+                  ? { questions: collectedQuestions, answers: [] }
+                  : null,
                 resume_generation_id: resumeGenerationId,
                 person_id: personId,
                 draft_id: draftId,
@@ -734,6 +818,7 @@ export async function POST(req: NextRequest) {
                   candidates: collectedCandidates,
                   drafts: collectedDrafts,
                   contacts: Object.keys(collectedContacts).length ? collectedContacts : null,
+                  questions: collectedQuestions.length ? collectedQuestions : null,
                 },
                 outcome: runOutcome,
                 error: runError,

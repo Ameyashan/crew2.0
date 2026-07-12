@@ -23,6 +23,7 @@ import {
   regenerateDraft,
   steerAllChannels,
   submitJobText,
+  draftAnswers,
   jobHost,
   beginAuthNavigation,
 } from "@/lib/runs-store";
@@ -499,7 +500,7 @@ const EARLIER_CHIP_TONE = {
 // only: the backend decides what actually runs.
 const AGENT_KEYS = {
   person: ['person', 'email', 'outreach'],
-  job: ['resume', 'person', 'email', 'outreach'],
+  job: ['resume', 'person', 'email', 'outreach', 'application'],
 };
 
 // Confidence-tier chip colours in the token palette (verified green, plausible
@@ -605,6 +606,7 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
     ats: run.kind === 'job'
       ? { before: jobParsed?.ats_score_before ?? null, after: jobParsed?.ats_score ?? null }
       : null,
+    questionCount: Array.isArray(run.applicationQuestions) ? run.applicationQuestions.length : null,
   });
 
   const title = runViewTitle({
@@ -728,6 +730,8 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
                 onSent={(info) => setSent(info)}/>
             )
           )}
+
+          {run.kind === 'job' && <ApplicationCard run={run}/>}
         </div>
         {gated && <BlurGateOverlay kind={run.kind} run={run} input={run.input}/>}
       </div>
@@ -1917,6 +1921,183 @@ function PasteJdPanel({ run }) {
           runs resume + hiring-manager search
         </span>
       </div>
+    </div>
+  );
+}
+
+/* ─────────────────────── Sawaal Jawaab: application Q&A ─────────────────────── */
+// The fifth crew member's output. Lists the supplemental essay questions detected
+// during the run and, on demand, drafts a full first-person answer to each —
+// grounded in the user's profile/resume/stories. When the run couldn't read any
+// questions (a non-ATS board), a paste box lets the user hand them in.
+
+function CopyBtn({ text }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text || '');
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1600);
+        } catch { /* clipboard blocked — no-op */ }
+      }}
+      style={{
+        fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, lineHeight: 1,
+        color: copied ? TOKENS.green : TOKENS.muted, background: TOKENS.chip,
+        border: 'none', borderRadius: 4, padding: '5px 8px', cursor: 'pointer',
+      }}
+    >{copied ? 'copied ✓' : 'copy'}</button>
+  );
+}
+
+function ApplicationPasteBox({ run }) {
+  const [text, setText] = useState('');
+  const busy = !!run.answering;
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  return (
+    <div style={{ marginTop: 4 }}>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        disabled={busy}
+        placeholder={"Paste the application's questions here, one per line…"}
+        rows={4}
+        style={{
+          width: '100%', boxSizing: 'border-box', resize: 'vertical',
+          fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, lineHeight: 1.55, color: TOKENS.ink,
+          background: TOKENS.card, border: `1px solid ${TOKENS.lineSoft}`, borderRadius: RADII.panelTight,
+          padding: '11px 13px', outline: 'none',
+        }}
+      />
+      <button
+        className="rv-ink"
+        disabled={!lines.length || busy}
+        onClick={() => draftAnswers(run.id, lines)}
+        style={{
+          marginTop: 10, fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, fontWeight: 500, lineHeight: 1,
+          color: TOKENS.paper, background: TOKENS.ink, border: 'none', borderRadius: RADII.button,
+          padding: '11px 15px', cursor: lines.length && !busy ? 'pointer' : 'default',
+          opacity: !lines.length || busy ? 0.6 : 1,
+        }}
+      >{busy ? 'Drafting…' : 'Draft answers →'}</button>
+    </div>
+  );
+}
+
+function ApplicationCard({ run }) {
+  const detected = Array.isArray(run.applicationQuestions) ? run.applicationQuestions : null;
+  const answers = Array.isArray(run.applicationAnswers) ? run.applicationAnswers : [];
+  const answering = !!run.answering;
+  const hasQuestions = !!detected && detected.length > 0;
+  const detectionDone = detected !== null;
+  // Offer the paste fallback only once detection finished empty and the crew has
+  // stopped working (so we don't flash it mid-run).
+  const showPaste = detectionDone && !hasQuestions && run.stage !== 'working';
+
+  if (!hasQuestions && !answers.length && !showPaste) return null;
+
+  const answerFor = (q) =>
+    answers.find((a) => (a.question || '').trim().toLowerCase() === (q || '').trim().toLowerCase());
+  const anyAnswered = answers.some((a) => (a.body || '').trim());
+
+  return (
+    <div style={{
+      marginTop: 12, maxWidth: 620, boxSizing: 'border-box',
+      background: TOKENS.card, border: `1px solid ${TOKENS.lineSoft}`, borderRadius: RADII.card,
+      boxShadow: SHADOWS.elevated, padding: '24px 26px', animation: 'fadeUp .35s ease',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
+        <span style={{
+          fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, lineHeight: 1,
+          letterSpacing: '.08em', color: TOKENS.faint,
+        }}>APPLICATION QUESTIONS</span>
+        <span style={{
+          fontFamily: PAPER_FONTS_V2.mono, fontSize: 10, fontWeight: 500, lineHeight: 1,
+          color: TOKENS.muted, background: TOKENS.chip, borderRadius: 4, padding: '3px 6px',
+        }}>SAWAAL JAWAAB</span>
+      </div>
+
+      {hasQuestions ? (
+        <>
+          <div style={{
+            fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.55, color: TOKENS.muted, marginBottom: 16,
+          }}>
+            This application asks for {detected.length} written answer{detected.length === 1 ? '' : 's'}.
+            {anyAnswered ? ' Drafted in your voice from your profile — edit before you paste.' : ' Draft first-person answers grounded in your profile.'}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            {detected.map((q, i) => {
+              const a = answerFor(q);
+              const body = (a?.body || '').trim();
+              return (
+                <div key={i}>
+                  <div style={{
+                    fontFamily: PAPER_FONTS_V2.serif, fontSize: 15, lineHeight: 1.4, color: TOKENS.ink, marginBottom: 8,
+                  }}>{q}</div>
+                  {body ? (
+                    <div style={{
+                      background: TOKENS.paper, border: `1px solid ${TOKENS.lineSoft}`, borderRadius: RADII.panelTight,
+                      padding: '12px 14px',
+                    }}>
+                      <div style={{
+                        fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, lineHeight: 1.6, color: TOKENS.ink,
+                        whiteSpace: 'pre-wrap',
+                      }}>{body}</div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                        <CopyBtn text={body}/>
+                      </div>
+                    </div>
+                  ) : answering ? (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 7,
+                      fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, lineHeight: 1.4, color: TOKENS.faint,
+                    }}>
+                      <span style={{
+                        width: 5, height: 5, borderRadius: 999, background: TOKENS.gold, flex: 'none',
+                        animation: 'pulse 1.4s ease-in-out infinite',
+                      }}/>
+                      drafting your answer…
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ marginTop: 18, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button
+              className="rv-ink"
+              disabled={answering}
+              onClick={() => draftAnswers(run.id)}
+              style={{
+                fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, fontWeight: 500, lineHeight: 1,
+                color: TOKENS.paper, background: TOKENS.ink, border: 'none', borderRadius: RADII.button,
+                padding: '11px 15px', cursor: answering ? 'default' : 'pointer', opacity: answering ? 0.6 : 1,
+              }}
+            >{answering ? 'Drafting…' : anyAnswered ? 'Redraft all answers' : 'Draft answers →'}</button>
+            <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, color: TOKENS.muted }}>
+              in your voice, from your profile & Story
+            </span>
+          </div>
+        </>
+      ) : (
+        <div style={{
+          fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.55, color: TOKENS.muted, marginBottom: 12,
+        }}>
+          The crew couldn&apos;t read supplemental questions off this posting. If the form asks any
+          (like &ldquo;Why this company?&rdquo;), paste them below and the crew will draft answers.
+        </div>
+      )}
+
+      {showPaste && <ApplicationPasteBox run={run}/>}
+
+      {run.answerError && (
+        <div style={{
+          marginTop: 12, fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, lineHeight: 1.5, color: TOKENS.amber,
+        }}>{run.answerError}</div>
+      )}
     </div>
   );
 }

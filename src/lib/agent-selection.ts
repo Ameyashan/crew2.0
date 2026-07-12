@@ -7,9 +7,9 @@
 // candidate re-picks, and any older client that doesn't send a selection all
 // fall through to the original "run the whole crew" behaviour.
 
-export type AgentKey = "resume" | "person" | "email" | "outreach";
+export type AgentKey = "resume" | "person" | "email" | "outreach" | "application";
 
-export const ALL_AGENT_KEYS: AgentKey[] = ["resume", "person", "email", "outreach"];
+export const ALL_AGENT_KEYS: AgentKey[] = ["resume", "person", "email", "outreach", "application"];
 
 export function agentEnabled(
   agents: readonly string[] | null | undefined,

@@ -134,6 +134,17 @@ export type Run = {
   // restore instantly instead of re-streaming /api/compose/apply. In-memory only
   // (wiped on a full reload, like the rest of the store); single-contact job runs.
   draftsByCandidate?: Record<string, { person: unknown; enrichment: unknown; drafts: unknown[] }>;
+  // Sawaal Jawaab (application Q&A). `applicationQuestions` is the essay-question
+  // list detected during the apply run (job runs only). `applicationAnswers` is
+  // the on-demand drafted answers, keyed by question. `answering` is true while
+  // /api/compose/answers is streaming; `answerError` holds a failure message.
+  // `savedApplicationId` is the job_applications row id (from the "saved" event),
+  // forwarded so drafted answers persist onto that application.
+  applicationQuestions?: string[] | null;
+  applicationAnswers?: { question: string; body: string; model?: string }[] | null;
+  answering?: boolean;
+  answerError?: string | null;
+  savedApplicationId?: string | null;
 };
 
 /* ─────────────────────── module store ─────────────────────── */
@@ -717,6 +728,8 @@ export type PersistedComposeRun = {
     candidates?: unknown[] | null;
     drafts?: unknown[];
     contacts?: { poster?: ContactData | null; hiring_manager?: ContactData | null } | null;
+    questions?: string[] | null;
+    answers?: { question: string; body: string; model?: string }[] | null;
   } | null;
   screenshot?: { name: string; size: string } | null;
 };
@@ -1049,6 +1062,94 @@ export function submitJobText(id: string, text: string) {
   }));
 
   launch(id);
+}
+
+// Sawaal Jawaab — draft full first-person answers to the application's essay
+// questions on demand. Hits /api/compose/answers (SSE) and fills each answer into
+// the run as it lands, so the card streams question-by-question. `questions` lets
+// the caller pass a custom set (the paste-your-questions fallback); otherwise the
+// run's detected questions are used.
+export async function draftAnswers(id: string, questions?: string[]) {
+  const run = runs.find((r) => r.id === id);
+  if (!run || run.kind !== "job" || run.answering) return;
+  const qs = (Array.isArray(questions) && questions.length ? questions : run.applicationQuestions) || [];
+  const cleaned = qs.map((q) => (q || "").toString().trim()).filter(Boolean).slice(0, 8);
+  if (!cleaned.length) return;
+
+  const jc = {
+    role: run.parsed?.role || run.parsed?.target_role || run.screenshotRole || null,
+    company: run.parsed?.company || run.parsed?.target_company || run.screenshotCompany || null,
+  };
+
+  patch(id, () => ({
+    answering: true,
+    answerError: null,
+    applicationQuestions: cleaned,
+    // Seed placeholder rows so the card can show each question with a spinner.
+    applicationAnswers: cleaned.map((q) => ({ question: q, body: "" })),
+  }));
+
+  const upsertAnswer = (question: string, body: string, model?: string) => {
+    patch(id, (r) => {
+      const prev = Array.isArray(r.applicationAnswers) ? r.applicationAnswers.slice() : [];
+      const i = prev.findIndex((a) => a.question.trim().toLowerCase() === question.trim().toLowerCase());
+      const next = { question, body, model };
+      if (i >= 0) prev[i] = next;
+      else prev.push(next);
+      return { applicationAnswers: prev };
+    });
+  };
+
+  try {
+    const res = await fetch("/api/compose/answers", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "text/event-stream" },
+      body: JSON.stringify({
+        questions: cleaned,
+        job_context: jc,
+        compose_run_id: run.composeRunId || undefined,
+        job_application_id: run.savedApplicationId || undefined,
+      }),
+    });
+    if (!res.ok || !res.body) throw new Error(`answers failed: ${res.status}`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split("\n\n");
+      buf = parts.pop() || "";
+      for (const raw of parts) {
+        const line = raw.split("\n").find((l) => l.startsWith("data: "));
+        if (!line) continue;
+        let evt;
+        try {
+          evt = JSON.parse(line.slice(6));
+        } catch {
+          continue;
+        }
+        if (evt.type === "answer" && evt.status === "done") {
+          upsertAnswer(evt.question, evt.body, evt.model);
+        } else if (evt.type === "answer" && evt.status === "error") {
+          upsertAnswer(evt.question, "");
+        } else if (evt.type === "error") {
+          patch(id, () => ({ answerError: evt.message || "Couldn't draft answers." }));
+        }
+      }
+    }
+  } catch (e) {
+    patch(id, () => ({ answerError: e?.message || "Couldn't draft answers." }));
+  } finally {
+    // Drop any placeholder rows that never got a body (errored questions).
+    patch(id, (r) => ({
+      answering: false,
+      applicationAnswers: Array.isArray(r.applicationAnswers)
+        ? r.applicationAnswers.filter((a) => (a.body || "").trim())
+        : r.applicationAnswers,
+    }));
+  }
 }
 
 // "Another angle" — rewrite the draft for one channel with a preset directive
@@ -1404,7 +1505,17 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
                 collectedDrafts.push(evt.data);
                 patch(id, () => ({ drafts: [...collectedDrafts] }));
               }
+              if (k === "application" && evt.status === "done") {
+                // Sawaal Jawaab detected the application's essay questions. Store
+                // them so the card can list them + offer "Draft answers".
+                const qs = Array.isArray(evt.data?.questions) ? evt.data.questions : [];
+                patch(id, () => ({ applicationQuestions: qs }));
+              }
             }
+          } else if (evt.type === "saved") {
+            // The job_applications row id — forwarded to /api/compose/answers so
+            // drafted answers persist onto this application.
+            if (typeof evt.id === "string") patch(id, () => ({ savedApplicationId: evt.id }));
           } else if (evt.type === "candidates") {
             collectedCandidates = Array.isArray(evt.data) ? evt.data : [];
             patch(id, () => ({ candidates: collectedCandidates }));
@@ -1975,6 +2086,8 @@ function applyPersisted(id: string, persisted: PersistedComposeRun) {
     person: out.person ?? r.person,
     candidates: Array.isArray(out.candidates) ? out.candidates : r.candidates,
     contacts: out.contacts ?? r.contacts,
+    applicationQuestions: Array.isArray(out.questions) ? out.questions : r.applicationQuestions,
+    applicationAnswers: Array.isArray(out.answers) ? out.answers : r.applicationAnswers,
     progress: progress ?? r.progress,
     error: persisted.outcome === "complete" ? null : (persisted.error ?? r.error),
     reconnecting: false,

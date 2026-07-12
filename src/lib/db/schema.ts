@@ -72,6 +72,21 @@ export interface ComposeRun {
   completed_at: string | null;
 }
 
+// Supplemental application Q&A ("Sawaal Jawaab"), stored on
+// job_applications.application_qa and mirrored into compose_runs.output so the
+// history detail view can rebuild the card. Questions are detected during the
+// apply run; answers are drafted on demand.
+export interface ApplicationAnswer {
+  question: string;
+  body: string;
+  model: string;
+}
+
+export interface ApplicationQA {
+  questions: string[];
+  answers: ApplicationAnswer[];
+}
+
 export interface Interaction {
   id: string;
   user_id: string;

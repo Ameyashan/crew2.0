@@ -17,8 +17,55 @@ export interface FetchedJob {
   team: string | null; // department/team the role sits in, if the API exposes it
   location: string | null;
   text: string; // plain-text JD body
+  // Free-text/essay questions the application form asks ("Why <company>?",
+  // "Tell us about a project…"). Empty when the board doesn't expose them or the
+  // form has none. Only Greenhouse exposes these via its public API today.
+  questions: string[];
   source: "greenhouse" | "lever";
   url: string;
+}
+
+// A label matching one of these reads as a free-text essay prompt even when the
+// underlying field type isn't a textarea (some forms use a short-text input for
+// a "why" question). Used as a secondary include on top of the textarea signal.
+const ESSAY_LABEL_RE =
+  /\b(why|tell us|describe|cover letter|what (excites|interests|draws|motivates)|motivat|passion|proud of|in your own words)\b/i;
+
+// A label matching one of these is a mechanical/compliance field we never want
+// to surface as an essay question, even if it somehow lands in a textarea.
+const NON_ESSAY_LABEL_RE =
+  /\b(gender|race|ethnicity|veteran|disability|sexual orientation|salary|compensation|expected pay|start date|notice period|work authoriz|authorized to work|visa|sponsorship|relocat|referr|how did you hear|linkedin|website|portfolio|github|pronoun)\b/i;
+
+// Greenhouse returns the application form as `questions[]`, each with a `label`
+// and one or more `fields[]` (each typed: input_text | textarea | input_file |
+// multi_value_*_select | boolean). Keep only the free-text essay prompts: a
+// question with a textarea field, or one whose label reads like an essay — while
+// dropping the demographic/logistics fields the user asked us NOT to answer.
+export function extractApplicationQuestions(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const q of raw) {
+    if (!q || typeof q !== "object") continue;
+    const label = str((q as { label?: unknown }).label);
+    if (!label) continue;
+    if (NON_ESSAY_LABEL_RE.test(label)) continue;
+    const fields = Array.isArray((q as { fields?: unknown }).fields)
+      ? ((q as { fields: unknown[] }).fields)
+      : [];
+    const fieldType = (f: unknown) =>
+      f && typeof f === "object" ? (f as { type?: unknown }).type : undefined;
+    // A document upload ("Resume/CV", "Cover letter" file) — even one that offers
+    // a paste-instead textarea — isn't an essay prompt we answer. Skip it.
+    if (fields.some((f) => fieldType(f) === "input_file")) continue;
+    const hasTextarea = fields.some((f) => fieldType(f) === "textarea");
+    if (!hasTextarea && !ESSAY_LABEL_RE.test(label)) continue;
+    const key = label.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(label.trim());
+  }
+  return out;
 }
 
 export async function fetchAtsPosting(url: string): Promise<FetchedJob | null> {
@@ -49,13 +96,17 @@ async function fetchGreenhouse(u: URL): Promise<FetchedJob | null> {
   const id = (parts[jobsIdx + 1] ?? "").replace(/[^0-9]/g, "");
   if (!board || !id) return null;
 
+  // ?questions=true asks Greenhouse to include the application form's questions
+  // alongside the posting, so we can surface the essay prompts ("Why <company>?")
+  // the user would otherwise only see on the apply page.
   const data = await getJson<{
     title?: unknown;
     content?: unknown;
     company_name?: unknown;
     departments?: { name?: unknown }[];
     location?: { name?: unknown };
-  }>(`https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(board)}/jobs/${id}`);
+    questions?: unknown;
+  }>(`https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(board)}/jobs/${id}?questions=true`);
   if (!data) return null;
   const text = htmlToText(typeof data.content === "string" ? data.content : "");
   if (!text) return null;
@@ -66,6 +117,7 @@ async function fetchGreenhouse(u: URL): Promise<FetchedJob | null> {
     team: str(data.departments?.[0]?.name),
     location: str(data.location?.name),
     text,
+    questions: extractApplicationQuestions(data.questions),
     source: "greenhouse",
     url: u.toString(),
   };
@@ -96,6 +148,9 @@ async function fetchLever(u: URL): Promise<FetchedJob | null> {
     team: str(data.categories?.team) ?? str(data.categories?.department),
     location: str(data.categories?.location),
     text,
+    // Lever's public postings API doesn't expose the application form's custom
+    // questions, so callers fall back to LLM extraction from the JD text.
+    questions: [],
     source: "lever",
     url: u.toString(),
   };

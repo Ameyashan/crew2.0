@@ -129,6 +129,7 @@ export const RUN_AGENT_CHIPS: Record<string, string> = {
   person: "PERSON KHOJI",
   email: "EMAIL WALLAH",
   outreach: "OUTREACH",
+  application: "SAWAAL JAWAAB",
 };
 
 // ── Live agent activity ticker ───────────────────────────────────────────────
@@ -167,6 +168,11 @@ export const STEP_ACTIVITY: Record<string, string[]> = {
     "cutting a version for X",
     "matching your voice",
   ],
+  application: [
+    "opening the application form",
+    "reading the supplemental questions",
+    "spotting the essay prompts",
+  ],
 };
 
 // The activity caption to show for a step on a given tick. `tick` is a
@@ -183,7 +189,7 @@ export function stepActivityPhrase(id: string, tick: number): string {
 // Step order per run kind. `parse` always leads; agent steps are filtered to
 // the user's frozen selection when one exists.
 export const RUN_STEP_ORDER: Record<"job" | "person", string[]> = {
-  job: ["parse", "resume", "person", "email", "outreach"],
+  job: ["parse", "resume", "person", "email", "outreach", "application"],
   person: ["parse", "person", "email", "outreach"],
 };
 
@@ -221,6 +227,9 @@ export type BuildRunStepsInput = {
   emailVerdict?: string | null; // e.g. "96% verified" (real Hunter signal)
   draftCount?: number | null;
   ats?: { before?: number | null; after?: number | null } | null;
+  // Sawaal Jawaab: how many supplemental essay questions were detected (null
+  // until the step finishes). Drives the "N questions found" vs "none found" copy.
+  questionCount?: number | null;
 };
 
 export function buildRunSteps(input: BuildRunStepsInput): RunStepRow[] {
@@ -320,6 +329,18 @@ export function buildRunSteps(input: BuildRunStepsInput): RunStepRow[] {
             : "in your voice, angled to what they care about",
         };
       }
+      case "application": {
+        const n = input.questionCount ?? 0;
+        if (n > 0)
+          return {
+            title: `${n} application question${n === 1 ? "" : "s"} found`,
+            sub: "draft first-person answers below",
+          };
+        return {
+          title: "No supplemental questions found",
+          sub: "paste them below if the form asks any",
+        };
+      }
       default:
         return { title: "Done", sub: "" };
     }
@@ -356,6 +377,11 @@ export function buildRunSteps(input: BuildRunStepsInput): RunStepRow[] {
           title: "Drafting outreach…",
           sub: "email, LinkedIn and X · in your voice",
         };
+      case "application":
+        return {
+          title: "Reading the application…",
+          sub: "looking for supplemental essay questions",
+        };
       default:
         return { title: "Working…", sub: "" };
     }
@@ -366,6 +392,7 @@ export function buildRunSteps(input: BuildRunStepsInput): RunStepRow[] {
     person: "Person search hit a snag",
     email: "Email check hit a snag",
     outreach: "Outreach drafting hit a snag",
+    application: "Question check hit a snag",
   };
 
   // Copy for a step that hasn't started yet — shown as a muted "pending" row so
@@ -386,6 +413,8 @@ export function buildRunSteps(input: BuildRunStepsInput): RunStepRow[] {
         return { title: "Check the email address", sub: "verify patterns · alternates held in reserve" };
       case "outreach":
         return { title: "Draft the outreach", sub: "email, LinkedIn and X · in your voice" };
+      case "application":
+        return { title: "Check the application", sub: "any supplemental essay questions to answer" };
       default:
         return { title: "Up next", sub: "" };
     }
