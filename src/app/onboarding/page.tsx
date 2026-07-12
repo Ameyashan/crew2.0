@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
 import { TOKENS, RADII, SHADOWS } from "@/components/paper/tokens";
 import { AuthLoadingOverlay } from "@/components/paper/auth-loading";
+import { useIsMobile } from "@/lib/use-is-mobile";
 import {
   onboardingDonePatch,
   onboardingSkipPatch,
@@ -26,6 +27,7 @@ const GOAL_PRESETS = [
 const TOTAL_STEPS = 4;
 
 function OnboardingV3({ onDone }) {
+  const isMobile = useIsMobile();
   const [step, setStep] = useState(1); // 1 | 2 | 3 | 4
   const [resume, setResume] = useState(null); // { name, seeded } | null
   const [uploading, setUploading] = useState(false);
@@ -148,7 +150,9 @@ function OnboardingV3({ onDone }) {
           border: `1px solid ${TOKENS.lineSoft}`,
           borderRadius: RADII.modal,
           boxShadow: SHADOWS.elevated,
-          padding: "44px 52px 40px",
+          // Trim the generous desk-card padding on phones so the form isn't
+          // pinched inside the narrow card.
+          padding: isMobile ? "32px 22px 28px" : "44px 52px 40px",
           animation: "fadeUp .4s ease",
         }}
       >
