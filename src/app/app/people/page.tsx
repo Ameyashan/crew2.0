@@ -583,13 +583,18 @@ function PersonDetailV3({ person, go, onBack, onDeleted }) {
                   borderRadius: RADII.panel,
                   boxShadow: SHADOWS.card,
                   padding: "14px 18px",
-                  display: "grid",
+                  // On phones the fixed 4-col grid squeezes the title to a few
+                  // characters; drop to a wrapping flex row (matching the run
+                  // history rows) so the title takes a full line and the chip /
+                  // time / button reflow beneath it.
+                  display: isMobile ? "flex" : "grid",
                   gridTemplateColumns: "1fr auto auto auto",
+                  flexWrap: "wrap",
                   alignItems: "center",
                   gap: 14,
                 }}
               >
-                <div style={{ minWidth: 0 }}>
+                <div style={{ minWidth: 0, flex: isMobile ? "1 1 100%" : undefined }}>
                   <div
                     style={{
                       fontFamily: PAPER_FONTS_V2.mono,
