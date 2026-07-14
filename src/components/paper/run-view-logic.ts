@@ -289,13 +289,23 @@ export function buildRunSteps(input: BuildRunStepsInput): RunStepRow[] {
       }
       case "person": {
         const n = input.peopleCount ?? 0;
-        if (n > 1)
+        if (n > 1) {
+          // A confirmed lead backs the shortlist — safe to say we ranked them.
+          if (input.personLabel)
+            return {
+              title: `${n} people found — ranked by who decides`,
+              sub: `${input.personLabel} first · alternates in the shortlist`,
+            };
+          // Candidates were sourced but research confirmed nobody (the dual
+          // screenshot / disambiguation dead-ends). Don't imply a pick was made
+          // or that anyone is reachable — the "Who to reach out to" card has no
+          // confirmed person to show, so an "N found · ranked" claim reads as a
+          // lie against an empty card.
           return {
-            title: `${n} people found — ranked by who decides`,
-            sub: input.personLabel
-              ? `${input.personLabel} first · alternates in the shortlist`
-              : "hiring manager first · alternates in the shortlist",
+            title: `${n} possible people — none confirmed yet`,
+            sub: "pick who to reach out to, or add a LinkedIn/X link to pin one down",
           };
+        }
         if (input.personLabel)
           return {
             title: `${input.personLabel} found`,
@@ -317,13 +327,16 @@ export function buildRunSteps(input: BuildRunStepsInput): RunStepRow[] {
         };
       case "outreach": {
         const n = input.draftCount ?? 0;
+        // Nothing was drafted — the step closed because the person pipeline
+        // dead-ended, not because outreach succeeded. Saying "Outreach drafted"
+        // here is the lie the user saw next to an empty drafts card.
+        if (n === 0)
+          return {
+            title: "No outreach drafted",
+            sub: "no confirmed person to write to — pick someone above first",
+          };
         return {
-          title:
-            n >= 3
-              ? "Outreach drafted for each — email, LinkedIn, X"
-              : n === 1
-                ? "Outreach drafted"
-                : "Outreach drafted",
+          title: n >= 3 ? "Outreach drafted for each — email, LinkedIn, X" : "Outreach drafted",
           sub: input.thin
             ? "drafted generic — a fuller Story would give each one a personal hook"
             : "in your voice, angled to what they care about",

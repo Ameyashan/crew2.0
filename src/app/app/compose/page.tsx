@@ -1226,9 +1226,19 @@ function PeoplePanel({ run, go, thin, onSent }) {
   const effEnrichment = hasDual ? (activeSlot?.c?.enrichment ?? null) : run.enrichment;
   const effDrafts = hasDual ? (activeSlot?.c?.drafts ?? null) : run.drafts;
 
+  // Did either dual slot actually resolve a named person? When neither did (the
+  // screenshot dead-end), we fall back to the sourced shortlist below so the run
+  // becomes recoverable — "pick one of these" — instead of two "couldn't confirm"
+  // cards with no way forward.
+  const runSettled = run.stage === 'done' || run.stage === 'error';
+  const dualConfirmed = slots.some((s) => !!s.c?.person?.name);
   // The shortlist is real only on job runs (the server's `candidates` event);
-  // person-run candidates are the fabricated parse preview — never rendered.
-  const shortlist = !hasDual && run.kind === 'job' && Array.isArray(run.candidates)
+  // person-run candidates are the fabricated parse preview — never rendered. On a
+  // dual run we surface it only once the run has SETTLED with neither slot
+  // confirmed — mid-run the slot cards ("searching…") stay, so the shortlist
+  // doesn't flash in while the poster/hiring-manager research is still going.
+  const shortlist = run.kind === 'job' && Array.isArray(run.candidates) && run.candidates.length
+    && (!hasDual || (!dualConfirmed && runSettled))
     ? run.candidates
     : [];
   const personName = effPerson?.name || null;
@@ -1282,22 +1292,11 @@ function PeoplePanel({ run, go, thin, onSent }) {
       ? (links.linkedin ? `LinkedIn message · ${links.linkedin.replace(/^https?:\/\//, '')}` : 'LinkedIn message')
       : (links.x ? `X direct message · ${links.x.replace(/^https?:\/\//, '')}` : 'X direct message');
 
-  // Candidate cards: dual slots, else the real shortlist, else the single person.
+  // Candidate cards: the real shortlist first (it's populated only when there's
+  // no confirmed contact to show — a non-dual run, or a dual run where both slots
+  // dead-ended), then the dual slots, then the single person.
   let cards = [];
-  if (slots.length) {
-    cards = slots.map((s) => {
-      const pers = s.c?.person || {};
-      return {
-        key: s.key, badge: s.badge,
-        name: pers.name || '(searching…)',
-        role: [pers.role, pers.company].filter(Boolean).join(' · '),
-        blurb: (pers.context_lines || []).filter(Boolean)[0] || '',
-        links: pers.links || {},
-        selected: activeSlot?.key === s.key,
-        onSelect: () => { setActiveKey(s.key); setHandoffOpen(false); setEditing(false); },
-      };
-    });
-  } else if (shortlist.length) {
+  if (shortlist.length) {
     cards = shortlist.map((c, i) => {
       const isCurrent = !!personName && c.name === personName;
       return {
@@ -1308,9 +1307,33 @@ function PeoplePanel({ run, go, thin, onSent }) {
         blurb: c.why || '',
         links: { linkedin: c.linkedin || null },
         selected: isCurrent,
-        // Re-picks the hiring manager: reruns email + outreach for them (existing
-        // shortlist behavior, now on the prototype cards).
-        onSelect: () => { if (!isCurrent) { pickCandidate(run.id, c); setHandoffOpen(false); setEditing(false); } },
+        // Re-picks the hiring manager: reruns email + outreach for them. On a dual
+        // run pickCandidate fills the hiring-manager slot, so focus it too — the
+        // detail panels below read the active slot.
+        onSelect: () => {
+          if (isCurrent) return;
+          pickCandidate(run.id, c);
+          if (hasDual) setActiveKey('hiring_manager');
+          setHandoffOpen(false); setEditing(false);
+        },
+      };
+    });
+  } else if (slots.length) {
+    // Once the run settles, a slot with no confirmed name has FAILED to pin the
+    // person down — it isn't still searching. Keep "(searching…)" only while the
+    // run is genuinely in flight, else say so honestly (the persistent
+    // "(searching…)" on a finished run is exactly what read as a hang).
+    const settled = run.stage === 'done' || run.stage === 'error';
+    cards = slots.map((s) => {
+      const pers = s.c?.person || {};
+      return {
+        key: s.key, badge: s.badge,
+        name: pers.name || (settled ? 'Couldn’t confirm this person' : '(searching…)'),
+        role: [pers.role, pers.company].filter(Boolean).join(' · '),
+        blurb: (pers.context_lines || []).filter(Boolean)[0] || '',
+        links: pers.links || {},
+        selected: activeSlot?.key === s.key,
+        onSelect: () => { setActiveKey(s.key); setHandoffOpen(false); setEditing(false); },
       };
     });
   } else if (personName) {
@@ -1481,8 +1504,10 @@ function PeoplePanel({ run, go, thin, onSent }) {
             <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13.5, lineHeight: 1.65, color: TOKENS.inkSoft }}>
               {personName
                 ? `${personName}${personRole ? ` — ${personRole}` : ''}${personCompany ? ` at ${personCompany}` : ''}.`
-                : 'The crew is still pinning this person down.'}
-              {effPerson?.match_confidence ? ` Match confidence: ${effPerson.match_confidence}.` : ''}
+                : (run.stage === 'done' || run.stage === 'error')
+                  ? 'The crew couldn’t confirm a specific person for this one.'
+                  : 'The crew is still pinning this person down.'}
+              {personName && effPerson?.match_confidence ? ` Match confidence: ${effPerson.match_confidence}.` : ''}
             </div>
             {Object.keys(links).filter((k) => links[k]).length > 0 && (
               <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, lineHeight: 1.5, color: TOKENS.faint, marginTop: 10 }}>
@@ -1612,7 +1637,8 @@ function PeoplePanel({ run, go, thin, onSent }) {
             }}>
               {draftedCount >= 3 ? 'all three drafted · pick your channel'
                 : draftedCount > 0 ? `${draftedCount} drafted so far`
-                : 'drafting…'}
+                : (run.stage === 'done' || run.stage === 'error') ? 'no draft — pick a person first'
+                  : 'drafting…'}
             </div>
           </div>
 
@@ -1659,7 +1685,10 @@ function PeoplePanel({ run, go, thin, onSent }) {
                   ? 'Rewriting…'
                   : picking && !body
                     ? `Drafting for ${picking}…`
-                    : body || 'The draft for this channel appears here once the outreach agent finishes.'}
+                    : body
+                      || ((run.stage === 'done' || run.stage === 'error')
+                        ? 'No draft here — the crew couldn’t confirm a person to write to. Pick someone above, or add a LinkedIn/X link and re-run.'
+                        : 'The draft for this channel appears here once the outreach agent finishes.')}
               </div>
             )}
 
