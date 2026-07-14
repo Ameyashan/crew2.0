@@ -285,12 +285,44 @@ test("buildRunSteps: thin story flavors resume + outreach rows", () => {
     progress: {},
     thin: true,
     ats: { after: 71 },
+    // A thin run still drafts — thin means no Story to hook from, not no drafts.
+    draftCount: 3,
   });
   const resume = rows.find((r) => r.id === "resume");
   assert.equal(resume.title, "Resume woven — but your Story is thin");
   assert.match(resume.sub, /add your resume/);
   const outreach = rows.find((r) => r.id === "outreach");
   assert.match(outreach.sub, /generic/);
+});
+
+test("buildRunSteps: outreach with zero drafts never claims it drafted", () => {
+  const rows = buildRunSteps({
+    stage: "done",
+    kind: "job",
+    progress: { person: 100, email: 100, outreach: 100 },
+    peopleCount: 0,
+    personLabel: null,
+    draftCount: 0,
+  });
+  const outreach = rows.find((r) => r.id === "outreach");
+  assert.equal(outreach.title, "No outreach drafted");
+  assert.match(outreach.sub, /pick someone/i);
+});
+
+test("buildRunSteps: sourced-but-unconfirmed shortlist doesn't claim people were ranked", () => {
+  // The dual screenshot dead-end: candidates were sourced (peopleCount) but
+  // research confirmed nobody (no personLabel). The row must not read as a win.
+  const rows = buildRunSteps({
+    stage: "done",
+    kind: "job",
+    progress: { person: 100, email: 100, outreach: 100 },
+    peopleCount: 4,
+    personLabel: null,
+    draftCount: 0,
+  });
+  const person = rows.find((r) => r.id === "person");
+  assert.equal(person.title, "4 possible people — none confirmed yet");
+  assert.doesNotMatch(person.title, /ranked by who decides/);
 });
 
 test("buildRunSteps: pulling flips the active resume row to the pull title", () => {

@@ -1285,11 +1285,16 @@ function PeoplePanel({ run, go, thin, onSent }) {
   // Candidate cards: dual slots, else the real shortlist, else the single person.
   let cards = [];
   if (slots.length) {
+    // Once the run settles, a slot with no confirmed name has FAILED to pin the
+    // person down — it isn't still searching. Keep "(searching…)" only while the
+    // run is genuinely in flight, else say so honestly (the persistent
+    // "(searching…)" on a finished run is exactly what read as a hang).
+    const settled = run.stage === 'done' || run.stage === 'error';
     cards = slots.map((s) => {
       const pers = s.c?.person || {};
       return {
         key: s.key, badge: s.badge,
-        name: pers.name || '(searching…)',
+        name: pers.name || (settled ? 'Couldn’t confirm this person' : '(searching…)'),
         role: [pers.role, pers.company].filter(Boolean).join(' · '),
         blurb: (pers.context_lines || []).filter(Boolean)[0] || '',
         links: pers.links || {},
@@ -1481,8 +1486,10 @@ function PeoplePanel({ run, go, thin, onSent }) {
             <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13.5, lineHeight: 1.65, color: TOKENS.inkSoft }}>
               {personName
                 ? `${personName}${personRole ? ` — ${personRole}` : ''}${personCompany ? ` at ${personCompany}` : ''}.`
-                : 'The crew is still pinning this person down.'}
-              {effPerson?.match_confidence ? ` Match confidence: ${effPerson.match_confidence}.` : ''}
+                : (run.stage === 'done' || run.stage === 'error')
+                  ? 'The crew couldn’t confirm a specific person for this one.'
+                  : 'The crew is still pinning this person down.'}
+              {personName && effPerson?.match_confidence ? ` Match confidence: ${effPerson.match_confidence}.` : ''}
             </div>
             {Object.keys(links).filter((k) => links[k]).length > 0 && (
               <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, lineHeight: 1.5, color: TOKENS.faint, marginTop: 10 }}>
@@ -1612,7 +1619,8 @@ function PeoplePanel({ run, go, thin, onSent }) {
             }}>
               {draftedCount >= 3 ? 'all three drafted · pick your channel'
                 : draftedCount > 0 ? `${draftedCount} drafted so far`
-                : 'drafting…'}
+                : (run.stage === 'done' || run.stage === 'error') ? 'no draft — pick a person first'
+                  : 'drafting…'}
             </div>
           </div>
 
@@ -1659,7 +1667,10 @@ function PeoplePanel({ run, go, thin, onSent }) {
                   ? 'Rewriting…'
                   : picking && !body
                     ? `Drafting for ${picking}…`
-                    : body || 'The draft for this channel appears here once the outreach agent finishes.'}
+                    : body
+                      || ((run.stage === 'done' || run.stage === 'error')
+                        ? 'No draft here — the crew couldn’t confirm a person to write to. Pick someone above, or add a LinkedIn/X link and re-run.'
+                        : 'The draft for this channel appears here once the outreach agent finishes.')}
               </div>
             )}
 
