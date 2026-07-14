@@ -1226,9 +1226,19 @@ function PeoplePanel({ run, go, thin, onSent }) {
   const effEnrichment = hasDual ? (activeSlot?.c?.enrichment ?? null) : run.enrichment;
   const effDrafts = hasDual ? (activeSlot?.c?.drafts ?? null) : run.drafts;
 
+  // Did either dual slot actually resolve a named person? When neither did (the
+  // screenshot dead-end), we fall back to the sourced shortlist below so the run
+  // becomes recoverable — "pick one of these" — instead of two "couldn't confirm"
+  // cards with no way forward.
+  const runSettled = run.stage === 'done' || run.stage === 'error';
+  const dualConfirmed = slots.some((s) => !!s.c?.person?.name);
   // The shortlist is real only on job runs (the server's `candidates` event);
-  // person-run candidates are the fabricated parse preview — never rendered.
-  const shortlist = !hasDual && run.kind === 'job' && Array.isArray(run.candidates)
+  // person-run candidates are the fabricated parse preview — never rendered. On a
+  // dual run we surface it only once the run has SETTLED with neither slot
+  // confirmed — mid-run the slot cards ("searching…") stay, so the shortlist
+  // doesn't flash in while the poster/hiring-manager research is still going.
+  const shortlist = run.kind === 'job' && Array.isArray(run.candidates) && run.candidates.length
+    && (!hasDual || (!dualConfirmed && runSettled))
     ? run.candidates
     : [];
   const personName = effPerson?.name || null;
@@ -1282,9 +1292,33 @@ function PeoplePanel({ run, go, thin, onSent }) {
       ? (links.linkedin ? `LinkedIn message · ${links.linkedin.replace(/^https?:\/\//, '')}` : 'LinkedIn message')
       : (links.x ? `X direct message · ${links.x.replace(/^https?:\/\//, '')}` : 'X direct message');
 
-  // Candidate cards: dual slots, else the real shortlist, else the single person.
+  // Candidate cards: the real shortlist first (it's populated only when there's
+  // no confirmed contact to show — a non-dual run, or a dual run where both slots
+  // dead-ended), then the dual slots, then the single person.
   let cards = [];
-  if (slots.length) {
+  if (shortlist.length) {
+    cards = shortlist.map((c, i) => {
+      const isCurrent = !!personName && c.name === personName;
+      return {
+        key: c.name || String(i),
+        badge: `${i === 0 ? 'BEST MATCH' : 'ALTERNATE'}${c.confidence != null ? ` · ${c.confidence}` : ''}`,
+        name: c.name,
+        role: [c.role, c.company].filter(Boolean).join(' · '),
+        blurb: c.why || '',
+        links: { linkedin: c.linkedin || null },
+        selected: isCurrent,
+        // Re-picks the hiring manager: reruns email + outreach for them. On a dual
+        // run pickCandidate fills the hiring-manager slot, so focus it too — the
+        // detail panels below read the active slot.
+        onSelect: () => {
+          if (isCurrent) return;
+          pickCandidate(run.id, c);
+          if (hasDual) setActiveKey('hiring_manager');
+          setHandoffOpen(false); setEditing(false);
+        },
+      };
+    });
+  } else if (slots.length) {
     // Once the run settles, a slot with no confirmed name has FAILED to pin the
     // person down — it isn't still searching. Keep "(searching…)" only while the
     // run is genuinely in flight, else say so honestly (the persistent
@@ -1300,22 +1334,6 @@ function PeoplePanel({ run, go, thin, onSent }) {
         links: pers.links || {},
         selected: activeSlot?.key === s.key,
         onSelect: () => { setActiveKey(s.key); setHandoffOpen(false); setEditing(false); },
-      };
-    });
-  } else if (shortlist.length) {
-    cards = shortlist.map((c, i) => {
-      const isCurrent = !!personName && c.name === personName;
-      return {
-        key: c.name || String(i),
-        badge: `${i === 0 ? 'BEST MATCH' : 'ALTERNATE'}${c.confidence != null ? ` · ${c.confidence}` : ''}`,
-        name: c.name,
-        role: [c.role, c.company].filter(Boolean).join(' · '),
-        blurb: c.why || '',
-        links: { linkedin: c.linkedin || null },
-        selected: isCurrent,
-        // Re-picks the hiring manager: reruns email + outreach for them (existing
-        // shortlist behavior, now on the prototype cards).
-        onSelect: () => { if (!isCurrent) { pickCandidate(run.id, c); setHandoffOpen(false); setEditing(false); } },
       };
     });
   } else if (personName) {

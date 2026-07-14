@@ -1413,6 +1413,10 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           person_name: run.screenshotPersonName || undefined,
           detected_role: run.screenshotRole || undefined,
           detected_company: run.screenshotCompany || undefined,
+          // The stored screenshot id — the server re-loads the image to feed the
+          // poster's research as disambiguation context (so a common name still
+          // resolves to the right person instead of dead-ending).
+          screenshot_id: run.screenshotId || undefined,
         }),
         signal,
       });

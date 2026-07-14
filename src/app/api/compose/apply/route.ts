@@ -48,6 +48,12 @@ export async function POST(req: NextRequest) {
   // when the posting itself won't parse.
   const detectedRole = body?.detected_role ? body.detected_role.toString().trim() : "";
   const detectedCompany = body?.detected_company ? body.detected_company.toString().trim() : "";
+  // The screenshots-table id of the uploaded image (from /api/identify-image).
+  // Lets us re-load the raw image server-side and hand it to the poster's
+  // research as disambiguation context — the same evidence the user saw. Without
+  // it, research runs on a bare name (e.g. a common "Chen Zheng") and can't
+  // confirm the right, currently-employed human, so it dead-ends to "no person".
+  const screenshotId = body?.screenshot_id ? body.screenshot_id.toString().trim() : "";
 
   // Crew selector (Phase 2). Undefined → run the whole four-agent pipeline.
   // Resume Darzi is independent; the people pipeline (Person Khoji → Email
@@ -274,6 +280,40 @@ export async function POST(req: NextRequest) {
         return { url: found?.job_url ?? null, team: found?.team ?? null };
       };
 
+      // Re-load the uploaded screenshot from storage so the poster's research can
+      // read the person's real title/company off the image (the disambiguation a
+      // human would use), instead of guessing from a common bare name. Best-effort
+      // and cached: a miss just means research falls back to the name-only path.
+      let posterImageResolved: { data: string; media_type: string } | undefined;
+      let posterImageLoaded = false;
+      const loadScreenshotImage = async (): Promise<{ data: string; media_type: string } | undefined> => {
+        if (posterImageLoaded) return posterImageResolved;
+        posterImageLoaded = true;
+        if (!screenshotId || !userId) return undefined;
+        try {
+          const sb = supabaseAdmin();
+          const { data: row } = await sb
+            .from("screenshots")
+            .select("bucket, path, content_type")
+            .eq("id", screenshotId)
+            .eq("user_id", userId)
+            .single();
+          if (!row?.path) return undefined;
+          const { data: blob, error } = await sb.storage
+            .from((row.bucket as string) || "screenshots")
+            .download(row.path as string);
+          if (error || !blob) return undefined;
+          const buf = Buffer.from(await blob.arrayBuffer());
+          posterImageResolved = {
+            data: buf.toString("base64"),
+            media_type: (row.content_type as string) || "image/png",
+          };
+        } catch (e) {
+          console.error("[apply] loadScreenshotImage failed", e);
+        }
+        return posterImageResolved;
+      };
+
       // Detect the application's essay questions from whatever JD text we can
       // read cheaply: the pasted JD, or a known ATS posting (Greenhouse exposes
       // the real form questions; Lever/others fall back to reading them out of
@@ -414,9 +454,19 @@ export async function POST(req: NextRequest) {
             const samePerson = (n?: string | null) =>
               !!posterName && !!n && n.trim().toLowerCase() === posterName.trim().toLowerCase();
 
-            // Poster contact — the human who announced the role.
+            // Poster contact — the human who announced the role. Hand research the
+            // screenshot itself so it can confirm this exact person (title/company
+            // are legible in the image) rather than nulling out an ambiguous name.
+            // The image load happens inside the task so it stays parallel with the
+            // hiring-manager sourcing below.
             const posterTask = posterName
-              ? runContactSlot("poster", { text: posterName, intent: composeIntent, job_context: jc })
+              ? (async () =>
+                  runContactSlot("poster", {
+                    text: posterName,
+                    intent: composeIntent,
+                    intent_image: await loadScreenshotImage(),
+                    job_context: jc,
+                  }))()
               : Promise.resolve();
 
             // Hiring-manager contact — sourced from role/company/team, skipping the
