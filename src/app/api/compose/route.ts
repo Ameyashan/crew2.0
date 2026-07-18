@@ -230,42 +230,44 @@ export async function POST(req: NextRequest) {
           errorMessage = String(e instanceof Error ? e.message : e);
           send({ type: "error", message: errorMessage });
         } finally {
-          // Guard against a double/late close throwing — on a disconnected stream
-          // that rejection would skip the compose_runs persist below.
+          // Persist the run row BEFORE closing the stream. If we close first,
+          // the serverless platform can reclaim the function before this awaited
+          // write lands, stranding the row at `in_flight` (which the 10-min
+          // sweep later mislabels "error"). Writing while the stream is still
+          // open keeps the function alive until the durable write completes.
+          if (composeRunId) {
+            try {
+              await sb
+                .from("compose_runs")
+                .update({
+                  person_id: personId,
+                  // Backfill the effective intent: an explicit one wins, else the
+                  // intent research synthesized from the paste/screenshot (the
+                  // one-box "who + why" path stores null up front). Keeps the
+                  // history subline honest about what the draft was geared toward.
+                  intent:
+                    input.intent ??
+                    (person as { outreach_intent?: string | null } | null)
+                      ?.outreach_intent ??
+                    null,
+                  output: { person, enrichment, candidates, drafts },
+                  outcome,
+                  error: errorMessage,
+                  completed_at: new Date().toISOString(),
+                })
+                .eq("id", composeRunId)
+                .eq("user_id", userId);
+            } catch (e) {
+              console.error("[compose_runs] update failed", e);
+            }
+          }
+
+          // Guard against a double/late close throwing — on a disconnected
+          // stream that rejection would surface as an HTTP 500.
           try {
             controller.close();
           } catch {
             // already closed
-          }
-        }
-
-        // Update the run row outside the SSE controller — the client has already
-        // seen the stream close, so a slow Supabase write here just delays the
-        // next history-page refresh.
-        if (composeRunId) {
-          try {
-            await sb
-              .from("compose_runs")
-              .update({
-                person_id: personId,
-                // Backfill the effective intent: an explicit one wins, else the
-                // intent research synthesized from the paste/screenshot (the
-                // one-box "who + why" path stores null up front). Keeps the
-                // history subline honest about what the draft was geared toward.
-                intent:
-                  input.intent ??
-                  (person as { outreach_intent?: string | null } | null)
-                    ?.outreach_intent ??
-                  null,
-                output: { person, enrichment, candidates, drafts },
-                outcome,
-                error: errorMessage,
-                completed_at: new Date().toISOString(),
-              })
-              .eq("id", composeRunId)
-              .eq("user_id", userId);
-          } catch (e) {
-            console.error("[compose_runs] update failed", e);
           }
         }
       });

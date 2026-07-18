@@ -24,17 +24,21 @@ const GOAL_PRESETS = [
   "Meet the people who can open doors for me.",
 ];
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 5;
 
 function OnboardingV3({ onDone }) {
   const isMobile = useIsMobile();
-  const [step, setStep] = useState(1); // 1 | 2 | 3 | 4
+  const [step, setStep] = useState(1); // 1 | 2 | 3 | 4 | 5
   const [resume, setResume] = useState(null); // { name, seeded } | null
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [goal, setGoal] = useState("");
   const [customMode, setCustomMode] = useState(false);
   const [interests, setInterests] = useState([]); // sector ids
+  // Role targeting (step 5): "current" matches roles like the title read from
+  // the resume; "different" matches the roles typed into targetRoles.
+  const [roleMode, setRoleMode] = useState(null); // null | "current" | "different"
+  const [targetRoles, setTargetRoles] = useState([]); // desired role titles
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
@@ -87,12 +91,13 @@ function OnboardingV3({ onDone }) {
         ),
       });
       if (!res.ok) throw new Error(`profile save failed: ${res.status}`);
-      // Persist the picked interests to the jobs-preferences store so the first
-      // feed isn't empty. Fire-and-forget: the PUT also kicks off a bounded
-      // catalog-coverage pass server-side that can take a moment, and the
-      // profile is already marked onboarded, so we don't block the Desk on it.
-      // Client-side router nav keeps this request alive.
-      if (interests.length) {
+      // Persist the picked interests + role targeting to the jobs-preferences
+      // store so the first feed isn't empty AND is role-aware. Fire-and-forget:
+      // the PUT kicks off a bounded catalog-coverage pass server-side, and once
+      // it resolves we warm the feed with a scan so Jobs has matches ready
+      // instead of an empty "set your interests" state. The profile is already
+      // marked onboarded, so we never block the Desk on any of this.
+      if (interests.length || roleMode) {
         void fetch("/api/jobs/preferences", {
           method: "PUT",
           headers: { "content-type": "application/json" },
@@ -102,8 +107,12 @@ function OnboardingV3({ onDone }) {
             company_sizes: [],
             locations: [],
             visa_required: false,
+            role_mode: roleMode,
+            target_roles: roleMode === "different" ? targetRoles : [],
           }),
-        }).catch((e) => console.error("[onboarding] preferences save failed", e));
+        })
+          .then(() => fetch("/api/jobs/refresh", { method: "POST" }))
+          .catch((e) => console.error("[onboarding] preferences/refresh failed", e));
       }
       onDone();
     } catch (e) {
@@ -138,7 +147,11 @@ function OnboardingV3({ onDone }) {
   }
 
   const dot = (n) => (n <= step ? TOKENS.ink : TOKENS.line);
-  const nextLabel = step === TOTAL_STEPS ? "Open the Desk →" : "Next →";
+  const nextText = step === TOTAL_STEPS ? "Open the Desk" : "Next";
+  // Block advancing while the resume is still being read on step 2 — clicking
+  // Next mid-read would drop the user past the upload before its Story seeding
+  // lands, and reads as if the app broke.
+  const blockNext = submitting || (step === 2 && uploading);
 
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 24px" }}>
@@ -419,10 +432,96 @@ function OnboardingV3({ onDone }) {
           </div>
         )}
 
+        {/* ── Step 5 — role targeting → which roles to match ── */}
+        {step === 5 && (
+          <div>
+            <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 30, lineHeight: 1.25, letterSpacing: "-.01em" }}>
+              Which roles should we line up?
+            </div>
+            <div
+              style={{
+                fontFamily: PAPER_FONTS_V2.sans,
+                fontSize: 14,
+                lineHeight: 1.7,
+                color: TOKENS.muted2,
+                margin: "16px 0 24px",
+              }}
+            >
+              Your sectors pick the companies; this picks the roles. Otherwise you&apos;d see every opening at those
+              companies — not the ones that fit you.
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
+              {[
+                { id: "current", label: "Roles like my current title" },
+                { id: "different", label: "A different role" },
+              ].map((o) => {
+                const active = roleMode === o.id;
+                return (
+                  <div
+                    key={o.id}
+                    onClick={() => setRoleMode(o.id)}
+                    style={{
+                      border: `1px solid ${active ? TOKENS.ink : TOKENS.line}`,
+                      borderRadius: RADII.panelTight,
+                      padding: "14px 18px",
+                      background: TOKENS.card,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 15, lineHeight: 1.4, color: TOKENS.ink }}>
+                      {o.label}
+                    </span>
+                    <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, color: TOKENS.ink }}>
+                      {active ? "✓" : ""}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {roleMode === "current" && (
+              <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.6, color: resume ? TOKENS.muted2 : TOKENS.red }}>
+                {resume
+                  ? "We'll read your current title from the resume you added and match roles like it."
+                  : "You skipped your resume — add it any time (Settings → Story) so we can match your current title. Or pick “A different role”."}
+              </div>
+            )}
+            {roleMode === "different" && (
+              <input
+                autoFocus
+                value={targetRoles.join(", ")}
+                onChange={(e) =>
+                  setTargetRoles(
+                    e.target.value
+                      .split(",")
+                      .map((r) => r.trim())
+                      .filter(Boolean),
+                  )
+                }
+                placeholder="e.g. Product Manager, Program Manager"
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  border: `1px solid ${targetRoles.length ? TOKENS.ink : TOKENS.line}`,
+                  borderRadius: RADII.panelTight,
+                  padding: "14px 18px",
+                  background: TOKENS.card,
+                  color: TOKENS.ink,
+                  fontFamily: PAPER_FONTS_V2.serif,
+                  fontSize: 15,
+                  outline: "none",
+                }}
+              />
+            )}
+          </div>
+        )}
+
         {/* footer */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {[1, 2, 3, 4].map((n) => (
+            {[1, 2, 3, 4, 5].map((n) => (
               <span key={n} style={{ width: 18, height: 4, borderRadius: 2, background: dot(n) }} />
             ))}
             {completed > 0 && (
@@ -459,20 +558,26 @@ function OnboardingV3({ onDone }) {
             )}
             {step === 2 && (
               <span
-                onClick={next}
+                onClick={uploading ? undefined : next}
                 style={{
                   fontFamily: PAPER_FONTS_V2.sans,
                   fontSize: 13,
                   color: TOKENS.faint2,
-                  cursor: "pointer",
+                  cursor: uploading ? "wait" : "pointer",
+                  opacity: uploading ? 0.5 : 1,
+                  whiteSpace: "nowrap",
                 }}
               >
                 Skip for now
               </span>
             )}
             <span
-              onClick={submitting ? undefined : next}
+              onClick={blockNext ? undefined : next}
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                whiteSpace: "nowrap",
                 fontFamily: PAPER_FONTS_V2.sans,
                 fontSize: 13,
                 fontWeight: 500,
@@ -480,11 +585,20 @@ function OnboardingV3({ onDone }) {
                 background: TOKENS.ink,
                 borderRadius: RADII.button,
                 padding: "12px 20px",
-                cursor: submitting ? "wait" : "pointer",
-                opacity: submitting ? 0.6 : 1,
+                cursor: blockNext ? "wait" : "pointer",
+                opacity: blockNext ? 0.6 : 1,
               }}
             >
-              {submitting ? "Saving…" : nextLabel}
+              {submitting ? (
+                "Saving…"
+              ) : step === 2 && uploading ? (
+                "Reading…"
+              ) : (
+                <>
+                  <span>{nextText}</span>
+                  <span aria-hidden="true">→</span>
+                </>
+              )}
             </span>
           </div>
         </div>

@@ -101,6 +101,11 @@ export interface JobDetail extends FeedItem {
   country: string | null;
 }
 
+// How the user wants roles matched: like their CURRENT title (read from the
+// profile), or a DIFFERENT role they name in `target_roles`. `null` = not yet
+// chosen (legacy rows / skipped onboarding).
+export type RoleMode = "current" | "different" | null;
+
 // GET/PUT /api/jobs/preferences body. Mirrors the job_preferences row minus
 // server-managed columns. Pins are read from the profile, surfaced read-only.
 export interface PreferencesDTO {
@@ -109,5 +114,13 @@ export interface PreferencesDTO {
   company_sizes: SizeBucket[];
   locations: string[];
   visa_required: boolean;
+  // Role targeting (see 0016 migration). `role_mode` chooses the matching axis;
+  // `target_roles` holds the desired titles when role_mode === "different".
+  role_mode: RoleMode;
+  target_roles: string[];
+  // Read-only echo of the profile's current_role, so the preferences UI can
+  // show what "like my current title" resolves to (and prompt for a resume when
+  // it's empty). Not persisted on the preferences row.
+  current_role?: string | null;
   pins?: string[]; // user_profile.context_structured.target_companies (read-only echo)
 }

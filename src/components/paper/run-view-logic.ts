@@ -132,12 +132,13 @@ export const RUN_AGENT_CHIPS: Record<string, string> = {
   application: "SAWAAL JAWAAB",
 };
 
-// ── Live agent activity ticker ───────────────────────────────────────────────
-// While a step is active, we rotate a short "what the agent is doing right now"
-// caption under its title — the same reassurance an LLM search UI gives with
-// "refining search · looking for people". These are cosmetic narration, cycled
-// on a timer by the component; the pipeline itself doesn't report sub-steps, so
-// the phrases are hand-authored per agent to read like plausible live work.
+// ── Live agent activity ticker (FALLBACK) ────────────────────────────────────
+// While a step is active, a short "what the agent is doing right now" caption
+// shows under its title. The run view now prefers REAL activity streamed from
+// the pipeline (run.activity[step] — a resume web_search, the live bullet count,
+// how many people were sourced). These hand-authored phrases are the fallback,
+// cycled on a timer only until a real signal lands, so the line still moves
+// during the quiet gaps between real events.
 export const STEP_ACTIVITY: Record<string, string[]> = {
   parse: ["reading your request", "picking the right crew", "checking the tracker"],
   resume: [
@@ -219,6 +220,11 @@ export type BuildRunStepsInput = {
   // uploaded Story to weave from), so the resume step renders as a "skipped"
   // row and the crew jumps straight to finding the hiring manager.
   skipResume?: boolean;
+  // Whether the run actually holds a woven resume artifact (parsed.resume). The
+  // resume done-row must not claim "PDF + Word below" when no resume was
+  // produced — the download card is gated on the same artifact, so without this
+  // the row promises a download that never renders.
+  resumePresent?: boolean;
   // Real data for the done-row subtitles. All optional; rows degrade to
   // generic (but honest) copy when an agent returned nothing.
   peopleCount?: number | null;
@@ -478,6 +484,21 @@ export function buildRunSteps(input: BuildRunStepsInput): RunStepRow[] {
     }
     const pct = progress[id] ?? (stage === "done" ? 100 : 0);
     if (pct >= 100 || stage === "done") {
+      // The resume step finished but produced no artifact (thin Story, or the
+      // agent returned nothing without a hard error). Don't print the triumphant
+      // "Resume woven · PDF + Word below" against an empty card — say so plainly.
+      if (id === "resume" && !input.skipResume && !input.resumePresent) {
+        rows.push({
+          id,
+          title: "No resume to show this time",
+          sub: input.thin
+            ? "your Story is too thin to weave from — add your resume, then run again"
+            : "the crew couldn't produce a resume this time — run it again",
+          agent: RUN_AGENT_CHIPS.resume,
+          state: "error",
+        });
+        continue;
+      }
       const d = doneRow(id);
       rows.push({ id, title: d.title, sub: d.sub, agent: RUN_AGENT_CHIPS[id] || id.toUpperCase(), state: "done" });
     } else if (stage === "working" && isRunning(id)) {
@@ -655,6 +676,72 @@ export function serializePendingRun(
     at: r.at ?? now,
   };
   return JSON.stringify(payload);
+}
+
+// ── pendingResults persistence ───────────────────────────────────────────────
+// A signed-out job run computes people/email/outreach in-memory and blurs them;
+// the OAuth full-page redirect then wipes that in-memory store. We stash the
+// computed RESULTS (not just the inputs) alongside the pendingRun so that, after
+// login, we can re-open the run with the people work already done and only run
+// the agents anon skipped (Resume Darzi + Sawaal Jawaab) — instead of re-running
+// the whole crew. Kept small (no File blobs); screenshot-driven runs are not
+// restorable and skip this entirely.
+export const PENDING_RESULTS_KEY = "crew.pendingResults.v1";
+
+export type PendingResults = {
+  // The parsed job bundle MINUS any resume artifact (the resume is what we
+  // re-run after login) — role/company/team so the header + resume agent align.
+  parsed: unknown;
+  person: unknown;
+  enrichment: unknown;
+  candidates: unknown[] | null;
+  drafts: unknown[] | null;
+  contacts: unknown;
+  at: number;
+};
+
+export function serializePendingResults(
+  r: Partial<PendingResults>,
+  now: number = Date.now(),
+): string {
+  const payload: PendingResults = {
+    parsed: r.parsed ?? null,
+    person: r.person ?? null,
+    enrichment: r.enrichment ?? null,
+    candidates: Array.isArray(r.candidates) ? r.candidates : null,
+    drafts: Array.isArray(r.drafts) ? r.drafts : null,
+    contacts: r.contacts ?? null,
+    at: r.at ?? now,
+  };
+  return JSON.stringify(payload);
+}
+
+// Parse stashed results back out. Returns null when there's nothing worth
+// restoring (no person AND no drafts AND no contacts) so we fall back to a fresh
+// full run rather than seeding an empty package.
+export function parsePendingResults(raw: string | null | undefined): PendingResults | null {
+  if (!raw) return null;
+  let obj: unknown;
+  try {
+    obj = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!obj || typeof obj !== "object") return null;
+  const o = obj as Record<string, unknown>;
+  const person = o.person ?? null;
+  const drafts = Array.isArray(o.drafts) ? o.drafts : null;
+  const contacts = o.contacts ?? null;
+  if (!person && !(drafts && drafts.length) && !contacts) return null;
+  return {
+    parsed: o.parsed ?? null,
+    person,
+    enrichment: o.enrichment ?? null,
+    candidates: Array.isArray(o.candidates) ? o.candidates : null,
+    drafts,
+    contacts,
+    at: typeof o.at === "number" ? o.at : 0,
+  };
 }
 
 // Parse a stashed pendingRun back out. Tolerates junk/missing fields and returns

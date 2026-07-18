@@ -15,7 +15,7 @@ import { fetchAllListings } from "@/lib/jobs/orchestrator";
 import { enrichJobs } from "@/lib/jobs/enrich";
 import { scoreJobsForUser } from "@/lib/jobs/score";
 import type { Job } from "@/lib/db/schema";
-import type { PostedWithin, SizeBucket } from "@/lib/jobs/types";
+import type { PostedWithin, SizeBucket, RoleMode } from "@/lib/jobs/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface ScanPrefs {
@@ -23,6 +23,8 @@ export interface ScanPrefs {
   posted_within: PostedWithin;
   company_sizes: SizeBucket[];
   locations: string[];
+  role_mode: RoleMode;
+  target_roles: string[];
 }
 
 const DEFAULT_PREFS: ScanPrefs = {
@@ -30,7 +32,14 @@ const DEFAULT_PREFS: ScanPrefs = {
   posted_within: "any",
   company_sizes: [],
   locations: [],
+  role_mode: null,
+  target_roles: [],
 };
+
+const ROLE_MODES: RoleMode[] = ["current", "different"];
+export function coerceRoleMode(v: unknown): RoleMode {
+  return ROLE_MODES.includes(v as RoleMode) ? (v as RoleMode) : null;
+}
 
 const POSTED: PostedWithin[] = ["24h", "1wk", "1mo", "any"];
 const SIZES: SizeBucket[] = ["large", "medium", "startup"];
@@ -95,6 +104,8 @@ export async function loadScanPrefs(
         posted_within: POSTED.includes(row.posted_within) ? row.posted_within : "any",
         company_sizes: strArray(row.company_sizes).filter((s): s is SizeBucket => SIZES.includes(s as SizeBucket)),
         locations: strArray(row.locations),
+        role_mode: coerceRoleMode(row.role_mode),
+        target_roles: strArray(row.target_roles),
       }
     : { ...DEFAULT_PREFS };
   const { data: prof } = await sb.from("user_profile").select("context_structured").eq("user_id", uid).maybeSingle();
@@ -188,6 +199,10 @@ export async function runUserScan(uid: string): Promise<UserScanSummary> {
   const candidates = await selectCandidateJobs(sb, prefs, pins, companyIds);
   if (!candidates.length) return { candidates: 0, scored: 0, skipped: 0 };
 
-  const summary = await scoreJobsForUser({ jobs: candidates });
+  const summary = await scoreJobsForUser({
+    jobs: candidates,
+    roleMode: prefs.role_mode,
+    targetRoles: prefs.target_roles,
+  });
   return { candidates: candidates.length, ...summary };
 }
