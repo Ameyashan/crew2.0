@@ -38,7 +38,10 @@ function OnboardingV3({ onDone }) {
   // Role targeting (step 5): "current" matches roles like the title read from
   // the resume; "different" matches the roles typed into targetRoles.
   const [roleMode, setRoleMode] = useState(null); // null | "current" | "different"
-  const [targetRoles, setTargetRoles] = useState([]); // desired role titles
+  // Raw comma-separated text so the field keeps spaces as typed ("Product
+  // Manager"). We only split/trim into an array at submit time — trimming on
+  // every keystroke would eat the space the moment it's typed.
+  const [targetRolesText, setTargetRolesText] = useState(""); // desired role titles, raw
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
@@ -108,7 +111,13 @@ function OnboardingV3({ onDone }) {
             locations: [],
             visa_required: false,
             role_mode: roleMode,
-            target_roles: roleMode === "different" ? targetRoles : [],
+            target_roles:
+              roleMode === "different"
+                ? targetRolesText
+                    .split(",")
+                    .map((r) => r.trim())
+                    .filter(Boolean)
+                : [],
           }),
         })
           .then(() => fetch("/api/jobs/refresh", { method: "POST" }))
@@ -491,20 +500,13 @@ function OnboardingV3({ onDone }) {
             {roleMode === "different" && (
               <input
                 autoFocus
-                value={targetRoles.join(", ")}
-                onChange={(e) =>
-                  setTargetRoles(
-                    e.target.value
-                      .split(",")
-                      .map((r) => r.trim())
-                      .filter(Boolean),
-                  )
-                }
+                value={targetRolesText}
+                onChange={(e) => setTargetRolesText(e.target.value)}
                 placeholder="e.g. Product Manager, Program Manager"
                 style={{
                   width: "100%",
                   boxSizing: "border-box",
-                  border: `1px solid ${targetRoles.length ? TOKENS.ink : TOKENS.line}`,
+                  border: `1px solid ${targetRolesText.trim() ? TOKENS.ink : TOKENS.line}`,
                   borderRadius: RADII.panelTight,
                   padding: "14px 18px",
                   background: TOKENS.card,
@@ -519,7 +521,19 @@ function OnboardingV3({ onDone }) {
         )}
 
         {/* footer */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            // Let the right-hand cluster (Skip + Next pill) drop below the
+            // progress dots instead of riding past the card edge on narrow
+            // screens, where nowrap children can't fit on one line.
+            flexWrap: "wrap",
+            columnGap: 12,
+            rowGap: 12,
+          }}
+        >
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             {[1, 2, 3, 4, 5].map((n) => (
               <span key={n} style={{ width: 18, height: 4, borderRadius: 2, background: dot(n) }} />
@@ -537,7 +551,7 @@ function OnboardingV3({ onDone }) {
               </span>
             )}
           </div>
-          <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 16, alignItems: "center", marginLeft: "auto" }}>
             {submitError && (
               <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.red }}>
                 {submitError}

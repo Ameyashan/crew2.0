@@ -5,9 +5,6 @@ import { useEffect, useState } from "react";
 import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
 import { TOKENS, RADII, SHADOWS } from "@/components/paper/tokens";
 import {
-  FOLLOWUP_OPTIONS,
-  daysToFollowupLabel,
-  followupLabelToDays,
   parseWritingSamples,
   linkedinHandle,
   deriveConnectedRows,
@@ -64,18 +61,19 @@ function InkButton({ children, onClick, kind = "solid", disabled, style }) {
 
 function SettingsV3({ profile, saveProfile, reloadProfile }) {
   const isMobile = useIsMobile();
-  const [savingFollowup, setSavingFollowup] = useState(false);
+  const [savingPages, setSavingPages] = useState(false);
   const [editing, setEditing] = useState(null); // resume | linkedin | writing | goals
-  const followupLabel = daysToFollowupLabel(profile?.followup_days);
+  // Résumé length preference: 1 or 2 pages. Unset defaults to 1 (matches the
+  // apply flow's default in /api/compose/apply).
+  const resumePages = profile?.resume_pages === 2 ? 2 : 1;
 
-  async function pickFollowup(label) {
-    const days = followupLabelToDays(label);
-    if (days == null) return;
-    setSavingFollowup(true);
+  async function pickResumePages(n) {
+    if (n !== 1 && n !== 2) return;
+    setSavingPages(true);
     try {
-      await saveProfile({ followup_days: days });
+      await saveProfile({ resume_pages: n });
     } finally {
-      setSavingFollowup(false);
+      setSavingPages(false);
     }
   }
 
@@ -99,7 +97,7 @@ function SettingsV3({ profile, saveProfile, reloadProfile }) {
             margin: 0,
             fontFamily: PAPER_FONTS_V2.serif,
             fontWeight: 400,
-            fontSize: 30,
+            fontSize: isMobile ? 24 : 30,
             lineHeight: 1.25,
             letterSpacing: "-.01em",
             color: TOKENS.ink,
@@ -138,8 +136,8 @@ function SettingsV3({ profile, saveProfile, reloadProfile }) {
               color: TOKENS.ink,
             }}
           >
-            Nudge cadence{" "}
-            {savingFollowup && (
+            Résumé length{" "}
+            {savingPages && (
               <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted }}>
                 · saving
               </span>
@@ -154,15 +152,18 @@ function SettingsV3({ profile, saveProfile, reloadProfile }) {
               color: TOKENS.muted,
             }}
           >
-            When someone doesn&apos;t reply, when should Jugaadu nudge?
+            How long should the résumé be when Jugaadu tailors one for a job?
           </p>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {FOLLOWUP_OPTIONS.map((opt) => {
-              const active = followupLabel === opt.label;
+            {[
+              { n: 1, label: "1 page" },
+              { n: 2, label: "2 pages" },
+            ].map((opt) => {
+              const active = resumePages === opt.n;
               return (
                 <button
-                  key={opt.label}
-                  onClick={() => pickFollowup(opt.label)}
+                  key={opt.n}
+                  onClick={() => pickResumePages(opt.n)}
                   style={{
                     padding: "7px 14px",
                     fontFamily: PAPER_FONTS_V2.mono,

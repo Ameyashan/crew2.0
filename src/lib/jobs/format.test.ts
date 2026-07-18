@@ -148,6 +148,7 @@ const job = (o: Partial<Parameters<typeof jobPassesFilters>[0]> = {}) => ({
   visa_confidence: null as VisaConfidence | null,
   remote_type: "onsite",
   compensation: null as string | null,
+  location: null as string | null,
   ...o,
 });
 
@@ -177,8 +178,25 @@ test("compListed filter keeps only jobs with real comp text", () => {
   assert.equal(jobPassesFilters(job({ compensation: null }), f), false);
 });
 
+test("location filter matches by case-insensitive substring, remote by work-type", () => {
+  const f: FeedFilters = { ...NO_FILTERS, location: "san francisco" };
+  assert.equal(jobPassesFilters(job({ location: "San Francisco, CA" }), f), true);
+  assert.equal(jobPassesFilters(job({ location: "Bengaluru, India" }), f), false);
+  assert.equal(jobPassesFilters(job({ location: null }), f), false);
+  // Free-text substring works.
+  assert.equal(
+    jobPassesFilters(job({ location: "Bengaluru, India" }), { ...NO_FILTERS, location: "benga" }),
+    true,
+  );
+  // "Remote" also honors remote/hybrid jobs whose location string omits the word.
+  const remoteFilter: FeedFilters = { ...NO_FILTERS, location: "Remote" };
+  assert.equal(jobPassesFilters(job({ remote_type: "remote", location: null }), remoteFilter), true);
+  assert.equal(jobPassesFilters(job({ remote_type: "hybrid", location: "Austin" }), remoteFilter), true);
+  assert.equal(jobPassesFilters(job({ remote_type: "onsite", location: "Austin" }), remoteFilter), false);
+});
+
 test("filters compose (AND) and filterJobs applies across a list", () => {
-  const f: FeedFilters = { sponsorsVisa: true, remote: true, compListed: true };
+  const f: FeedFilters = { ...NO_FILTERS, sponsorsVisa: true, remote: true, compListed: true };
   const good = job({ visa_confidence: "likely_sponsors", remote_type: "remote", compensation: "$200k" });
   const bad = job({ visa_confidence: "likely_sponsors", remote_type: "onsite", compensation: "$200k" });
   assert.equal(jobPassesFilters(good, f), true);

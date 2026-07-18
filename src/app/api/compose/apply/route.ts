@@ -6,6 +6,7 @@ import { fetchAtsPosting } from "@/lib/job-fetch";
 import { authWalledJobHost, pasteJdJobHost } from "@/lib/job-url";
 import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
 import { supabaseAdmin } from "@/lib/supabase";
+import { getProfile } from "@/lib/profile";
 import { resolveUserId } from "@/lib/auth";
 import { runWithUser } from "@/lib/user-context";
 import { agentEnabled, parseAgents } from "@/lib/agent-selection";
@@ -154,6 +155,10 @@ export async function POST(req: NextRequest) {
       let resumeGenerationId: string | null = null;
       let personId: string | null = null;
       let draftId: string | null = null;
+
+      // How long a résumé to build when applying, from the user's Settings
+      // preference. Unset (or anonymous) defaults to 1 page.
+      const resumePages: 1 | 2 = (await getProfile())?.resume_pages === 2 ? 2 : 1;
 
       // Collected for compose_runs.output so the history page can reconstruct
       // the package card (parsed bundle, person research, email enrichment).
@@ -410,9 +415,9 @@ export async function POST(req: NextRequest) {
             if (!resumeEnabled) return null;
             send({ type: "step", id: "resume", status: "start" });
             const tailorInput = openingUrl
-              ? { job_url: openingUrl, page_count: 2 as const }
+              ? { job_url: openingUrl, page_count: resumePages }
               : {
-                  page_count: 2 as const,
+                  page_count: resumePages,
                   highlights: [
                     detectedRole && `Target role: ${detectedRole}`,
                     detectedCompany && `Company: ${detectedCompany}`,
@@ -646,7 +651,7 @@ export async function POST(req: NextRequest) {
               // A pasted JD (login-walled board) is read directly — the tailor
               // never web_searches the unreadable URL.
               job_posting: pastedPosting ?? undefined,
-              page_count: 2,
+              page_count: resumePages,
             })) {
               if (evt.type === "step" && evt.id === "tailor" && evt.status === "done") {
                 resume = evt.data.resume;
