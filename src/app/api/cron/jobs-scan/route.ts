@@ -23,7 +23,11 @@ async function scoreUserScan(sb: SupabaseClient, uid: string) {
   if (!prefs.interests.length && !pins.length) return { candidates: 0, scored: 0, skipped: 0 };
   const candidates = await selectCandidateJobs(sb, prefs, pins);
   if (!candidates.length) return { candidates: 0, scored: 0, skipped: 0 };
-  const summary = await scoreJobsForUser({ jobs: candidates });
+  const summary = await scoreJobsForUser({
+    jobs: candidates,
+    roleMode: prefs.role_mode,
+    targetRoles: prefs.target_roles,
+  });
   return { candidates: candidates.length, ...summary };
 }
 

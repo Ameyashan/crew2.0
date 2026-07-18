@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
 import { TOKENS, RADII } from "@/components/paper/tokens";
@@ -222,6 +222,9 @@ export default function JobsFeedPage() {
   const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
   const [refreshing, setRefreshing] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // Guard so the "empty feed but preferences exist" auto-scan fires at most once.
+  // A ref (not state) so setting it doesn't itself trigger a render/effect cycle.
+  const autoScanned = useRef(false);
 
   const fetchFeed = useCallback(() => fetch("/api/jobs/feed").then((r) => r.json()), []);
 
@@ -234,26 +237,6 @@ export default function JobsFeedPage() {
       setJobs(Array.isArray(j.jobs) ? j.jobs : []);
     }
   }, []);
-
-  useEffect(() => {
-    let alive = true;
-    fetchFeed()
-      .then((j) => {
-        if (alive) applyFeed(j);
-      })
-      .catch((e) => {
-        if (alive) setError(String(e?.message || e));
-      });
-    fetch("/api/jobs/preferences")
-      .then((r) => r.json())
-      .then((j) => {
-        if (alive && j?.preferences) setPrefs(j.preferences as PreferencesDTO);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [fetchFeed, applyFeed]);
 
   // Re-run the discovery pipeline against the user's saved preferences, then
   // pull the freshly-scored feed. Saving preferences only grows the catalog;
@@ -284,6 +267,39 @@ export default function JobsFeedPage() {
       setRefreshing(false);
     }
   }, [fetchFeed, applyFeed]);
+
+  useEffect(() => {
+    let alive = true;
+    // Load the feed and preferences together so we can decide, once, whether to
+    // auto-scan: preferences (from onboarding or the prefs page) only grow the
+    // catalog — they never fill `job_matches`, so a brand-new user's first Jobs
+    // visit is empty until a scan runs. If we have usable preferences and an
+    // empty feed, kick the scan automatically instead of making the user find
+    // and click "Refresh".
+    Promise.all([
+      fetchFeed().catch((e) => ({ error: String(e?.message || e) })),
+      fetch("/api/jobs/preferences")
+        .then((r) => r.json())
+        .catch(() => null),
+    ]).then(([feed, prefsJson]) => {
+      if (!alive) return;
+      applyFeed(feed);
+      const p: PreferencesDTO | null = prefsJson?.preferences ?? null;
+      if (p) setPrefs(p);
+      const hasPrefs =
+        (p?.interests?.length ?? 0) > 0 ||
+        (p?.pins?.length ?? 0) > 0 ||
+        (p?.target_roles?.length ?? 0) > 0;
+      const feedEmpty = !feed?.error && (feed?.jobs?.length ?? 0) === 0;
+      if (feedEmpty && hasPrefs && !autoScanned.current) {
+        autoScanned.current = true;
+        void refresh();
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [fetchFeed, applyFeed, refresh]);
 
   const toggle = (key: keyof FeedFilters) => setFilters((f) => ({ ...f, [key]: !f[key] }));
 
