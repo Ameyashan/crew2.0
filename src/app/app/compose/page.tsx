@@ -597,6 +597,7 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
     parsedLabel,
     thin,
     skipResume,
+    resumePresent: !!parsed?.resume,
     pulling: showPull,
     peopleCount,
     personLabel: stepPerson?.name || null,
@@ -679,7 +680,7 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
       {/* ─── steps list ─── */}
       {steps.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', maxWidth: 820 }}>
-          {steps.map((s) => <StepRow key={s.id} s={s}/>)}
+          {steps.map((s) => <StepRow key={s.id} s={s} activity={run.activity?.[s.id]}/>)}
         </div>
       )}
 
@@ -744,16 +745,19 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
 // per-agent failure gets an amber ! circle. Title 14.5/500 + mono agent chip,
 // muted sub underneath (prototype lines 549–565).
 
-// Rotating "what the agent is doing right now" caption, shown only while a step
-// is active. Advances on its own ~2.4s timer so the line keeps moving — the
-// reassurance an LLM search UI gives ("refining search · looking for people").
-function StepActivity({ id }) {
+// "What the agent is doing right now" caption, shown only while a step is
+// active. Prefers the REAL activity streamed from the run (a web_search on the
+// JD, the live bullet count, how many people were sourced); falls back to the
+// hand-authored STEP_ACTIVITY timer only until a real signal lands, so the line
+// still moves during the quiet gaps.
+function StepActivity({ id, activity }) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setTick((n) => n + 1), 2400);
     return () => clearInterval(t);
   }, []);
-  const phrase = stepActivityPhrase(id, tick);
+  const real = typeof activity === "string" ? activity.trim() : "";
+  const phrase = real || stepActivityPhrase(id, tick);
   if (!phrase) return null;
   return (
     <div style={{
@@ -771,7 +775,7 @@ function StepActivity({ id }) {
   );
 }
 
-function StepRow({ s }) {
+function StepRow({ s, activity }) {
   return (
     <div style={{
       display: 'flex', gap: 16, padding: '15px 0',
@@ -827,7 +831,7 @@ function StepRow({ s }) {
             color: s.state === 'error' ? TOKENS.amber : s.state === 'pending' ? TOKENS.faint : TOKENS.muted, marginTop: 3,
           }}>{s.sub}</div>
         )}
-        {s.state === 'active' && <StepActivity id={s.id}/>}
+        {s.state === 'active' && <StepActivity id={s.id} activity={activity}/>}
       </div>
     </div>
   );

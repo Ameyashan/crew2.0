@@ -36,6 +36,22 @@ export type ContactData = {
   sameAsPoster?: boolean;
 };
 
+// Real "just started" caption per step, keyed by the step id used in each
+// stream path (job path: resume/person/email/outreach/application; person path:
+// research/email_lookup/draft). Event-driven — shown the moment the agent's
+// step-start event lands, describing what that agent genuinely does first —
+// unlike the cosmetic STEP_ACTIVITY timer it supersedes.
+const STEP_START_ACTIVITY: Record<string, string> = {
+  resume: "reading the job description",
+  person: "scanning the team for who decides",
+  research: "scanning the team for who decides",
+  email: "checking email patterns",
+  email_lookup: "checking email patterns",
+  outreach: "drafting your outreach — email, LinkedIn, X",
+  draft: "drafting your outreach — email, LinkedIn, X",
+  application: "reading the application form",
+};
+
 export type Run = {
   id: string;
   input: string;
@@ -45,6 +61,11 @@ export type Run = {
   stage: RunStage;
   parsed: unknown;
   progress: Record<string, number>;
+  // Real "what the agent is doing right now" caption per step, derived from the
+  // stream's own events (a resume web_search, the bullet count as it grows, the
+  // number of people sourced, which step just started) — NOT a cosmetic timer.
+  // The run view prefers this over the hand-authored STEP_ACTIVITY fallback.
+  activity?: Record<string, string> | null;
   drafts: unknown[] | null;
   enrichment: unknown;
   person: unknown;
@@ -1453,6 +1474,12 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
             patch(id, () => ({ needsJobText: { label: String(evt.label || "This board") } }));
             continue;
           }
+          if (evt.type === "activity" && typeof evt.id === "string" && typeof evt.label === "string") {
+            // A real sub-step caption the server derived from the agent's own
+            // work (e.g. a resume web_search, "matched to <company>").
+            patch(id, (r) => ({ activity: { ...(r.activity || {}), [evt.id]: evt.label } }));
+            continue;
+          }
           if (evt.type === "progress" && evt.id === "resume") {
             // Fine-grained tailoring signal (~chars of resume JSON written so
             // far). Map onto the resume bar so it moves with real work instead
@@ -1461,6 +1488,13 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
             const bullets = Number(evt.bullets) || 0;
             patch(id, (r) => ({
               tailor: { chars, bullets },
+              // Real caption: the bullet count as the resume JSON streams in.
+              activity: {
+                ...(r.activity || {}),
+                resume: bullets > 0
+                  ? `writing your resume — ${bullets} bullet${bullets === 1 ? "" : "s"} so far`
+                  : "writing your resume",
+              },
               progress: {
                 ...r.progress,
                 resume: Math.max(
@@ -1473,7 +1507,12 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           }
           if (evt.type === "step") {
             const k = evt.id; // resume | person | email | outreach
-            if (evt.status === "start") patch(id, (r) => ({ progress: { ...r.progress, [k]: Math.max(r.progress?.[k] || 0, 10) } }));
+            if (evt.status === "start") patch(id, (r) => ({
+              progress: { ...r.progress, [k]: Math.max(r.progress?.[k] || 0, 10) },
+              activity: STEP_START_ACTIVITY[k]
+                ? { ...(r.activity || {}), [k]: STEP_START_ACTIVITY[k] }
+                : r.activity,
+            }));
             else if (evt.status === "done" || evt.status === "skipped")
               patch(id, (r) => ({ progress: { ...r.progress, [k]: 100 } }));
             else if (evt.status === "error")
@@ -1534,7 +1573,17 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
             if (typeof evt.id === "string") patch(id, () => ({ savedApplicationId: evt.id }));
           } else if (evt.type === "candidates") {
             collectedCandidates = Array.isArray(evt.data) ? evt.data : [];
-            patch(id, () => ({ candidates: collectedCandidates }));
+            const n = collectedCandidates.length;
+            patch(id, (r) => ({
+              candidates: collectedCandidates,
+              // Real caption: how many hiring managers the search actually sourced.
+              activity: {
+                ...(r.activity || {}),
+                person: n > 0
+                  ? `found ${n} ${n === 1 ? "person" : "people"} — ranking who decides`
+                  : "no obvious contact yet — widening the search",
+              },
+            }));
           } else if (evt.type === "contact_meta") {
             // The hiring manager collapsed into the poster (same person).
             if (evt.slot && evt.data?.sameAsPoster) patchContact(evt.slot, { sameAsPoster: true });
@@ -1663,7 +1712,12 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
         if (evt.type === "step") {
           const key = stepToKey[evt.id];
           if (key) {
-            if (evt.status === "start") patch(id, (r) => ({ progress: { ...r.progress, [key]: 10 } }));
+            if (evt.status === "start") patch(id, (r) => ({
+              progress: { ...r.progress, [key]: 10 },
+              activity: STEP_START_ACTIVITY[key]
+                ? { ...(r.activity || {}), [key]: STEP_START_ACTIVITY[key] }
+                : r.activity,
+            }));
             else if (evt.status === "done" || evt.status === "skipped")
               patch(id, (r) => ({ progress: { ...r.progress, [key]: 100 } }));
             else if (evt.status === "error")

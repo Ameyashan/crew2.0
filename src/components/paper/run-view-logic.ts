@@ -132,12 +132,13 @@ export const RUN_AGENT_CHIPS: Record<string, string> = {
   application: "SAWAAL JAWAAB",
 };
 
-// ── Live agent activity ticker ───────────────────────────────────────────────
-// While a step is active, we rotate a short "what the agent is doing right now"
-// caption under its title — the same reassurance an LLM search UI gives with
-// "refining search · looking for people". These are cosmetic narration, cycled
-// on a timer by the component; the pipeline itself doesn't report sub-steps, so
-// the phrases are hand-authored per agent to read like plausible live work.
+// ── Live agent activity ticker (FALLBACK) ────────────────────────────────────
+// While a step is active, a short "what the agent is doing right now" caption
+// shows under its title. The run view now prefers REAL activity streamed from
+// the pipeline (run.activity[step] — a resume web_search, the live bullet count,
+// how many people were sourced). These hand-authored phrases are the fallback,
+// cycled on a timer only until a real signal lands, so the line still moves
+// during the quiet gaps between real events.
 export const STEP_ACTIVITY: Record<string, string[]> = {
   parse: ["reading your request", "picking the right crew", "checking the tracker"],
   resume: [
@@ -219,6 +220,11 @@ export type BuildRunStepsInput = {
   // uploaded Story to weave from), so the resume step renders as a "skipped"
   // row and the crew jumps straight to finding the hiring manager.
   skipResume?: boolean;
+  // Whether the run actually holds a woven resume artifact (parsed.resume). The
+  // resume done-row must not claim "PDF + Word below" when no resume was
+  // produced — the download card is gated on the same artifact, so without this
+  // the row promises a download that never renders.
+  resumePresent?: boolean;
   // Real data for the done-row subtitles. All optional; rows degrade to
   // generic (but honest) copy when an agent returned nothing.
   peopleCount?: number | null;
@@ -478,6 +484,21 @@ export function buildRunSteps(input: BuildRunStepsInput): RunStepRow[] {
     }
     const pct = progress[id] ?? (stage === "done" ? 100 : 0);
     if (pct >= 100 || stage === "done") {
+      // The resume step finished but produced no artifact (thin Story, or the
+      // agent returned nothing without a hard error). Don't print the triumphant
+      // "Resume woven · PDF + Word below" against an empty card — say so plainly.
+      if (id === "resume" && !input.skipResume && !input.resumePresent) {
+        rows.push({
+          id,
+          title: "No resume to show this time",
+          sub: input.thin
+            ? "your Story is too thin to weave from — add your resume, then run again"
+            : "the crew couldn't produce a resume this time — run it again",
+          agent: RUN_AGENT_CHIPS.resume,
+          state: "error",
+        });
+        continue;
+      }
       const d = doneRow(id);
       rows.push({ id, title: d.title, sub: d.sub, agent: RUN_AGENT_CHIPS[id] || id.toUpperCase(), state: "done" });
     } else if (stage === "working" && isRunning(id)) {

@@ -138,7 +138,11 @@ function OnboardingV3({ onDone }) {
   }
 
   const dot = (n) => (n <= step ? TOKENS.ink : TOKENS.line);
-  const nextLabel = step === TOTAL_STEPS ? "Open the Desk →" : "Next →";
+  const nextText = step === TOTAL_STEPS ? "Open the Desk" : "Next";
+  // Block advancing while the resume is still being read on step 2 — clicking
+  // Next mid-read would drop the user past the upload before its Story seeding
+  // lands, and reads as if the app broke.
+  const blockNext = submitting || (step === 2 && uploading);
 
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 24px" }}>
@@ -459,20 +463,26 @@ function OnboardingV3({ onDone }) {
             )}
             {step === 2 && (
               <span
-                onClick={next}
+                onClick={uploading ? undefined : next}
                 style={{
                   fontFamily: PAPER_FONTS_V2.sans,
                   fontSize: 13,
                   color: TOKENS.faint2,
-                  cursor: "pointer",
+                  cursor: uploading ? "wait" : "pointer",
+                  opacity: uploading ? 0.5 : 1,
+                  whiteSpace: "nowrap",
                 }}
               >
                 Skip for now
               </span>
             )}
             <span
-              onClick={submitting ? undefined : next}
+              onClick={blockNext ? undefined : next}
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                whiteSpace: "nowrap",
                 fontFamily: PAPER_FONTS_V2.sans,
                 fontSize: 13,
                 fontWeight: 500,
@@ -480,11 +490,20 @@ function OnboardingV3({ onDone }) {
                 background: TOKENS.ink,
                 borderRadius: RADII.button,
                 padding: "12px 20px",
-                cursor: submitting ? "wait" : "pointer",
-                opacity: submitting ? 0.6 : 1,
+                cursor: blockNext ? "wait" : "pointer",
+                opacity: blockNext ? 0.6 : 1,
               }}
             >
-              {submitting ? "Saving…" : nextLabel}
+              {submitting ? (
+                "Saving…"
+              ) : step === 2 && uploading ? (
+                "Reading…"
+              ) : (
+                <>
+                  <span>{nextText}</span>
+                  <span aria-hidden="true">→</span>
+                </>
+              )}
             </span>
           </div>
         </div>

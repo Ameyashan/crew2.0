@@ -648,6 +648,22 @@ export async function POST(req: NextRequest) {
               // Pass progress through so the UI can render byte counts if we ever
               // want to surface them.
               if (evt.type === "progress") send({ type: "progress", id: "resume", chars: evt.chars, bullets: evt.bullets });
+              // Real activity captions from the tailor's own work, so the run
+              // view narrates what's actually happening (web_search on the JD,
+              // the skill formatting the doc, the role it matched) rather than a
+              // cosmetic timer.
+              if (evt.type === "tool" && evt.name === "web_search")
+                send({ type: "activity", id: "resume", label: "reading the job posting" });
+              if (evt.type === "tool" && evt.name === "skill")
+                send({ type: "activity", id: "resume", label: "formatting the document" });
+              if (evt.type === "step" && evt.id === "research" && evt.status === "done") {
+                const company = (evt.data as { company?: string } | undefined)?.company;
+                send({
+                  type: "activity",
+                  id: "resume",
+                  label: company ? `matched to ${company} — writing bullets` : "matching your Story to the role",
+                });
+              }
             }
           } catch (e) {
             console.error("[apply] résumé tailoring failed", e);
@@ -829,19 +845,14 @@ export async function POST(req: NextRequest) {
         runError = String(e instanceof Error ? e.message : e);
         send({ type: "error", message: runError });
       } finally {
-        // Sole close for every path (early returns above just `return`). Guard
-        // against a double-close throwing out of start() — on buffered
-        // serverless streaming that rejection surfaces as an HTTP 500 and
-        // discards the graceful SSE error we already enqueued.
-        try {
-          controller.close();
-        } catch {
-          // already closed
-        }
-
-        // Persist the final compose_runs state. Mirrors what runs-store.ts
-        // patches into the run on stream end, so /app/history can reconstruct
-        // the package card on any device.
+        // Persist the final compose_runs state BEFORE closing the stream.
+        // Closing first lets the serverless platform reclaim the function
+        // before this awaited write lands, stranding the row at `in_flight`
+        // forever (then the 10-min sweep mislabels a succeeded run as "error").
+        // Writing while the stream is still open keeps the function alive until
+        // the durable write completes. Mirrors what runs-store.ts patches into
+        // the run on stream end, so /app/history can reconstruct the package
+        // card on any device.
         if (composeRunId) {
           try {
             const parsedBundle = collectedTailored
@@ -879,6 +890,17 @@ export async function POST(req: NextRequest) {
           } catch (e) {
             console.error("[compose_runs] update failed", e);
           }
+        }
+
+        // Sole close for every path (early returns above just `return`, and the
+        // finally still runs). Done LAST, after the durable write. Guard against
+        // a double-close throwing out of start() — on buffered serverless
+        // streaming that rejection surfaces as an HTTP 500 and discards the
+        // graceful SSE error we already enqueued.
+        try {
+          controller.close();
+        } catch {
+          // already closed
         }
       }
       });
