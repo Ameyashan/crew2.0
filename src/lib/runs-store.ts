@@ -166,6 +166,16 @@ export type Run = {
   answering?: boolean;
   answerError?: string | null;
   savedApplicationId?: string | null;
+  // Pre-login people/outreach results restored from sessionStorage after sign-in
+  // (see startRestoredRun). Forwarded to /api/compose/apply so the persisted
+  // bundle is complete even though the people agents don't re-run.
+  priorResults?: {
+    person?: unknown;
+    enrichment?: unknown;
+    candidates?: unknown[] | null;
+    drafts?: unknown[] | null;
+    contacts?: unknown;
+  } | null;
 };
 
 /* ─────────────────────── module store ─────────────────────── */
@@ -376,6 +386,77 @@ export function startRun(
     launch(id);
   }, 900);
 
+  return id;
+}
+
+// Re-open a signed-out job run after sign-in with its people/email/outreach work
+// ALREADY DONE (restored from sessionStorage), running only the agents anon
+// skipped: Resume Darzi (+ Sawaal Jawaab). The seeded person/drafts/enrichment
+// show immediately (un-blurred, now that we're signed in); streamRun forwards
+// `priorResults` so the persisted compose_runs bundle stays complete. Falls back
+// to a fresh full run (startRun) at the call site when there's nothing to
+// restore. Job runs only.
+export function startRestoredRun(
+  input: string,
+  results: {
+    parsed?: unknown;
+    person?: unknown;
+    enrichment?: unknown;
+    candidates?: unknown[] | null;
+    drafts?: unknown[] | null;
+    contacts?: unknown;
+  },
+  opts?: { intent?: string; providedEmail?: boolean },
+): string | null {
+  const text = (input || "").trim();
+  if (!text) return null;
+
+  const id =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `run_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  const seededParsed =
+    results.parsed && typeof results.parsed === "object"
+      ? { ...(results.parsed as Record<string, unknown>), unparsed: false }
+      : null;
+
+  const run: Run = {
+    id,
+    input: text,
+    intent: opts?.intent || undefined,
+    providedEmail: opts?.providedEmail || false,
+    kind: "job",
+    // Resume still runs, so the run is "working"; the restored people steps are
+    // marked 100% below so their rows read as done from the first paint.
+    stage: "working",
+    parsed: seededParsed,
+    progress: { person: 100, email: 100, outreach: 100 },
+    drafts: Array.isArray(results.drafts) ? results.drafts : null,
+    enrichment: results.enrichment ?? null,
+    person: results.person ?? null,
+    candidates: Array.isArray(results.candidates) ? results.candidates : null,
+    contacts: (results.contacts as Run["contacts"]) ?? null,
+    error: null,
+    createdAt: Date.now(),
+    // Display ALL step rows (people show as done from the seeded progress);
+    // streamRun restricts EXECUTION to resume + application because priorResults
+    // is set, so the people agents don't re-run.
+    selectedAgents: undefined,
+    priorResults: {
+      person: results.person ?? null,
+      enrichment: results.enrichment ?? null,
+      candidates: Array.isArray(results.candidates) ? results.candidates : null,
+      drafts: Array.isArray(results.drafts) ? results.drafts : null,
+      contacts: results.contacts ?? null,
+    },
+  };
+
+  runs = [run, ...runs];
+  emit();
+  // No parse-preview delay — the people work is already restored; go straight to
+  // streaming the resume.
+  launch(id);
   return id;
 }
 
@@ -1425,7 +1506,10 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
         body: JSON.stringify({
           job_url: jobUrl || undefined,
           intent: run.intent || undefined,
-          agents: run.selectedAgents || undefined,
+          // A restored run only re-runs the agents anon skipped (resume +
+          // application); the people work is already done and forwarded via
+          // `prior`. Otherwise honor the user's own agent selection.
+          agents: run.priorResults ? ["resume", "application"] : (run.selectedAgents || undefined),
           // A pasted JD for a login-walled board (Work at a Startup) — runs the
           // whole crew off this text instead of the unreadable URL.
           job_text: run.jobText || undefined,
@@ -1438,6 +1522,10 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           // poster's research as disambiguation context (so a common name still
           // resolves to the right person instead of dead-ending).
           screenshot_id: run.screenshotId || undefined,
+          // Restored pre-login people/outreach results (see startRestoredRun):
+          // the server seeds these into the persisted bundle instead of re-running
+          // the people agents.
+          prior: run.priorResults || undefined,
         }),
         signal,
       });

@@ -13,6 +13,7 @@ import {
   useFocusedRun,
   setFocusedRun,
   startRun,
+  startRestoredRun,
   startImageRun,
   dismissRun,
   retryRun,
@@ -57,6 +58,9 @@ import {
   serializePendingRun,
   parsePendingRun,
   PENDING_RUN_KEY,
+  serializePendingResults,
+  parsePendingResults,
+  PENDING_RESULTS_KEY,
   buildRunSteps,
   stepActivityPhrase,
   runViewTitle,
@@ -237,18 +241,33 @@ function ComposeV3({ p, go }) {
   useEffect(() => {
     if (signedIn !== true || typeof window === 'undefined') return;
     let raw = null;
+    let rawResults = null;
     try { raw = sessionStorage.getItem(PENDING_RUN_KEY); } catch { raw = null; }
+    try { rawResults = sessionStorage.getItem(PENDING_RESULTS_KEY); } catch { rawResults = null; }
     const pending = parsePendingRun(raw);
     if (!pending) return;
+    const results = parsePendingResults(rawResults);
     try { sessionStorage.removeItem(PENDING_RUN_KEY); } catch { /* private mode */ }
+    try { sessionStorage.removeItem(PENDING_RESULTS_KEY); } catch { /* private mode */ }
     if (pending.input && pending.input.trim()) {
       const kind = pending.kind && pending.kind !== 'fuzzy' ? pending.kind : classifyKind(pending.input);
-      const restoredId = startRun(pending.input, {
-        intent: pending.intent,
-        providedEmail: pending.providedEmail,
-        kind: kind === 'job' ? 'job' : 'person',
-        selectedAgents: pending.selectedAgents,
-      });
+      // Anon runs skip Resume Darzi + Sawaal Jawaab (signed-out gates), running
+      // only the people pipeline. If that people work survived (results present)
+      // and this is a job run, re-open it with that work DONE and run only the
+      // resume + application agents — instead of re-running the whole crew. Any
+      // other case (person run, no results, private mode) replays fresh.
+      const restoredId =
+        kind === 'job' && results
+          ? startRestoredRun(pending.input, results, {
+              intent: pending.intent,
+              providedEmail: pending.providedEmail,
+            })
+          : startRun(pending.input, {
+              intent: pending.intent,
+              providedEmail: pending.providedEmail,
+              kind: kind === 'job' ? 'job' : 'person',
+              selectedAgents: pending.selectedAgents,
+            });
       // Reopen the run full-screen (now unlocked) rather than dropping the user
       // on a fresh Desk after the OAuth round-trip.
       if (restoredId) setFocusedRun(restoredId);
@@ -2253,6 +2272,27 @@ function BlurGateOverlay({ kind, run, input }) {
           screenshotName: run?.screenshot?.name ?? null,
         });
         try { sessionStorage.setItem(PENDING_RUN_KEY, payload); } catch { /* private mode */ }
+        // Stash the people/outreach RESULTS so the run re-opens after login with
+        // that work done and only the resume re-runs. Only when outreach actually
+        // finished (drafts present); signing in mid-run replays fresh instead of
+        // restoring partial work. Job runs only; screenshot runs aren't restorable.
+        try {
+          if (run?.kind === 'job' && !run?.screenshot && Array.isArray(run?.drafts) && run.drafts.length > 0) {
+            sessionStorage.setItem(
+              PENDING_RESULTS_KEY,
+              serializePendingResults({
+                parsed: run?.parsed ?? null,
+                person: run?.person ?? null,
+                enrichment: run?.enrichment ?? null,
+                candidates: Array.isArray(run?.candidates) ? run.candidates : null,
+                drafts: Array.isArray(run?.drafts) ? run.drafts : null,
+                contacts: run?.contacts ?? null,
+              }),
+            );
+          } else {
+            sessionStorage.removeItem(PENDING_RESULTS_KEY);
+          }
+        } catch { /* private mode */ }
       }
       // Suppress the "Load failed" flash from the run's stream being torn down
       // by the OAuth navigation.

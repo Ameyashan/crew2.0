@@ -33,6 +33,12 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const job_url = (body?.job_url ?? "").toString().trim();
   const intent = body?.intent ? body.intent.toString() : undefined;
+  // Restored pre-login people/outreach results (see startRestoredRun). When
+  // present, the people agents are OFF (agents = ['resume','application']) — we
+  // seed the persisted bundle from this instead of re-running them, so the saved
+  // compose_runs.output stays complete without redoing the work anon already did.
+  const prior =
+    body?.prior && typeof body.prior === "object" ? (body.prior as Record<string, unknown>) : null;
   // The job description the user pasted, for boards we can't auto-read (Work at
   // a Startup and friends — the résumé error tells them to paste it in). When
   // present, the whole crew runs off THIS text: the résumé reads it directly
@@ -165,6 +171,14 @@ export async function POST(req: NextRequest) {
       // so /app/history can rebuild the toggle. Empty for legacy single-contact runs.
       type Contact = { person: unknown; enrichment: unknown; drafts: unknown[]; personId: string | null; draftId: string | null; sameAsPoster?: boolean };
       const collectedContacts: Record<string, Contact> = {};
+      // Seed the bundle from restored pre-login results so the persisted output is
+      // complete even though the people agents don't run this pass.
+      if (prior) {
+        collectedPerson = prior.person ?? null;
+        collectedEnrichment = prior.enrichment ?? null;
+        if (Array.isArray(prior.candidates)) collectedCandidates = prior.candidates;
+        if (Array.isArray(prior.drafts)) collectedDrafts.push(...prior.drafts);
+      }
       let runOutcome: "complete" | "error" | "needs_disambiguation" = "error";
       let runError: string | null = null;
 

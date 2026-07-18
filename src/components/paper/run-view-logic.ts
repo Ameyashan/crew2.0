@@ -678,6 +678,72 @@ export function serializePendingRun(
   return JSON.stringify(payload);
 }
 
+// ── pendingResults persistence ───────────────────────────────────────────────
+// A signed-out job run computes people/email/outreach in-memory and blurs them;
+// the OAuth full-page redirect then wipes that in-memory store. We stash the
+// computed RESULTS (not just the inputs) alongside the pendingRun so that, after
+// login, we can re-open the run with the people work already done and only run
+// the agents anon skipped (Resume Darzi + Sawaal Jawaab) — instead of re-running
+// the whole crew. Kept small (no File blobs); screenshot-driven runs are not
+// restorable and skip this entirely.
+export const PENDING_RESULTS_KEY = "crew.pendingResults.v1";
+
+export type PendingResults = {
+  // The parsed job bundle MINUS any resume artifact (the resume is what we
+  // re-run after login) — role/company/team so the header + resume agent align.
+  parsed: unknown;
+  person: unknown;
+  enrichment: unknown;
+  candidates: unknown[] | null;
+  drafts: unknown[] | null;
+  contacts: unknown;
+  at: number;
+};
+
+export function serializePendingResults(
+  r: Partial<PendingResults>,
+  now: number = Date.now(),
+): string {
+  const payload: PendingResults = {
+    parsed: r.parsed ?? null,
+    person: r.person ?? null,
+    enrichment: r.enrichment ?? null,
+    candidates: Array.isArray(r.candidates) ? r.candidates : null,
+    drafts: Array.isArray(r.drafts) ? r.drafts : null,
+    contacts: r.contacts ?? null,
+    at: r.at ?? now,
+  };
+  return JSON.stringify(payload);
+}
+
+// Parse stashed results back out. Returns null when there's nothing worth
+// restoring (no person AND no drafts AND no contacts) so we fall back to a fresh
+// full run rather than seeding an empty package.
+export function parsePendingResults(raw: string | null | undefined): PendingResults | null {
+  if (!raw) return null;
+  let obj: unknown;
+  try {
+    obj = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!obj || typeof obj !== "object") return null;
+  const o = obj as Record<string, unknown>;
+  const person = o.person ?? null;
+  const drafts = Array.isArray(o.drafts) ? o.drafts : null;
+  const contacts = o.contacts ?? null;
+  if (!person && !(drafts && drafts.length) && !contacts) return null;
+  return {
+    parsed: o.parsed ?? null,
+    person,
+    enrichment: o.enrichment ?? null,
+    candidates: Array.isArray(o.candidates) ? o.candidates : null,
+    drafts,
+    contacts,
+    at: typeof o.at === "number" ? o.at : 0,
+  };
+}
+
 // Parse a stashed pendingRun back out. Tolerates junk/missing fields and returns
 // null when there's nothing usable (no input AND no screenshot to reconstruct).
 export function parsePendingRun(raw: string | null | undefined): PendingRun | null {

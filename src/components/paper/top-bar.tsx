@@ -10,7 +10,12 @@ import { useSessionUser } from "@/lib/use-signed-in";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { useRuns, useFocusedRun, setFocusedRun, beginAuthNavigation } from "@/lib/runs-store";
 import { TOP_NAV, nameFromEmail, isNavActive, avatarBg, avatarInitial, crewChip } from "./top-bar-logic";
-import { serializePendingRun, PENDING_RUN_KEY } from "./run-view-logic";
+import {
+  serializePendingRun,
+  PENDING_RUN_KEY,
+  serializePendingResults,
+  PENDING_RESULTS_KEY,
+} from "./run-view-logic";
 
 export function TopBar() {
   const pathname = usePathname();
@@ -134,6 +139,27 @@ export function TopBar() {
           screenshotName: run.screenshot?.name ?? null,
         }),
       );
+      // Stash the people/outreach RESULTS for a completed anon job run so, after
+      // login, we re-open it with that work done and only run the resume. Only
+      // when outreach actually finished (drafts present) — signing in mid-run
+      // would otherwise restore partial work and skip the unfinished agents.
+      // Skip screenshot runs (not restorable). Otherwise we fall back to a fresh
+      // full run, which re-runs everything (correct when nothing was finished).
+      if (run.kind === "job" && !run.screenshot && Array.isArray(run.drafts) && run.drafts.length > 0) {
+        sessionStorage.setItem(
+          PENDING_RESULTS_KEY,
+          serializePendingResults({
+            parsed: run.parsed ?? null,
+            person: run.person ?? null,
+            enrichment: run.enrichment ?? null,
+            candidates: Array.isArray(run.candidates) ? run.candidates : null,
+            drafts: Array.isArray(run.drafts) ? run.drafts : null,
+            contacts: run.contacts ?? null,
+          }),
+        );
+      } else {
+        sessionStorage.removeItem(PENDING_RESULTS_KEY);
+      }
     } catch {
       /* private mode — degrade to a fresh Desk after sign-in */
     }
