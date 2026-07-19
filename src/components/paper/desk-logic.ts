@@ -6,6 +6,8 @@
 // Nothing here reaches into the DOM or localStorage directly: the component owns
 // the side effects (reading storage, fetching), these functions own the rules.
 
+import { RUN_STATUS_LABEL } from "./run-status.ts";
+
 // ── Composer suggestion pills ────────────────────────────────────────────────
 // The three pills under the composer. Each just seeds the paste box with a
 // starter prompt the user completes; classifyKind + the run store route it from
@@ -197,25 +199,33 @@ export function deskRunTitle(agent: "compose" | "resume", row: RunRow): string {
 }
 
 export function deskRunChips(agent: "compose" | "resume", row: RunRow): EarlierChip[] {
+  // Labels come from the shared run-status lexicon (run-status.ts); the tones
+  // stay as they were so the row colours don't change.
   if (agent === "resume") {
-    if (row?.status === "in_flight") return [{ label: "in progress", tone: "progress" }];
-    if (row?.status === "error") return [{ label: "error", tone: "error" }];
+    if (row?.status === "in_flight") return [{ label: RUN_STATUS_LABEL.running, tone: "progress" }];
+    if (row?.status === "error") return [{ label: RUN_STATUS_LABEL["needs-you"], tone: "error" }];
     return [{ label: row?.ats_score != null ? `ATS ${row.ats_score}` : "tailored", tone: "done" }];
   }
   const outcome = row?.outcome;
-  if (outcome === "complete") return [{ label: "ready", tone: "done" }];
-  if (outcome === "in_flight") return [{ label: "in progress", tone: "progress" }];
-  if (outcome === "needs_disambiguation") return [{ label: "needs pick", tone: "attention" }];
-  return [{ label: "error", tone: "error" }];
+  if (outcome === "complete") return [{ label: RUN_STATUS_LABEL.ready, tone: "done" }];
+  if (outcome === "in_flight") return [{ label: RUN_STATUS_LABEL.running, tone: "progress" }];
+  if (outcome === "needs_disambiguation") return [{ label: RUN_STATUS_LABEL["needs-you"], tone: "attention" }];
+  return [{ label: RUN_STATUS_LABEL["needs-you"], tone: "error" }];
 }
 
+// `excludeIds` holds the server row ids of runs that are currently LIVE in the
+// store (surfaced as the top-bar chip / focused card). Their history rows are
+// filtered out so a single run never appears twice — once live and once here.
 export function deskEarlierRuns(
   composeRuns: ComposeRunRow[] | null | undefined,
   resumeRuns: ResumeRunRow[] | null | undefined,
   limit = 4,
+  excludeIds?: Set<string> | null,
 ): EarlierRow[] {
+  const skip = (id: string) => !!excludeIds && excludeIds.has(id);
   const rows: EarlierRow[] = [];
   for (const r of composeRuns || []) {
+    if (skip(r.id)) continue;
     rows.push({
       key: `c:${r.id}`,
       agent: "compose",
@@ -226,6 +236,7 @@ export function deskEarlierRuns(
     });
   }
   for (const r of resumeRuns || []) {
+    if (skip(r.id)) continue;
     rows.push({
       key: `r:${r.id}`,
       agent: "resume",

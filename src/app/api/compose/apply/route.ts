@@ -5,7 +5,8 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { resolveUserId } from "@/lib/auth";
 import { parseAgents } from "@/lib/agent-selection";
 import { assertAnonRunAllowed } from "@/lib/anon-rate-limit";
-import { runPipeline, makeDbSink, makeStreamSink, type RunPayload } from "@/lib/runs/execute-apply";
+import { runPipeline, type RunPayload } from "@/lib/runs/execute-apply";
+import { makeDbSink, makeStreamSink } from "@/lib/runs/sink";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -166,7 +167,7 @@ export async function POST(req: NextRequest) {
   // invocation past the response (up to maxDuration) independent of the client
   // connection, so the run finishes even if the phone is backgrounded. The
   // client polls /api/compose/history/[id] to observe progress.
-  after(() => runPipeline(runId, makeDbSink(runId)));
+  after(() => runPipeline(runId, makeDbSink({ table: "compose_runs", id: runId, statusColumn: "outcome" })));
 
   return Response.json({ composeRunId: runId, outcome: "in_flight" }, { status: 202 });
 }

@@ -161,17 +161,17 @@ test("onboardingDonePatch builds the profile write, resume-full patch is not thi
 // ── History outcome chips ────────────────────────────────────────────────────
 test("composeOutcomeChip maps run outcomes to labelled tones", () => {
   assert.deepEqual(composeOutcomeChip("complete"), { label: "ready", tone: "done" });
-  assert.deepEqual(composeOutcomeChip("in_flight"), { label: "in progress…", tone: "progress" });
-  assert.deepEqual(composeOutcomeChip("needs_disambiguation"), { label: "needs pick", tone: "attention" });
-  assert.deepEqual(composeOutcomeChip("boom"), { label: "error", tone: "error" });
-  assert.deepEqual(composeOutcomeChip(null), { label: "error", tone: "error" });
+  assert.deepEqual(composeOutcomeChip("in_flight"), { label: "running", tone: "progress" });
+  assert.deepEqual(composeOutcomeChip("needs_disambiguation"), { label: "needs you", tone: "attention" });
+  assert.deepEqual(composeOutcomeChip("boom"), { label: "needs you", tone: "error" });
+  assert.deepEqual(composeOutcomeChip(null), { label: "needs you", tone: "error" });
 });
 
 test("resumeRowChip prefers the ATS score for finished generations", () => {
   assert.deepEqual(resumeRowChip({ status: "complete", ats_score: 84 }), { label: "ATS 84", tone: "done" });
   assert.deepEqual(resumeRowChip({ status: "complete" }), { label: "tailored", tone: "done" });
-  assert.deepEqual(resumeRowChip({ status: "in_flight" }), { label: "in progress…", tone: "progress" });
-  assert.deepEqual(resumeRowChip({ status: "error" }), { label: "error", tone: "error" });
+  assert.deepEqual(resumeRowChip({ status: "in_flight" }), { label: "running", tone: "progress" });
+  assert.deepEqual(resumeRowChip({ status: "error" }), { label: "needs you", tone: "error" });
 });
 
 test("isRunDone recognises finished compose + resume runs", () => {

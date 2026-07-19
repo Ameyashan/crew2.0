@@ -27,6 +27,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getProfile } from "@/lib/profile";
 import { runWithUser } from "@/lib/user-context";
 import { agentEnabled, parseAgents } from "@/lib/agent-selection";
+import type { RunSink, DrainableSink } from "./sink";
 
 // The inputs a run needs to execute, captured on the compose_runs row at POST
 // time so a fresh worker invocation can re-run with no client involvement.
@@ -43,88 +44,6 @@ export type RunPayload = {
   picked?: { name: string; role: string | null; company: string | null; linkedin: string | null } | null;
   job_context?: { role: string | null; company: string | null } | null;
 };
-
-// Where pipeline events go. `emit` mirrors the old `send()`; `heartbeat` marks
-// the run alive without adding a visible step (used at step boundaries).
-export type RunSink = {
-  emit: (evt: unknown) => void;
-};
-
-// A sink that appends events to compose_runs.steps and keeps heartbeat_at fresh,
-// throttled to at most one write per second (forced on meaningful transitions)
-// so the per-char résumé progress can't hammer Postgres. The client observes
-// these by polling /api/compose/history/[id].
-export function makeDbSink(composeRunId: string): RunSink {
-  const steps: unknown[] = [];
-  let lastFlush = 0;
-  let pending: Promise<void> | null = null;
-  let dirty = false;
-
-  const flush = async () => {
-    dirty = false;
-    lastFlush = nowMs();
-    try {
-      await supabaseAdmin()
-        .from("compose_runs")
-        .update({ steps, heartbeat_at: new Date().toISOString() })
-        .eq("id", composeRunId)
-        .eq("outcome", "in_flight");
-    } catch (e) {
-      console.error("[compose_runs] steps flush failed", e);
-    }
-  };
-
-  const forceTypes = new Set(["compose_run", "candidates", "complete", "error", "saved", "needs_job_text", "person_saved", "contact_meta", "needs_disambiguation"]);
-  const isForced = (evt: unknown) => {
-    const t = (evt as { type?: string; status?: string })?.type;
-    if (t && forceTypes.has(t)) return true;
-    // A step reaching a terminal status is worth flushing immediately so the
-    // observer's bar snaps to done rather than waiting out the throttle.
-    if (t === "step") {
-      const s = (evt as { status?: string }).status;
-      return s === "done" || s === "error" || s === "skipped";
-    }
-    return false;
-  };
-
-  return {
-    emit(evt) {
-      steps.push(evt);
-      dirty = true;
-      const due = nowMs() - lastFlush >= 1000;
-      if (isForced(evt) || due) {
-        // Serialize flushes; coalesce anything that piles up behind the current one.
-        pending = (pending ?? Promise.resolve()).then(flush);
-      }
-    },
-    // Exposed for the finalizer to drain the last events before the terminal write.
-    _drain: async () => {
-      if (dirty) pending = (pending ?? Promise.resolve()).then(flush);
-      if (pending) await pending;
-    },
-    _steps: steps,
-  } as RunSink & { _drain: () => Promise<void>; _steps: unknown[] };
-}
-
-// A sink that enqueues each event as an SSE `data:` frame — the re-pick path,
-// so pickCandidate reads the same stream it always has.
-export function makeStreamSink(controller: ReadableStreamDefaultController, encoder: TextEncoder): RunSink {
-  return {
-    emit(evt) {
-      try {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(evt)}\n\n`));
-      } catch {
-        // Stream already closed/cancelled — drop the event rather than throw.
-      }
-    },
-  };
-}
-
-function nowMs(): number {
-  // Date.now via a Date instance keeps this file usable from contexts that stub
-  // Date.now; the value is only used for write throttling.
-  return new Date().getTime();
-}
 
 type Contact = { person: unknown; enrichment: unknown; drafts: unknown[]; personId: string | null; draftId: string | null; sameAsPoster?: boolean };
 
@@ -693,9 +612,9 @@ export async function runPipeline(composeRunId: string, sink: RunSink): Promise<
         : null;
       // Drain any buffered step writes before the terminal write so the observer
       // never sees `complete` land before the steps that preceded it.
-      const drain = (sink as RunSink & { _drain?: () => Promise<void> })._drain;
+      const drain = (sink as Partial<DrainableSink>)._drain;
       if (drain) await drain().catch(() => {});
-      const steps = (sink as RunSink & { _steps?: unknown[] })._steps ?? [];
+      const steps = (sink as Partial<DrainableSink>)._steps ?? [];
       await finalizeRun(composeRunId, userId, {
         outcome: runOutcome,
         error: runError,

@@ -36,10 +36,10 @@ import {
 } from "./run-view-logic.ts";
 
 // ── Status chip relabel ──────────────────────────────────────────────────────
-test("runStatusChip maps the 4-state machine to RUNNING/DONE/NEEDS-YOU", () => {
+test("runStatusChip maps the 4-state machine to RUNNING/READY/NEEDS-YOU", () => {
   assert.deepEqual(runStatusChip("parsing"), { label: "RUNNING", tone: "running", pulse: true });
   assert.deepEqual(runStatusChip("working"), { label: "RUNNING", tone: "running", pulse: true });
-  assert.deepEqual(runStatusChip("done"), { label: "DONE", tone: "done", pulse: false });
+  assert.deepEqual(runStatusChip("done"), { label: "READY", tone: "done", pulse: false });
   assert.deepEqual(runStatusChip("error"), { label: "NEEDS YOU", tone: "attention", pulse: false });
 });
 
@@ -49,7 +49,7 @@ test("runStatusChip: working + reconnecting swaps the label but stays a pulsing 
   assert.equal(chip.tone, "running");
   assert.equal(chip.pulse, true);
   // reconnecting only matters while working
-  assert.equal(runStatusChip("done", { reconnecting: true }).label, "DONE");
+  assert.equal(runStatusChip("done", { reconnecting: true }).label, "READY");
 });
 
 test("runStatusChip: unknown/nullish stage degrades to a running chip", () => {
