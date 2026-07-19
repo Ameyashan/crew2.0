@@ -194,20 +194,41 @@ export interface FeedFilters {
   sponsorsVisa: boolean;
   remote: boolean;
   compListed: boolean;
+  // Free-text / picked location. Empty string = no location filter. Matched as a
+  // case-insensitive substring against the job's location string, so both a
+  // dropdown pick ("Remote", "San Francisco") and typed text ("benga") work.
+  location: string;
 }
 
-export const NO_FILTERS: FeedFilters = { sponsorsVisa: false, remote: false, compListed: false };
+export const NO_FILTERS: FeedFilters = {
+  sponsorsVisa: false,
+  remote: false,
+  compListed: false,
+  location: "",
+};
 
 interface FilterableJob {
   visa_confidence: VisaConfidence | null;
   remote_type: string;
   compensation: string | null;
+  location: string | null;
 }
 
 export function jobPassesFilters(job: FilterableJob, f: FeedFilters): boolean {
   if (f.sponsorsVisa && visaKind(job.visa_confidence) !== "sponsors") return false;
   if (f.remote && !(job.remote_type === "remote" || job.remote_type === "hybrid")) return false;
   if (f.compListed && !compDisplay(job.compensation).listed) return false;
+  const needle = f.location.trim().toLowerCase();
+  if (needle) {
+    // "Remote" is a work-type, not a place, so also honor a remote-typed job when
+    // the user filters by "remote" even if its location string omits the word.
+    const isRemoteQuery = needle === "remote";
+    const hay = (job.location ?? "").toLowerCase();
+    const matches =
+      hay.includes(needle) ||
+      (isRemoteQuery && (job.remote_type === "remote" || job.remote_type === "hybrid"));
+    if (!matches) return false;
+  }
   return true;
 }
 

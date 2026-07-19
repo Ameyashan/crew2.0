@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
 import { TOKENS, RADII } from "@/components/paper/tokens";
@@ -19,6 +19,21 @@ import {
 import { sectorLabel } from "@/lib/jobs/catalog/sectors";
 import { CompanyLogo } from "@/components/paper/CompanyLogo";
 import type { FeedItem, PreferencesDTO } from "@/lib/jobs/types";
+
+// The boolean (toggle) filter keys — `location` is free text and is set
+// separately, so `toggle()` is scoped to just these.
+type BooleanFilterKey = "sponsorsVisa" | "remote" | "compListed";
+
+// Suggested locations for the filter datalist, on top of whatever's in the feed.
+const MAJOR_US_CITIES = [
+  "San Francisco, CA",
+  "New York, NY",
+  "Seattle, WA",
+  "Austin, TX",
+  "Los Angeles, CA",
+  "Boston, MA",
+  "Chicago, IL",
+];
 
 // A single filter pill (visa / remote / comp). Active = ink bg, paper text.
 function FilterPill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
@@ -83,58 +98,168 @@ function QuietPill({
   );
 }
 
-function JobCard({ item, onOpen }: { item: FeedItem; onOpen: () => void }) {
+function JobCard({ item, isMobile, onOpen }: { item: FeedItem; isMobile: boolean; onOpen: () => void }) {
   const [hover, setHover] = useState(false);
   const posted = postedAgo(item.posted_date, item.posted_date_approx);
   const comp = compDisplay(item.compensation);
   const fit = fitColors(item.score);
   const visaColors = visaChipColors(item.visa_confidence);
 
-  return (
+  // Shared pieces so the mobile and desktop layouts stay in sync.
+  const fitBox = (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
       style={{
-        background: TOKENS.card,
-        border: `1px solid ${hover ? TOKENS.faint : TOKENS.lineSoft}`,
-        borderRadius: RADII.card,
-        boxShadow: hover ? "0 2px 12px rgba(60,50,30,.07)" : "none",
-        padding: "20px 24px",
-        display: "flex",
-        gap: 20,
-        cursor: "pointer",
-        transition: "border-color .15s ease, box-shadow .15s ease",
+        border: `1px solid ${fit.border}`,
+        color: fit.color,
+        borderRadius: RADII.button,
+        padding: "9px 11px",
+        textAlign: "center",
       }}
     >
+      <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontWeight: 500, fontSize: 17, lineHeight: 1 }}>
+        {item.score}
+      </div>
+      <div
+        style={{
+          fontFamily: PAPER_FONTS_V2.mono,
+          fontWeight: 500,
+          fontSize: 8.5,
+          lineHeight: 1,
+          letterSpacing: ".1em",
+          marginTop: 4,
+        }}
+      >
+        FIT
+      </div>
+    </div>
+  );
+
+  const visaChip = (
+    <span
+      style={{
+        fontFamily: PAPER_FONTS_V2.mono,
+        fontWeight: 500,
+        fontSize: 10,
+        lineHeight: 1,
+        color: visaColors.color,
+        background: visaColors.bg,
+        borderRadius: 4,
+        padding: "5px 8px",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {visaChipLabel(item.visa_confidence)}
+    </span>
+  );
+
+  const companyName = (
+    <span
+      style={{
+        fontFamily: PAPER_FONTS_V2.mono,
+        fontWeight: 500,
+        fontSize: 11,
+        lineHeight: 1,
+        letterSpacing: ".1em",
+        color: TOKENS.muted,
+      }}
+    >
+      {item.company}
+    </span>
+  );
+  const postedLabel = posted && (
+    <span style={{ fontFamily: "system-ui, sans-serif", fontSize: 11, lineHeight: 1, color: TOKENS.faint }}>
+      posted {posted}
+    </span>
+  );
+  const metaLine = (
+    <div style={{ fontFamily: "system-ui, sans-serif", fontSize: 12.5, lineHeight: 1.5, color: TOKENS.muted }}>
+      {item.location ? `${item.location} · ` : ""}
+      <span style={{ color: comp.listed ? TOKENS.green : TOKENS.faint }}>{comp.label}</span>
+    </div>
+  );
+  const reasons = item.reasons && (
+    <div
+      style={{
+        fontFamily: PAPER_FONTS_V2.serif,
+        fontStyle: "italic",
+        fontSize: 14,
+        lineHeight: 1.55,
+        color: TOKENS.muted2,
+        marginTop: isMobile ? 0 : 9,
+      }}
+    >
+      {item.reasons}
+    </div>
+  );
+
+  const cardBase = {
+    background: TOKENS.card,
+    border: `1px solid ${hover ? TOKENS.faint : TOKENS.lineSoft}`,
+    borderRadius: RADII.card,
+    boxShadow: hover ? "0 2px 12px rgba(60,50,30,.07)" : "none",
+    cursor: "pointer",
+    transition: "border-color .15s ease, box-shadow .15s ease",
+  } as const;
+
+  const interactions = {
+    role: "button" as const,
+    tabIndex: 0,
+    onClick: onOpen,
+    onMouseEnter: () => setHover(true),
+    onMouseLeave: () => setHover(false),
+    onKeyDown: (e: KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onOpen();
+      }
+    },
+  };
+
+  if (isMobile) {
+    // Stacked layout: a compact company/posted line, then the title beside the
+    // FIT score on one row, then the location and "why it matches" spanning the
+    // full card width.
+    return (
+      <div {...interactions} style={{ ...cardBase, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <CompanyLogo company={item.company} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+            {companyName}
+            {postedLabel}
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div
+            style={{
+              flex: 1,
+              minWidth: 0,
+              fontFamily: PAPER_FONTS_V2.serif,
+              fontWeight: 400,
+              fontSize: 19,
+              lineHeight: 1.3,
+              color: TOKENS.ink,
+            }}
+          >
+            {item.title}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flex: "none" }}>
+            {fitBox}
+            {visaChip}
+          </div>
+        </div>
+        {metaLine}
+        {reasons}
+      </div>
+    );
+  }
+
+  return (
+    <div {...interactions} style={{ ...cardBase, padding: "20px 24px", display: "flex", gap: 20 }}>
       <CompanyLogo company={item.company} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-          <span
-            style={{
-              fontFamily: PAPER_FONTS_V2.mono,
-              fontWeight: 500,
-              fontSize: 11,
-              lineHeight: 1,
-              letterSpacing: ".1em",
-              color: TOKENS.muted,
-            }}
-          >
-            {item.company}
-          </span>
-          {posted && (
-            <span style={{ fontFamily: "system-ui, sans-serif", fontSize: 11, lineHeight: 1, color: TOKENS.faint }}>
-              posted {posted}
-            </span>
-          )}
+          {companyName}
+          {postedLabel}
         </div>
         <div
           style={{
@@ -148,66 +273,12 @@ function JobCard({ item, onOpen }: { item: FeedItem; onOpen: () => void }) {
         >
           {item.title}
         </div>
-        <div style={{ fontFamily: "system-ui, sans-serif", fontSize: 12.5, lineHeight: 1.5, color: TOKENS.muted }}>
-          {item.location ? `${item.location} · ` : ""}
-          <span style={{ color: comp.listed ? TOKENS.green : TOKENS.faint }}>{comp.label}</span>
-        </div>
-        {item.reasons && (
-          <div
-            style={{
-              fontFamily: PAPER_FONTS_V2.serif,
-              fontStyle: "italic",
-              fontSize: 14,
-              lineHeight: 1.55,
-              color: TOKENS.muted2,
-              marginTop: 9,
-            }}
-          >
-            {item.reasons}
-          </div>
-        )}
+        {metaLine}
+        {reasons}
       </div>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flex: "none" }}>
-        <div
-          style={{
-            border: `1px solid ${fit.border}`,
-            color: fit.color,
-            borderRadius: RADII.button,
-            padding: "9px 11px",
-            textAlign: "center",
-          }}
-        >
-          <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontWeight: 500, fontSize: 17, lineHeight: 1 }}>
-            {item.score}
-          </div>
-          <div
-            style={{
-              fontFamily: PAPER_FONTS_V2.mono,
-              fontWeight: 500,
-              fontSize: 8.5,
-              lineHeight: 1,
-              letterSpacing: ".1em",
-              marginTop: 4,
-            }}
-          >
-            FIT
-          </div>
-        </div>
-        <span
-          style={{
-            fontFamily: PAPER_FONTS_V2.mono,
-            fontWeight: 500,
-            fontSize: 10,
-            lineHeight: 1,
-            color: visaColors.color,
-            background: visaColors.bg,
-            borderRadius: 4,
-            padding: "5px 8px",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {visaChipLabel(item.visa_confidence)}
-        </span>
+        {fitBox}
+        {visaChip}
       </div>
     </div>
   );
@@ -301,9 +372,27 @@ export default function JobsFeedPage() {
     };
   }, [fetchFeed, applyFeed, refresh]);
 
-  const toggle = (key: keyof FeedFilters) => setFilters((f) => ({ ...f, [key]: !f[key] }));
+  const toggle = (key: BooleanFilterKey) => setFilters((f) => ({ ...f, [key]: !f[key] }));
 
-  const visible = useMemo(() => (jobs ? filterJobs(jobs, filters) : []), [jobs, filters]);
+  // Filter, then sort by FIT score descending. The feed already arrives
+  // score-ordered from the server, but ties break arbitrarily there (which can
+  // look alphabetical); sorting here makes the order explicit and stable
+  // (Array.sort is stable, so equal scores keep server order).
+  const visible = useMemo(() => {
+    const filtered = jobs ? filterJobs(jobs, filters) : [];
+    return [...filtered].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  }, [jobs, filters]);
+  // Location suggestions for the filter's datalist: the distinct locations
+  // actually in the feed, plus major US cities and Remote. The input still
+  // accepts free text, so this is a convenience list, not a hard constraint.
+  const locationOptions = useMemo(() => {
+    const set = new Set<string>(["Remote"]);
+    (jobs ?? []).forEach((j) => {
+      if (j.location) set.add(j.location);
+    });
+    MAJOR_US_CITIES.forEach((c) => set.add(c));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [jobs]);
   const total = jobs?.length ?? 0;
   const goal = goalPhrase((prefs?.interests ?? []).map(sectorLabel));
 
@@ -376,6 +465,53 @@ export default function JobsFeedPage() {
           <span style={{ width: 1, height: 18, background: TOKENS.line, margin: "0 4px" }} />
           <FilterPill label="Remote-friendly" active={filters.remote} onClick={() => toggle("remote")} />
           <FilterPill label="Comp listed" active={filters.compListed} onClick={() => toggle("compListed")} />
+          <span style={{ width: 1, height: 18, background: TOKENS.line, margin: "0 4px" }} />
+          <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+            <input
+              list="feed-locations"
+              value={filters.location}
+              onChange={(e) => setFilters((f) => ({ ...f, location: e.target.value }))}
+              placeholder="Location…"
+              aria-label="Filter by location"
+              style={{
+                width: 150,
+                boxSizing: "border-box",
+                padding: filters.location ? "6px 24px 6px 12px" : "6px 12px",
+                borderRadius: RADII.pill,
+                border: `1px solid ${filters.location ? TOKENS.ink : TOKENS.line}`,
+                background: TOKENS.card,
+                color: TOKENS.ink,
+                fontFamily: PAPER_FONTS_V2.mono,
+                fontSize: 12.5,
+                outline: "none",
+              }}
+            />
+            {filters.location && (
+              <button
+                type="button"
+                aria-label="Clear location filter"
+                onClick={() => setFilters((f) => ({ ...f, location: "" }))}
+                style={{
+                  position: "absolute",
+                  right: 8,
+                  background: "transparent",
+                  border: "none",
+                  color: TOKENS.muted,
+                  fontSize: 14,
+                  lineHeight: 1,
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                ×
+              </button>
+            )}
+            <datalist id="feed-locations">
+              {locationOptions.map((loc) => (
+                <option key={loc} value={loc} />
+              ))}
+            </datalist>
+          </div>
         </div>
       )}
 
@@ -498,6 +634,7 @@ export default function JobsFeedPage() {
               <JobCard
                 key={item.match_id || item.job_id}
                 item={item}
+                isMobile={isMobile}
                 onOpen={() => router.push(`/app/jobs/${item.job_id}`)}
               />
             ))}
