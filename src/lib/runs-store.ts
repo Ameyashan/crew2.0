@@ -116,6 +116,11 @@ export type Run = {
   screenshotPersonName?: string | null;
   screenshotRole?: string | null;
   screenshotCompany?: string | null;
+  screenshotTeam?: string | null;
+  // True when the named poster is hiring for their own team — the apply pipeline
+  // then treats the poster as the primary hiring manager (drafts for them) and
+  // only sources the org chart if the poster can't be confirmed.
+  screenshotPosterIsHM?: boolean;
   // Dual-contact results: each slot holds its own research + email + drafts. The
   // package card toggles between them. `sameAsPoster` marks a hiring-manager slot
   // that collapsed into the poster (they're the same person).
@@ -524,6 +529,8 @@ export function startImageRun(
           : null;
       const detRole = typeof data.role === "string" && data.role.trim() ? data.role.trim() : null;
       const detCompany = typeof data.company === "string" && data.company.trim() ? data.company.trim() : null;
+      const detTeam = typeof data.team === "string" && data.team.trim() ? data.team.trim() : null;
+      const posterIsHM = data.poster_is_hiring_manager === true && !!personName;
 
       // A hiring-post screenshot runs the JOB flow (résumé + poster + hiring
       // manager) whenever there's something to act on — a URL, a role+company, or
@@ -568,6 +575,8 @@ export function startImageRun(
         screenshotPersonName: personName,
         screenshotRole: detRole,
         screenshotCompany: detCompany,
+        screenshotTeam: detTeam,
+        screenshotPosterIsHM: kind === "job" ? posterIsHM : false,
         stage: "working",
       }));
       launch(id);
@@ -1499,6 +1508,10 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           person_name: run.screenshotPersonName || undefined,
           detected_role: run.screenshotRole || undefined,
           detected_company: run.screenshotCompany || undefined,
+          detected_team: run.screenshotTeam || undefined,
+          // When the poster is hiring for their own team, draft for them directly
+          // and only source the org chart as a fallback (server-side).
+          poster_is_hiring_manager: run.screenshotPosterIsHM || undefined,
           // The stored screenshot id — the server re-loads the image to feed the
           // poster's research as disambiguation context.
           screenshot_id: run.screenshotId || undefined,
