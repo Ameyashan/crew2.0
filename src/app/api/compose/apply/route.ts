@@ -44,6 +44,8 @@ export async function POST(req: NextRequest) {
   const posterName = body?.person_name ? body.person_name.toString().trim() : "";
   const detectedRole = body?.detected_role ? body.detected_role.toString().trim() : "";
   const detectedCompany = body?.detected_company ? body.detected_company.toString().trim() : "";
+  const detectedTeam = body?.detected_team ? body.detected_team.toString().trim() : "";
+  const posterIsHiringManager = body?.poster_is_hiring_manager === true;
   const screenshotId = body?.screenshot_id ? body.screenshot_id.toString().trim() : "";
   const agents = parseAgents(body?.agents);
   const picked = body?.picked
@@ -97,6 +99,8 @@ export async function POST(req: NextRequest) {
     person_name: posterName || undefined,
     detected_role: detectedRole || undefined,
     detected_company: detectedCompany || undefined,
+    detected_team: detectedTeam || undefined,
+    poster_is_hiring_manager: posterIsHiringManager || undefined,
     screenshot_id: screenshotId || undefined,
     agents,
     picked,

@@ -39,6 +39,8 @@ export type RunPayload = {
   person_name?: string;
   detected_role?: string;
   detected_company?: string;
+  detected_team?: string;
+  poster_is_hiring_manager?: boolean;
   screenshot_id?: string;
   agents?: unknown;
   picked?: { name: string; role: string | null; company: string | null; linkedin: string | null } | null;
@@ -111,6 +113,8 @@ export async function runPipeline(composeRunId: string, sink: RunSink): Promise<
     const posterName = (p.person_name ?? "").toString();
     const detectedRole = (p.detected_role ?? "").toString();
     const detectedCompany = (p.detected_company ?? "").toString();
+    const detectedTeam = (p.detected_team ?? "").toString();
+    const posterIsHiringManager = p.poster_is_hiring_manager === true && !!posterName;
     const screenshotId = (p.screenshot_id ?? "").toString();
     const agents = parseAgents(p.agents);
     const picked = p.picked ?? null;
@@ -347,17 +351,24 @@ export async function runPipeline(composeRunId: string, sink: RunSink): Promise<
             : null;
           const role = meta?.role ?? (detectedRole || null);
           const company = meta?.company ?? (detectedCompany || null);
-          const team = meta?.team ?? openingTeam ?? null;
+          // The screenshot's own "…my <team> team" is the most specific signal we
+          // have; only let a parsed opening's team override it, never null it out.
+          const team = meta?.team ?? openingTeam ?? (detectedTeam || null);
           const composeIntent = intent || [role, company].filter(Boolean).join(" at ") || undefined;
           const jc = { role, company };
           const samePerson = (n?: string | null) => !!posterName && !!n && n.trim().toLowerCase() === posterName.trim().toLowerCase();
 
-          const posterTask = posterName
-            ? (async () =>
-                runContactSlot("poster", { text: posterName, intent: composeIntent, intent_image: await loadScreenshotImage(), job_context: jc }))()
-            : Promise.resolve();
+          const posterTask = () =>
+            posterName
+              ? (async () =>
+                  runContactSlot("poster", { text: posterName, intent: composeIntent, intent_image: await loadScreenshotImage(), job_context: jc }))()
+              : Promise.resolve();
 
-          const hmTask = (async () => {
+          // Source the org chart for a hiring manager and reach out to the top
+          // candidate who isn't the poster. Used both as the second contact on a
+          // plain hiring post and as the FALLBACK when the poster (who told us
+          // they're the manager) couldn't be confirmed.
+          const hmTask = async () => {
             let candidates: Awaited<ReturnType<typeof sourceHiringManagers>>["candidates"] = [];
             if (company) {
               try {
@@ -387,9 +398,23 @@ export async function runPipeline(composeRunId: string, sink: RunSink): Promise<
               picked: { name: top.name, role: top.role ?? null, company: top.company ?? null, linkedin: top.linkedin ?? null },
               job_context: jc,
             });
-          })();
+          };
 
-          await Promise.allSettled([posterTask, hmTask]);
+          // "I'm hiring for my team" post: the named poster IS the hiring manager,
+          // so reach out to THEM — draft for the poster directly and skip the
+          // org-chart search entirely. Climbing the org chart for a separate
+          // "who decides" is exactly what surfaced unrelated VPs before. We only
+          // fall back to sourcing a manager if the poster can't be confirmed.
+          if (posterIsHiringManager) {
+            await posterTask();
+            const posterConfirmed = !!(collectedContacts["poster"]?.person as { name?: string } | null)?.name;
+            if (!posterConfirmed) await hmTask();
+            return;
+          }
+
+          // Plain hiring post: pursue the poster and a sourced hiring manager in
+          // parallel, each as its own contact.
+          await Promise.allSettled([posterTask(), hmTask()]);
         };
 
         const [resumeSettled] = await Promise.allSettled([resumeTask(), peopleTask(), runQuestionsDetection({ url: openingUrl })]);

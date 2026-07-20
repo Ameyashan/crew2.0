@@ -353,7 +353,13 @@ export interface IdentifyImageResult {
   job_url: string | null; // a public posting URL if one is legible in the image
   company: string | null;
   role: string | null;
+  team: string | null;    // the team/org the role sits in, if named (scopes the hiring-manager search)
   person_name: string | null;
+  // True when the NAMED poster is hiring for their OWN team — a first-person
+  // "I'm hiring for my team" post. In that case the poster IS the hiring manager
+  // and the right person to reach out to, so the pipeline drafts for them
+  // directly instead of sourcing the org chart for a separate manager.
+  poster_is_hiring_manager: boolean;
   intent: string | null;  // a disambiguation/intent line synthesized from the image
   summary: string;        // one short human line: what we saw
   raw: string;
@@ -369,7 +375,9 @@ Then extract whatever is legibly present:
 - job_url: a public posting URL if one is fully visible and readable (greenhouse/lever/ashby/workday/company careers). null if not clearly legible or it's a login-walled board (LinkedIn/Indeed app views).
 - company: the hiring company (job) or the person's company.
 - role: the job title (job) or the person's title.
+- team: the specific team or org the role sits in, if the post names one (e.g. "Tech Evangelism", "Applied AI", "Payments Infra"). null if not stated.
 - person_name: a specific person's name if one is shown (the poster/recruiter on a job, or the profile subject). null if no individual is named.
+- poster_is_hiring_manager: true ONLY when a NAMED individual is announcing, in the first person, that THEY are hiring for THEIR OWN team — phrasing like "I am hiring", "I'm looking for someone to join my team", "come work with me/on my team", "we're growing my team". In that case the poster is the hiring manager and the person to contact. Set false for third-party reposts, agency/recruiter posts about someone else's team, generic careers-page or job-board screenshots, and any post where no individual is clearly the hiring manager for their own team.
 
 Build "query" — the single best string to search next:
 - person: the person's name (add company if shown, e.g. "Maya Rao Ramp"), or their @handle.
@@ -382,7 +390,7 @@ Build "intent": one short line capturing why they'd reach out, e.g. "Applying fo
 "summary": one plain sentence describing what the screenshot shows.
 
 Output strict JSON only, no prose, no markdown fences:
-{ "kind": "job" | "person", "query": string, "job_url": string|null, "company": string|null, "role": string|null, "person_name": string|null, "intent": string|null, "summary": string }`;
+{ "kind": "job" | "person", "query": string, "job_url": string|null, "company": string|null, "role": string|null, "team": string|null, "person_name": string|null, "poster_is_hiring_manager": boolean, "intent": string|null, "summary": string }`;
 
 export async function identifyFromImage(
   input: IdentifyImageInput
@@ -464,7 +472,11 @@ export async function identifyFromImage(
   const job_url = trimOrNull(parsed.job_url);
   const company = trimOrNull(parsed.company);
   const role = trimOrNull(parsed.role);
+  const team = trimOrNull(parsed.team);
   const person_name = trimOrNull(parsed.person_name);
+  // Only meaningful when a person is actually named — a poster can't be the
+  // hiring manager if we couldn't read who they are.
+  const poster_is_hiring_manager = parsed.poster_is_hiring_manager === true && !!person_name;
 
   // Never hand back an empty query — synthesize a sensible fallback so the
   // downstream pipeline always has something to run.
@@ -482,7 +494,9 @@ export async function identifyFromImage(
     job_url,
     company,
     role,
+    team,
     person_name,
+    poster_is_hiring_manager,
     intent: trimOrNull(parsed.intent) || input.intent?.trim() || null,
     summary: trimOrNull(parsed.summary) || "A screenshot you attached.",
     raw: text,
