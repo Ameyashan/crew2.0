@@ -289,6 +289,7 @@ export default function JobsFeedPage() {
   const router = useRouter();
   const [jobs, setJobs] = useState<FeedItem[] | null>(null);
   const [prefs, setPrefs] = useState<PreferencesDTO | null>(null);
+  const [belowBar, setBelowBar] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
   const [refreshing, setRefreshing] = useState(false);
@@ -299,13 +300,14 @@ export default function JobsFeedPage() {
 
   const fetchFeed = useCallback(() => fetch("/api/jobs/feed").then((r) => r.json()), []);
 
-  const applyFeed = useCallback((j: { error?: string; jobs?: FeedItem[] }) => {
+  const applyFeed = useCallback((j: { error?: string; jobs?: FeedItem[]; fallback?: boolean }) => {
     if (j.error) {
       setError(j.error);
       setJobs([]);
     } else {
       setError(null);
       setJobs(Array.isArray(j.jobs) ? j.jobs : []);
+      setBelowBar(j.fallback === true);
     }
   }, []);
 
@@ -374,14 +376,10 @@ export default function JobsFeedPage() {
 
   const toggle = (key: BooleanFilterKey) => setFilters((f) => ({ ...f, [key]: !f[key] }));
 
-  // Filter, then sort by FIT score descending. The feed already arrives
-  // score-ordered from the server, but ties break arbitrarily there (which can
-  // look alphabetical); sorting here makes the order explicit and stable
-  // (Array.sort is stable, so equal scores keep server order).
-  const visible = useMemo(() => {
-    const filtered = jobs ? filterJobs(jobs, filters) : [];
-    return [...filtered].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-  }, [jobs, filters]);
+  // Filter only — the server's order is deliberate (score-ranked, then spread
+  // across companies so one prolific board can't wall the feed); re-sorting by
+  // raw score here would clump those companies back together.
+  const visible = useMemo(() => (jobs ? filterJobs(jobs, filters) : []), [jobs, filters]);
   // Location suggestions for the filter's datalist: the distinct locations
   // actually in the feed, plus major US cities and Remote. The input still
   // accepts free text, so this is a convenience list, not a hard constraint.
@@ -512,6 +510,26 @@ export default function JobsFeedPage() {
               ))}
             </datalist>
           </div>
+        </div>
+      )}
+
+      {belowBar && jobs !== null && total > 0 && (
+        <div
+          style={{
+            fontFamily: PAPER_FONTS_V2.serif,
+            fontStyle: "italic",
+            fontSize: 13.5,
+            lineHeight: 1.5,
+            color: TOKENS.muted2,
+            border: `1px solid ${TOKENS.lineSoft}`,
+            background: TOKENS.cardWarm,
+            borderRadius: RADII.panelTight,
+            padding: "10px 14px",
+            marginBottom: 16,
+          }}
+        >
+          Nothing clears your fit bar right now, so these are the closest matches we have. Try Refresh, or broaden
+          your preferences to bring in stronger fits.
         </div>
       )}
 

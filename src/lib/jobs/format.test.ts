@@ -20,6 +20,7 @@ import {
   companyMonogram,
   jobPassesFilters,
   filterJobs,
+  diversifyByCompany,
   NO_FILTERS,
   type FeedFilters,
 } from "./format.ts";
@@ -203,4 +204,31 @@ test("filters compose (AND) and filterJobs applies across a list", () => {
   assert.equal(jobPassesFilters(bad, f), false);
   assert.deepEqual(filterJobs([good, bad], f), [good]);
   assert.equal(filterJobs([good, bad], NO_FILTERS).length, 2);
+});
+
+test("diversifyByCompany caps a flooding company and appends its overflow at the tail", () => {
+  const items = [
+    { company: "Databricks", id: 1 },
+    { company: "Databricks", id: 2 },
+    { company: "Databricks", id: 3 },
+    { company: "Stripe", id: 4 },
+    { company: "databricks", id: 5 }, // company match is case-insensitive
+    { company: "Figma", id: 6 },
+  ];
+  const out = diversifyByCompany(items, 2);
+  assert.deepEqual(
+    out.map((x) => x.id),
+    [1, 2, 4, 6, 3, 5],
+  );
+});
+
+test("diversifyByCompany keeps order when nothing exceeds the cap", () => {
+  const items = [
+    { company: "A", id: 1 },
+    { company: "B", id: 2 },
+    { company: "A", id: 3 },
+  ];
+  assert.deepEqual(diversifyByCompany(items, 2), items);
+  // Non-positive cap disables the reshuffle entirely.
+  assert.deepEqual(diversifyByCompany(items, 0), items);
 });
