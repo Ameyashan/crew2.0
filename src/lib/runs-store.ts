@@ -1472,37 +1472,18 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
 
   try {
     if (run.kind === "job") {
-      // ── job path ── stream /api/compose/apply (tailor + reach-out)
-      const collectedDrafts: unknown[] = [];
-      let collectedEnrichment: unknown = null;
-      let collectedPerson: unknown = null;
-      let collectedCandidates: unknown[] | null = null;
-      let bundle = { ats_score: null, ats_score_before: null, target_role: null, target_company: null, team: null, resume: null };
-      // A screenshot run carries its real URL in screenshotJobUrl (may be null —
-      // the server then searches for the opening). A typed run uses run.input.
+      // ── job path ── start a DURABLE run, then observe it. The pipeline now
+      // executes server-side in a background continuation (next/server `after()`)
+      // with a cron-worker backstop, so it finishes even if this connection dies
+      // (the classic mobile-background drop). The client only kicks it off and
+      // polls the persisted row — see observeRun.
       const jobUrl = run.fromScreenshot
         ? (run.screenshotJobUrl || "")
         : (run.input.match(/^https?:\/\//) ? run.input : `https://${run.input}`);
 
-      // Patch one contact slot ("poster" | "hiring_manager") on a dual-contact run.
-      const patchContact = (slot: string, partial: Partial<ContactData>) =>
-        patch(id, (r) => {
-          const contacts = { ...(r.contacts || {}) } as Record<string, ContactData>;
-          const cur = contacts[slot] || { person: null, enrichment: null, drafts: [] };
-          contacts[slot] = { ...cur, ...partial };
-          return { contacts };
-        });
-      const pushContactDraft = (slot: string, d: unknown) =>
-        patch(id, (r) => {
-          const contacts = { ...(r.contacts || {}) } as Record<string, ContactData>;
-          const cur = contacts[slot] || { person: null, enrichment: null, drafts: [] };
-          contacts[slot] = { ...cur, drafts: [...(cur.drafts || []), d] };
-          return { contacts };
-        });
-
       const res = await fetch("/api/compose/apply", {
         method: "POST",
-        headers: { "content-type": "application/json", accept: "text/event-stream" },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           job_url: jobUrl || undefined,
           intent: run.intent || undefined,
@@ -1519,371 +1500,54 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
           detected_role: run.screenshotRole || undefined,
           detected_company: run.screenshotCompany || undefined,
           // The stored screenshot id — the server re-loads the image to feed the
-          // poster's research as disambiguation context (so a common name still
-          // resolves to the right person instead of dead-ending).
+          // poster's research as disambiguation context.
           screenshot_id: run.screenshotId || undefined,
-          // Restored pre-login people/outreach results (see startRestoredRun):
-          // the server seeds these into the persisted bundle instead of re-running
-          // the people agents.
+          // Restored pre-login people/outreach results (see startRestoredRun).
           prior: run.priorResults || undefined,
         }),
         signal,
       });
-      if (!res.ok || !res.body) {
+      if (!res.ok) {
         if (res.status === 429) throw new Error(ANON_LIMIT_MESSAGE);
         throw new Error(`apply failed: ${res.status}`);
       }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const parts = buf.split("\n\n");
-        buf = parts.pop() || "";
-        for (const raw of parts) {
-          const line = raw.split("\n").find((l) => l.startsWith("data: "));
-          if (!line) continue;
-          let evt;
-          try {
-            evt = JSON.parse(line.slice(6));
-          } catch {
-            continue;
-          }
-          if (evt.type === "compose_run" && typeof evt.id === "string") {
-            setComposeRunId(id, evt.id, run);
-            continue;
-          }
-          if (evt.type === "needs_job_text") {
-            // Login-walled board (Work at a Startup): the run finishes with the
-            // résumé row prompting for a paste. Flag it so the view renders the
-            // paste-the-JD box that re-launches the crew off the pasted text.
-            patch(id, () => ({ needsJobText: { label: String(evt.label || "This board") } }));
-            continue;
-          }
-          if (evt.type === "activity" && typeof evt.id === "string" && typeof evt.label === "string") {
-            // A real sub-step caption the server derived from the agent's own
-            // work (e.g. a resume web_search, "matched to <company>").
-            patch(id, (r) => ({ activity: { ...(r.activity || {}), [evt.id]: evt.label } }));
-            continue;
-          }
-          if (evt.type === "progress" && evt.id === "resume") {
-            // Fine-grained tailoring signal (~chars of resume JSON written so
-            // far). Map onto the resume bar so it moves with real work instead
-            // of parking at 10% until done.
-            const chars = Number(evt.chars) || 0;
-            const bullets = Number(evt.bullets) || 0;
-            patch(id, (r) => ({
-              tailor: { chars, bullets },
-              // Real caption: the bullet count as the resume JSON streams in.
-              activity: {
-                ...(r.activity || {}),
-                resume: bullets > 0
-                  ? `writing your resume — ${bullets} bullet${bullets === 1 ? "" : "s"} so far`
-                  : "writing your resume",
-              },
-              progress: {
-                ...r.progress,
-                resume: Math.max(
-                  r.progress?.resume || 0,
-                  Math.min(PROGRESS_EASE_CEILING, 10 + Math.round((chars / 9000) * 78)),
-                ),
-              },
-            }));
-            continue;
-          }
-          if (evt.type === "step") {
-            const k = evt.id; // resume | person | email | outreach
-            if (evt.status === "start") patch(id, (r) => ({
-              progress: { ...r.progress, [k]: Math.max(r.progress?.[k] || 0, 10) },
-              activity: STEP_START_ACTIVITY[k]
-                ? { ...(r.activity || {}), [k]: STEP_START_ACTIVITY[k] }
-                : r.activity,
-            }));
-            else if (evt.status === "done" || evt.status === "skipped")
-              patch(id, (r) => ({ progress: { ...r.progress, [k]: 100 } }));
-            else if (evt.status === "error")
-              // Non-fatal: this agent failed but the rest of the crew keeps
-              // going. Close its bar and surface the message on its row.
-              patch(id, (r) => ({
-                progress: { ...r.progress, [k]: 100 },
-                stepErrors: { ...(r.stepErrors || {}), [k]: evt.message || "failed" },
-              }));
-            if (evt.slot) {
-              // Dual-contact run: route person/email/outreach into the slot.
-              if (k === "person" && evt.status === "done" && evt.data) patchContact(evt.slot, { person: evt.data });
-              if (k === "email" && evt.data) patchContact(evt.slot, { enrichment: evt.data });
-              if (k === "outreach" && evt.status === "done" && evt.data) pushContactDraft(evt.slot, evt.data);
-            } else {
-              // Single-target run: patch each agent's payload into the store the
-              // moment its event lands so the package streams in section-by-section
-              // instead of the user waiting on the slowest agent. The final patch
-              // below stays as a consolidation + the stage:"done" flip.
-              if (k === "resume" && evt.status === "done" && evt.data) {
-                bundle = { ...bundle, ...evt.data };
-                patch(id, (r) => ({
-                  parsed: {
-                    ...(r.parsed || {}),
-                    ...bundle,
-                    unparsed: false,
-                    role: bundle.target_role || r.parsed?.role,
-                    company: bundle.target_company || r.parsed?.company,
-                    team: bundle.team ?? r.parsed?.team,
-                    ats_score: bundle.ats_score ?? r.parsed?.ats_score,
-                    ats_score_before: bundle.ats_score_before ?? r.parsed?.ats_score_before,
-                    resume: bundle.resume ?? r.parsed?.resume,
-                  },
-                }));
-              }
-              if (k === "person" && evt.status === "done" && evt.data) {
-                collectedPerson = evt.data;
-                patch(id, () => ({ person: evt.data }));
-              }
-              if (k === "email" && evt.data) {
-                collectedEnrichment = evt.data;
-                patch(id, () => ({ enrichment: evt.data }));
-              }
-              if (k === "outreach" && evt.status === "done" && evt.data) {
-                collectedDrafts.push(evt.data);
-                patch(id, () => ({ drafts: [...collectedDrafts] }));
-              }
-              if (k === "application" && evt.status === "done") {
-                // Sawaal Jawaab detected the application's essay questions. Store
-                // them so the card can list them + offer "Draft answers".
-                const qs = Array.isArray(evt.data?.questions) ? evt.data.questions : [];
-                patch(id, () => ({ applicationQuestions: qs }));
-              }
-            }
-          } else if (evt.type === "saved") {
-            // The job_applications row id — forwarded to /api/compose/answers so
-            // drafted answers persist onto this application.
-            if (typeof evt.id === "string") patch(id, () => ({ savedApplicationId: evt.id }));
-          } else if (evt.type === "candidates") {
-            collectedCandidates = Array.isArray(evt.data) ? evt.data : [];
-            const n = collectedCandidates.length;
-            patch(id, (r) => ({
-              candidates: collectedCandidates,
-              // Real caption: how many hiring managers the search actually sourced.
-              activity: {
-                ...(r.activity || {}),
-                person: n > 0
-                  ? `found ${n} ${n === 1 ? "person" : "people"} — ranking who decides`
-                  : "no obvious contact yet — widening the search",
-              },
-            }));
-          } else if (evt.type === "contact_meta") {
-            // The hiring manager collapsed into the poster (same person).
-            if (evt.slot && evt.data?.sameAsPoster) patchContact(evt.slot, { sameAsPoster: true });
-          } else if (evt.type === "error") {
-            // Server-reported (terminal) error — persisted to compose_runs, so
-            // skip the reconnect poll and surface it straight away.
-            throw Object.assign(new Error(evt.message || "apply error"), { serverReported: true });
-          }
-        }
-      }
-      patch(id, (r) => ({
-        // If the user re-picked a different candidate while the résumé was still
-        // weaving, that pick now owns the person/email/drafts — don't let this
-        // final consolidation clobber it back to the originally-sourced contact.
-        drafts: r.repicked ? r.drafts : (collectedDrafts.length ? collectedDrafts : r.drafts),
-        enrichment: r.repicked ? r.enrichment : (collectedEnrichment || r.enrichment),
-        person: r.repicked ? r.person : (collectedPerson || r.person),
-        candidates: collectedCandidates ?? r.candidates,
-        // Seed the per-candidate cache with the originally-sourced best match, so
-        // switching back to it after picking an alternate restores instantly.
-        // (collectedPerson/Drafts always hold the best match, even after a
-        // re-pick; naturally no-ops for dual-contact runs where they stay empty.)
-        draftsByCandidate:
-          collectedPerson?.name && collectedDrafts.length
-            ? {
-                ...(r.draftsByCandidate || {}),
-                [normalizeCandidateKey(collectedPerson.name)]: {
-                  person: collectedPerson,
-                  enrichment: collectedEnrichment,
-                  drafts: collectedDrafts,
-                },
-              }
-            : r.draftsByCandidate,
-        // Map the API's target_role/target_company onto the card's role/company
-        // so a successful parse replaces the preview.
-        parsed: {
-          ...(r.parsed || {}),
-          ...bundle,
-          unparsed: false,
-          role: bundle.target_role || r.parsed?.role,
-          company: bundle.target_company || r.parsed?.company,
-          team: bundle.team ?? r.parsed?.team,
-          ats_score: bundle.ats_score ?? r.parsed?.ats_score,
-          ats_score_before: bundle.ats_score_before ?? r.parsed?.ats_score_before,
-          resume: bundle.resume ?? r.parsed?.resume,
-        },
-        // A re-pick may still be drafting — keep its in-flight bars if so.
-        progress: r.repicked && r.picking
-          ? { ...r.progress, resume: 100 }
-          : { resume: 100, person: 100, email: 100, outreach: 100 },
-        stage: "done",
-      }));
+      const started = await res.json().catch(() => null);
+      const composeRunId = started?.composeRunId;
+      if (!composeRunId) throw new Error("apply failed: no run id");
+      // Register for cross-reload recovery + history dedupe, then observe the
+      // persisted row until it settles.
+      setComposeRunId(id, composeRunId, run);
+      await observeRun(id, composeRunId, signal);
       return;
     }
 
-    // ── person path ── stream /api/compose (reach-out agent). Map SSE step
-    // events to the three progress keys the AgentRow expects.
-    const stepToKey: Record<string, string> = {
-      research: "person",
-      email_lookup: "email",
-      draft: "outreach",
-    };
-    const collectedDrafts: unknown[] = [];
-    let collectedEnrichment: unknown = null;
-    let collectedPerson: unknown = null;
-    let completed = false;
-
-    // When the run started from a screenshot, forward the raw image so the
-    // research agent can read role/company/handles straight off it (multipart).
-    // Otherwise the plain JSON body is enough.
-    let res: Response;
-    if (run.imageFile) {
-      const form = new FormData();
-      form.append("text", run.input);
-      if (run.intent) form.append("intent", run.intent);
-      if (picked) form.append("picked", JSON.stringify(picked));
-      if (run.screenshotId) form.append("screenshot_id", run.screenshotId);
-      if (run.selectedAgents) form.append("agents", JSON.stringify(run.selectedAgents));
-      form.append("intent_image", run.imageFile);
-      res = await fetch("/api/compose", {
-        method: "POST",
-        headers: { accept: "text/event-stream" },
-        body: form,
-        signal,
-      });
-    } else {
-      res = await fetch("/api/compose", {
-        method: "POST",
-        headers: { "content-type": "application/json", accept: "text/event-stream" },
-        body: JSON.stringify({
-          text: run.input,
-          intent: run.intent || undefined,
-          picked: picked || undefined,
-          screenshot_id: run.screenshotId || undefined,
-          agents: run.selectedAgents || undefined,
-        }),
-        signal,
-      });
-    }
-    if (!res.ok || !res.body) {
+    // ── person path ── start a DURABLE run on /api/compose, then observe it.
+    // Same decoupling as the job path: the reach-out pipeline runs server-side
+    // in a background continuation (after()) with a cron-worker backstop, so
+    // backgrounding no longer strands it. The screenshot image is reloaded
+    // server-side from its stored id — no raw File is forwarded.
+    const res = await fetch("/api/compose", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        text: run.input,
+        intent: run.intent || undefined,
+        picked: picked || undefined,
+        screenshot_id: run.screenshotId || undefined,
+        agents: run.selectedAgents || undefined,
+      }),
+      signal,
+    });
+    if (!res.ok) {
       if (res.status === 429) throw new Error(ANON_LIMIT_MESSAGE);
       throw new Error(`compose failed: ${res.status}`);
     }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = "";
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const parts = buf.split("\n\n");
-      buf = parts.pop() || "";
-      for (const raw of parts) {
-        const line = raw.split("\n").find((l) => l.startsWith("data: "));
-        if (!line) continue;
-        let evt;
-        try {
-          evt = JSON.parse(line.slice(6));
-        } catch {
-          continue;
-        }
-        if (evt.type === "compose_run" && typeof evt.id === "string") {
-          setComposeRunId(id, evt.id, run);
-          continue;
-        }
-        if (evt.type === "step") {
-          const key = stepToKey[evt.id];
-          if (key) {
-            if (evt.status === "start") patch(id, (r) => ({
-              progress: { ...r.progress, [key]: 10 },
-              activity: STEP_START_ACTIVITY[key]
-                ? { ...(r.activity || {}), [key]: STEP_START_ACTIVITY[key] }
-                : r.activity,
-            }));
-            else if (evt.status === "done" || evt.status === "skipped")
-              patch(id, (r) => ({ progress: { ...r.progress, [key]: 100 } }));
-            else if (evt.status === "error")
-              patch(id, (r) => ({
-                progress: { ...r.progress, [key]: 100 },
-                stepErrors: { ...(r.stepErrors || {}), [key]: evt.message || "failed" },
-              }));
-          }
-          // The research step carries the REAL researched person (name, role,
-          // company, links, context_lines) — surface it so the package card
-          // shows the actual human, not the prototype stub.
-          // Stream each piece into the run as it lands so the package fills in
-          // per-agent rather than all at once on the final "complete" event.
-          if (evt.id === "research" && evt.status === "done" && evt.data) {
-            collectedPerson = evt.data;
-            // Surface the intent research synthesized from the paste/screenshot so
-            // the run subline reflects what the draft is geared toward, without a
-            // reload. An intent the user supplied explicitly still wins.
-            const derivedIntent = (evt.data as { outreach_intent?: string | null })
-              .outreach_intent;
-            patch(id, (r) => ({
-              person: evt.data,
-              intent: r.intent || derivedIntent || undefined,
-            }));
-          }
-          if (evt.id === "email_lookup" && evt.data) {
-            collectedEnrichment = evt.data;
-            patch(id, () => ({ enrichment: evt.data }));
-          }
-          if (evt.id === "draft" && evt.status === "done" && evt.data) {
-            collectedDrafts.push(evt.data);
-            patch(id, () => ({ drafts: [...collectedDrafts] }));
-          }
-        } else if (evt.type === "kind_suggestion") {
-          // Server noticed the input is a job-board URL running down the person
-          // path — remember it so an eventual dead-end offers the job switch.
-          if (evt.suggest === "job") patch(id, () => ({ suggestedKind: "job" }));
-        } else if (evt.type === "needs_disambiguation") {
-          // Only claim there's a list to pick from when there actually is one.
-          // An empty list on a job-looking input means the person flow was
-          // handed a posting — offer the switch instead of a dead end.
-          const candidates = Array.isArray(evt.data) ? evt.data : [];
-          const suggestJob = candidates.length === 0 && detectKind(run.input) === "job";
-          patch(id, (r) => ({
-            stage: "error",
-            candidates: candidates.length ? candidates : null,
-            suggestedKind: suggestJob ? "job" : (r.suggestedKind ?? null),
-            error: candidates.length
-              ? "Multiple people matched — pick the right one below."
-              : (suggestJob || r.suggestedKind === "job")
-                ? "This looks like a job posting, not a person."
-                : "Couldn't identify a specific person from that input. Try a full name plus their company, or paste their LinkedIn/X profile link, then retry.",
-          }));
-          return;
-        } else if (evt.type === "complete") {
-          completed = true;
-          patch(id, (r) => ({
-            enrichment: collectedEnrichment || r.enrichment,
-            drafts: collectedDrafts.length ? collectedDrafts : r.drafts,
-            person: collectedPerson || r.person,
-            progress: { person: 100, email: 100, outreach: 100 },
-            stage: "done",
-          }));
-        } else if (evt.type === "error") {
-          throw Object.assign(new Error(evt.message || "compose error"), { serverReported: true });
-        }
-      }
-    }
-    // Some streams end without an explicit 'complete' event — fall through.
-    if (!completed && collectedDrafts.length) {
-      patch(id, (r) => ({
-        enrichment: collectedEnrichment || r.enrichment,
-        drafts: collectedDrafts,
-        person: collectedPerson || r.person,
-        progress: { person: 100, email: 100, outreach: 100 },
-        stage: "done",
-      }));
-    }
+    const started = await res.json().catch(() => null);
+    const composeRunId = started?.composeRunId;
+    if (!composeRunId) throw new Error("compose failed: no run id");
+    setComposeRunId(id, composeRunId, run);
+    await observePersonRun(id, composeRunId, run, signal);
+    return;
   } catch (e) {
     if (signal.aborted) return; // dismissed/cleared — not an error
     if (navigatingForAuth) return; // page is leaving for OAuth — not a real failure
@@ -1910,6 +1574,266 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
   }
 }
 
+// Observe a durable PERSON run by polling its persisted row until it settles —
+// the reach-out twin of observeRun. Drives the person/email/outreach bars off
+// the row's `steps` (reach-out emits research/email_lookup/draft ids), then
+// reconciles the finished package from `output` via applyPersisted on terminal.
+async function observePersonRun(id: string, composeRunId: string, run: Run, signal: AbortSignal) {
+  const stepToKey: Record<string, string> = { research: "person", email_lookup: "email", draft: "outreach" };
+  let cursor = 0;
+
+  const applyStep = (evt: { type?: string; id?: string; status?: string; suggest?: string; data?: unknown; message?: string }) => {
+    if (evt.type === "step") {
+      const key = stepToKey[evt.id!];
+      if (key) {
+        if (evt.status === "start") patch(id, (r) => ({
+          progress: { ...r.progress, [key]: 10 },
+          activity: STEP_START_ACTIVITY[key] ? { ...(r.activity || {}), [key]: STEP_START_ACTIVITY[key] } : r.activity,
+        }));
+        else if (evt.status === "done" || evt.status === "skipped")
+          patch(id, (r) => ({ progress: { ...r.progress, [key]: 100 } }));
+        else if (evt.status === "error")
+          patch(id, (r) => ({ progress: { ...r.progress, [key]: 100 }, stepErrors: { ...(r.stepErrors || {}), [key]: evt.message || "failed" } }));
+      }
+      if (evt.id === "research" && evt.status === "done" && evt.data) {
+        const derivedIntent = (evt.data as { outreach_intent?: string | null }).outreach_intent;
+        patch(id, (r) => ({ person: evt.data, intent: r.intent || derivedIntent || undefined }));
+      }
+      if (evt.id === "email_lookup" && evt.data) patch(id, () => ({ enrichment: evt.data }));
+      if (evt.id === "draft" && evt.status === "done" && evt.data)
+        patch(id, (r) => ({ drafts: [...(r.drafts || []), evt.data] }));
+      return;
+    }
+    if (evt.type === "kind_suggestion") {
+      if (evt.suggest === "job") patch(id, () => ({ suggestedKind: "job" }));
+      return;
+    }
+    if (evt.type === "needs_disambiguation") {
+      const candidates = Array.isArray(evt.data) ? (evt.data as unknown[]) : [];
+      const suggestJob = candidates.length === 0 && detectKind(run.input) === "job";
+      patch(id, (r) => ({
+        stage: "error",
+        candidates: candidates.length ? candidates : null,
+        suggestedKind: suggestJob ? "job" : (r.suggestedKind ?? null),
+        error: candidates.length
+          ? "Multiple people matched — pick the right one below."
+          : (suggestJob || r.suggestedKind === "job")
+            ? "This looks like a job posting, not a person."
+            : "Couldn't identify a specific person from that input. Try a full name plus their company, or paste their LinkedIn/X profile link, then retry.",
+      }));
+      return;
+    }
+    // compose_run / complete / person_saved / error → terminal, handled by applyPersisted.
+  };
+
+  let spent = 0;
+  let delay = 1500;
+  const budgetMs = 20 * 60 * 1000;
+  while (spent < budgetMs) {
+    if (signal.aborted) return;
+    let persisted: PersistedComposeRun | null = null;
+    try {
+      const res = await fetch(`/api/compose/history/${composeRunId}`, { signal });
+      if (res.ok) {
+        const json = await res.json().catch(() => null);
+        persisted = json?.run ?? null;
+      }
+    } catch {
+      if (signal.aborted) return;
+    }
+    if (persisted) {
+      const steps = Array.isArray((persisted as { steps?: unknown[] }).steps) ? (persisted as { steps: unknown[] }).steps : [];
+      for (; cursor < steps.length; cursor++) {
+        try { applyStep(steps[cursor] as Parameters<typeof applyStep>[0]); } catch { /* one bad step never derails the run */ }
+      }
+      if (persisted.outcome && persisted.outcome !== "in_flight") {
+        applyPersisted(id, persisted);
+        return;
+      }
+    }
+    await sleep(delay, signal);
+    if (signal.aborted) return;
+    await waitForVisible(signal);
+    if (signal.aborted) return;
+    spent += delay;
+    delay = Math.min(Math.round(delay * 1.4), 9000);
+  }
+}
+
+// Observe a durable job run by polling its persisted row until it settles. The
+// run executes server-side (background continuation + cron-worker backstop), so
+// this only READS: it drives the live progress bars off the row's append-only
+// `steps`, and once terminal rebuilds the finished package from `output` via
+// applyPersisted. Foreground-budgeted (a backgrounded tab spends nothing) and
+// effectively unbounded while the run is in flight — a genuinely dead run is
+// marked errored server-side, which we then observe and surface.
+async function observeRun(id: string, composeRunId: string, signal: AbortSignal) {
+  // Per-run accumulators, mirrored from the old streaming reducer. A cursor over
+  // the append-only steps array applies each event exactly once, so array pushes
+  // (drafts) never double-count across polls.
+  const collectedDrafts: unknown[] = [];
+  let collectedCandidates: unknown[] | null = null;
+  let bundle = { ats_score: null, ats_score_before: null, target_role: null, target_company: null, team: null, resume: null };
+  let cursor = 0;
+
+  const patchContact = (slot: string, partial: Partial<ContactData>) =>
+    patch(id, (r) => {
+      const contacts = { ...(r.contacts || {}) } as Record<string, ContactData>;
+      const cur = contacts[slot] || { person: null, enrichment: null, drafts: [] };
+      contacts[slot] = { ...cur, ...partial };
+      return { contacts };
+    });
+  const pushContactDraft = (slot: string, d: unknown) =>
+    patch(id, (r) => {
+      const contacts = { ...(r.contacts || {}) } as Record<string, ContactData>;
+      const cur = contacts[slot] || { person: null, enrichment: null, drafts: [] };
+      contacts[slot] = { ...cur, drafts: [...(cur.drafts || []), d] };
+      return { contacts };
+    });
+
+  // Apply one persisted step event to the live run — the progress/data half of
+  // the old SSE reducer. Terminal events (compose_run / complete / error /
+  // person_saved / needs_disambiguation) are ignored here: the terminal state is
+  // reconciled authoritatively from `output` by applyPersisted below.
+  const applyStep = (evt: { type?: string; id?: string; status?: string; slot?: string; label?: string; chars?: number; bullets?: number; data?: unknown; message?: string }) => {
+    if (evt.type === "needs_job_text") {
+      patch(id, () => ({ needsJobText: { label: String(evt.label || "This board") } }));
+      return;
+    }
+    if (evt.type === "activity" && typeof evt.id === "string" && typeof evt.label === "string") {
+      patch(id, (r) => ({ activity: { ...(r.activity || {}), [evt.id!]: evt.label } }));
+      return;
+    }
+    if (evt.type === "progress" && evt.id === "resume") {
+      const chars = Number(evt.chars) || 0;
+      const bullets = Number(evt.bullets) || 0;
+      patch(id, (r) => ({
+        tailor: { chars, bullets },
+        activity: {
+          ...(r.activity || {}),
+          resume: bullets > 0
+            ? `writing your resume — ${bullets} bullet${bullets === 1 ? "" : "s"} so far`
+            : "writing your resume",
+        },
+        progress: {
+          ...r.progress,
+          resume: Math.max(r.progress?.resume || 0, Math.min(PROGRESS_EASE_CEILING, 10 + Math.round((chars / 9000) * 78))),
+        },
+      }));
+      return;
+    }
+    if (evt.type === "step") {
+      const k = evt.id!;
+      if (evt.status === "start") patch(id, (r) => ({
+        progress: { ...r.progress, [k]: Math.max(r.progress?.[k] || 0, 10) },
+        activity: STEP_START_ACTIVITY[k] ? { ...(r.activity || {}), [k]: STEP_START_ACTIVITY[k] } : r.activity,
+      }));
+      else if (evt.status === "done" || evt.status === "skipped")
+        patch(id, (r) => ({ progress: { ...r.progress, [k]: 100 } }));
+      else if (evt.status === "error")
+        patch(id, (r) => ({
+          progress: { ...r.progress, [k]: 100 },
+          stepErrors: { ...(r.stepErrors || {}), [k]: evt.message || "failed" },
+        }));
+      if (evt.slot) {
+        if (k === "person" && evt.status === "done" && evt.data) patchContact(evt.slot, { person: evt.data });
+        if (k === "email" && evt.data) patchContact(evt.slot, { enrichment: evt.data });
+        if (k === "outreach" && evt.status === "done" && evt.data) pushContactDraft(evt.slot, evt.data);
+      } else {
+        if (k === "resume" && evt.status === "done" && evt.data) {
+          bundle = { ...bundle, ...(evt.data as object) };
+          patch(id, (r) => ({
+            parsed: {
+              ...(r.parsed || {}),
+              ...bundle,
+              unparsed: false,
+              role: bundle.target_role || r.parsed?.role,
+              company: bundle.target_company || r.parsed?.company,
+              team: bundle.team ?? r.parsed?.team,
+              ats_score: bundle.ats_score ?? r.parsed?.ats_score,
+              ats_score_before: bundle.ats_score_before ?? r.parsed?.ats_score_before,
+              resume: bundle.resume ?? r.parsed?.resume,
+            },
+          }));
+        }
+        if (k === "person" && evt.status === "done" && evt.data) {
+          patch(id, () => ({ person: evt.data }));
+        }
+        if (k === "email" && evt.data) {
+          patch(id, () => ({ enrichment: evt.data }));
+        }
+        if (k === "outreach" && evt.status === "done" && evt.data) {
+          collectedDrafts.push(evt.data);
+          patch(id, () => ({ drafts: [...collectedDrafts] }));
+        }
+        if (k === "application" && evt.status === "done") {
+          const qs = Array.isArray((evt.data as { questions?: unknown })?.questions) ? (evt.data as { questions: unknown[] }).questions : [];
+          patch(id, () => ({ applicationQuestions: qs }));
+        }
+      }
+      return;
+    }
+    if (evt.type === "saved") {
+      if (typeof (evt as { id?: unknown }).id === "string") patch(id, () => ({ savedApplicationId: (evt as { id: string }).id }));
+      return;
+    }
+    if (evt.type === "candidates") {
+      collectedCandidates = Array.isArray(evt.data) ? (evt.data as unknown[]) : [];
+      const n = collectedCandidates.length;
+      patch(id, (r) => ({
+        candidates: collectedCandidates,
+        activity: {
+          ...(r.activity || {}),
+          person: n > 0 ? `found ${n} ${n === 1 ? "person" : "people"} — ranking who decides` : "no obvious contact yet — widening the search",
+        },
+      }));
+      return;
+    }
+    if (evt.type === "contact_meta") {
+      if (evt.slot && (evt.data as { sameAsPoster?: boolean })?.sameAsPoster) patchContact(evt.slot, { sameAsPoster: true });
+      return;
+    }
+    // compose_run / complete / error / person_saved / needs_disambiguation → ignored.
+  };
+
+  // Poll loop. Budget is FOREGROUND time (waitForVisible parks a hidden tab), so
+  // locking the phone never burns it. The cap is generous; if we somehow exhaust
+  // it the run is left as-is for the next mount's resumePendingRuns to re-adopt.
+  let spent = 0;
+  let delay = 1500;
+  const budgetMs = 20 * 60 * 1000;
+  while (spent < budgetMs) {
+    if (signal.aborted) return;
+    let persisted: PersistedComposeRun | null = null;
+    try {
+      const res = await fetch(`/api/compose/history/${composeRunId}`, { signal });
+      if (res.ok) {
+        const json = await res.json().catch(() => null);
+        persisted = json?.run ?? null;
+      }
+    } catch {
+      if (signal.aborted) return;
+      // transient — keep polling
+    }
+    if (persisted) {
+      const steps = Array.isArray((persisted as { steps?: unknown[] }).steps) ? (persisted as { steps: unknown[] }).steps : [];
+      for (; cursor < steps.length; cursor++) {
+        try { applyStep(steps[cursor] as Parameters<typeof applyStep>[0]); } catch { /* one bad step never derails the run */ }
+      }
+      if (persisted.outcome && persisted.outcome !== "in_flight") {
+        applyPersisted(id, persisted);
+        return;
+      }
+    }
+    await sleep(delay, signal);
+    if (signal.aborted) return;
+    await waitForVisible(signal);
+    if (signal.aborted) return;
+    spent += delay;
+    delay = Math.min(Math.round(delay * 1.4), 9000);
+  }
+}
+
 // Patch the live run with the server-reported resume_generations id AND
 // register it for cross-reload recovery — the resume twin of setComposeRunId.
 function setResumeGenerationId(localId: string, generationId: string, run: Run) {
@@ -1921,6 +1845,78 @@ function setResumeGenerationId(localId: string, generationId: string, run: Run) 
     intent: null,
     createdAt: run.createdAt,
   });
+}
+
+// Observe a durable standalone résumé run by polling its resume_generations row
+// until it settles. Drives the tailor bar off the row's `steps`, then adopts the
+// finished résumé from the row via applyPersistedResume — the résumé twin of
+// observeRun.
+async function observeResumeRun(id: string, generationId: string, signal: AbortSignal) {
+  let cursor = 0;
+
+  const applyStep = (evt: { type?: string; id?: string; status?: string; chars?: number; bullets?: number; data?: { resume?: unknown } }) => {
+    if (evt.type === "progress") {
+      const chars = Number(evt.chars) || 0;
+      const bullets = Number(evt.bullets) || 0;
+      patch(id, (r) => ({
+        tailor: { chars, bullets },
+        progress: {
+          ...r.progress,
+          tailor: Math.max(r.progress?.tailor || 0, Math.min(PROGRESS_EASE_CEILING, 10 + Math.round((chars / 9000) * 78))),
+        },
+      }));
+      return;
+    }
+    if (evt.type === "step" && evt.id === "tailor" && evt.status === "done" && evt.data?.resume) {
+      const resume = evt.data.resume as { meta?: { ats_score?: number; ats_score_before?: number; target_role?: string; target_company?: string } };
+      patch(id, (r) => ({
+        parsed: {
+          ...(r.parsed || {}),
+          resume,
+          ats_score: resume?.meta?.ats_score ?? r.parsed?.ats_score,
+          ats_score_before: resume?.meta?.ats_score_before ?? r.parsed?.ats_score_before,
+          role: resume?.meta?.target_role ?? r.parsed?.role,
+          company: resume?.meta?.target_company ?? r.parsed?.company,
+        },
+      }));
+      return;
+    }
+    // resume_run / saved / error / complete / tool / step research → terminal or
+    // irrelevant; the terminal state is adopted from the row by applyPersistedResume.
+  };
+
+  let spent = 0;
+  let delay = 1500;
+  const budgetMs = 20 * 60 * 1000;
+  while (spent < budgetMs) {
+    if (signal.aborted) return;
+    let gen: { status?: string; steps?: unknown[] } | null = null;
+    try {
+      const res = await fetch(`/api/resume/history/${generationId}`, { signal });
+      if (res.ok) {
+        const json = await res.json().catch(() => null);
+        gen = json?.generation ?? null;
+      }
+    } catch {
+      if (signal.aborted) return;
+    }
+    if (gen) {
+      const steps = Array.isArray(gen.steps) ? gen.steps : [];
+      for (; cursor < steps.length; cursor++) {
+        try { applyStep(steps[cursor] as Parameters<typeof applyStep>[0]); } catch { /* one bad step never derails the run */ }
+      }
+      if (gen.status && gen.status !== "in_flight") {
+        applyPersistedResume(id, gen as Parameters<typeof applyPersistedResume>[1]);
+        return;
+      }
+    }
+    await sleep(delay, signal);
+    if (signal.aborted) return;
+    await waitForVisible(signal);
+    if (signal.aborted) return;
+    spent += delay;
+    delay = Math.min(Math.round(delay * 1.4), 9000);
+  }
 }
 
 // Stream /api/resume/tailor for a kind:"resume" run. Same drop-recovery
@@ -1954,6 +1950,21 @@ async function streamResumeRun(run: Run, signal: AbortSignal) {
         // no JSON body — keep the status message
       }
       throw Object.assign(new Error(message), { serverReported: true });
+    }
+
+    // Durable path (signed-in fresh run): the server persisted the row and runs
+    // the tailor in a background continuation. Observe the row instead of reading
+    // a stream. (Anonymous runs and regenerate amendments still come back as an
+    // SSE stream, handled below.)
+    if (res.status === 202) {
+      const started = await res.json().catch(() => null);
+      const generationId = started?.generationId;
+      if (!generationId) {
+        throw Object.assign(new Error("tailor failed: no run id"), { serverReported: true });
+      }
+      setResumeGenerationId(id, generationId, run);
+      await observeResumeRun(id, generationId, signal);
+      return;
     }
 
     const reader = res.body.getReader();

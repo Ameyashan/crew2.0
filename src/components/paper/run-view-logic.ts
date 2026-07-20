@@ -8,12 +8,15 @@
 // Nothing here reaches into the DOM, localStorage, or Supabase directly.
 
 // ── Status chip relabel ──────────────────────────────────────────────────────
-// The run state machine (parsing / working / done / error) maps 1:1 onto the
-// prototype's three status chips — a pure rename/recolor, no logic change:
-//   parsing → RUNNING  (amber, pulsing)   — reading the input
-//   working → RUNNING  (amber, pulsing)   — agents on it (RECONNECTING variant)
-//   done    → DONE     (green)
-//   error   → NEEDS YOU(amber)            — the crew needs a decision
+// The run state machine (parsing / working / done / error) maps onto the shared
+// run-status lexicon (see run-status.ts) so the card header reads the SAME words
+// as the Desk list, the history page, and the top-bar chip — just uppercased:
+//   parsing/working → RUNNING (amber, pulsing) — the crew is on it
+//   working+reconnecting → RECONNECTING
+//   done  → READY     (green)
+//   error → NEEDS YOU (amber) — the crew needs a decision
+import { runStatusState } from "./run-status.ts";
+
 export type RunStage = "parsing" | "working" | "done" | "error";
 export type ChipTone = "running" | "done" | "attention";
 export type StatusChip = { label: string; tone: ChipTone; pulse: boolean };
@@ -22,19 +25,16 @@ export function runStatusChip(
   stage: RunStage | string | null | undefined,
   opts: { reconnecting?: boolean } = {},
 ): StatusChip {
-  switch (stage) {
-    case "parsing":
-      return { label: "RUNNING", tone: "running", pulse: true };
-    case "working":
-      return opts.reconnecting
-        ? { label: "RECONNECTING", tone: "running", pulse: true }
-        : { label: "RUNNING", tone: "running", pulse: true };
-    case "done":
-      return { label: "DONE", tone: "done", pulse: false };
-    case "error":
+  const state = runStatusState({ stage, reconnecting: opts.reconnecting });
+  switch (state) {
+    case "ready":
+      return { label: "READY", tone: "done", pulse: false };
+    case "needs-you":
       return { label: "NEEDS YOU", tone: "attention", pulse: false };
+    case "reconnecting":
+      return { label: "RECONNECTING", tone: "running", pulse: true };
     default:
-      // Unknown stage → treat as running so the card never renders chrome-less.
+      // running (and any unknown stage) → the card never renders chrome-less.
       return { label: "RUNNING", tone: "running", pulse: true };
   }
 }

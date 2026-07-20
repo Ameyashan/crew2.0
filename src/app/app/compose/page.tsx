@@ -12,6 +12,7 @@ import {
   useRuns,
   useFocusedRun,
   setFocusedRun,
+  hydrateRun,
   startRun,
   startRestoredRun,
   startImageRun,
@@ -208,10 +209,34 @@ function ComposeV3({ p, go }) {
     ? liveNonResume.find((run) => run.id === focusedRunId) || null
     : null;
   const firstTime = isFirstTime(composeRuns.length, resumeRuns.length) && liveNonResume.length === 0;
-  const earlier = deskEarlierRuns(composeRuns, resumeRuns, 4);
+  // A run that's currently LIVE in the store (running, or reconnecting after a
+  // background+reload) is surfaced as the top-bar chip / focused card — so
+  // exclude its history row from "Earlier runs", otherwise the one run shows
+  // twice. Keyed by the server row id each live run carries.
+  const liveRunIds = new Set(
+    runs.flatMap((r) => [r.composeRunId, r.resumeGenerationId]).filter(Boolean),
+  );
+  const earlier = deskEarlierRuns(composeRuns, resumeRuns, 4, liveRunIds);
   // Prototype shows the Story nudge for signed-in accounts only.
   const showNudge = signedIn === true && !!nudgeKey && storyIsEmpty && !nudgeDismissed;
   const headline = deskHeadline(signedIn, firstTime, name);
+
+  // Open a specific earlier run in place (not the generic history list): pull its
+  // full persisted row, hydrate it into the store, and focus it — reusing the
+  // same RunCard screen a live run uses. Résumé rows live on the Story page.
+  async function openRun(row) {
+    if (row.agent === 'resume') { go('resume'); return; }
+    try {
+      const res = await fetch(`/api/compose/history/${row.id}`);
+      const json = await res.json().catch(() => null);
+      if (json?.run) {
+        const localId = hydrateRun(json.run);
+        setFocusedRun(localId);
+        return;
+      }
+    } catch { /* fall through to the list */ }
+    go('history');
+  }
 
   // Seed the composer from a suggestion pill / first-time card.
   function fillComposer(text) { setInput(text); }
@@ -465,7 +490,7 @@ function ComposeV3({ p, go }) {
           }}>Earlier runs</div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {earlier.map((row) => (
-              <div key={row.key} className="dk-row" onClick={() => go('history')} style={{
+              <div key={row.key} className="dk-row" onClick={() => openRun(row)} style={{
                 display: 'flex', alignItems: 'center', gap: 16, padding: '15px 8px', margin: '0 -8px',
                 borderTop: `1px solid ${TOKENS.lineRow}`, cursor: 'pointer', borderRadius: 8,
                 transition: 'background .15s', flexWrap: 'wrap',

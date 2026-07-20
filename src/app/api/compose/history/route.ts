@@ -3,12 +3,14 @@ import { withUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-// A run whose serverless function was killed (timeout, deploy) can never
-// finalize its own row and would show "in progress…" forever. 10 minutes is
-// far beyond the apply route's maxDuration, so anything still in_flight past
-// that is dead — mark it at read time rather than running a cron. (The
-// /history/[id] recovery poller stays un-swept: its budget is ~4 minutes.)
-const STALE_IN_FLIGHT_MS = 10 * 60 * 1000;
+// A run is driven by a background continuation (next/server `after()`) plus a
+// cron worker backstop, both of which refresh heartbeat_at on every step. So a
+// live run always has a recent heartbeat; a run whose heartbeat has gone quiet
+// for well past any single step AND past the function's maxDuration is genuinely
+// dead (its executor died and the worker couldn't revive it). Mark those at read
+// time so they don't show "in progress…" forever. Heartbeat-based (not
+// created_at) so a legitimately long or queued run is never mislabelled.
+const STALE_HEARTBEAT_MS = 6 * 60 * 1000;
 
 // GET /api/compose/history
 // Returns metadata for the signed-in user's most recent compose runs (50 max).
@@ -18,6 +20,7 @@ export async function GET() {
   return withUser(async (userId) => {
     const sb = supabaseAdmin();
 
+    const staleBefore = new Date(Date.now() - STALE_HEARTBEAT_MS).toISOString();
     await sb
       .from("compose_runs")
       .update({
@@ -27,7 +30,11 @@ export async function GET() {
       })
       .eq("user_id", userId)
       .eq("outcome", "in_flight")
-      .lt("created_at", new Date(Date.now() - STALE_IN_FLIGHT_MS).toISOString());
+      // Both an absent heartbeat and a long-stale one count as dead. Guard the
+      // null case on created_at so a row mid-insert is never swept.
+      .or(
+        `heartbeat_at.lt.${staleBefore},and(heartbeat_at.is.null,created_at.lt.${staleBefore})`
+      );
 
     const { data, error } = await sb
       .from("compose_runs")

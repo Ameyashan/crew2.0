@@ -1,31 +1,35 @@
-import { NextRequest } from "next/server";
-import { runReachOutStream, type RunReachOutInput } from "@/lib/agents/reach-out";
+import { NextRequest, after } from "next/server";
+import { cookies } from "next/headers";
+import { randomUUID } from "node:crypto";
+import { type RunReachOutInput } from "@/lib/agents/reach-out";
 import { resolveUserId } from "@/lib/auth";
-import { runWithUser } from "@/lib/user-context";
 import { supabaseAdmin } from "@/lib/supabase";
 import { parseAgents } from "@/lib/agent-selection";
-import { isJobBoardUrl } from "@/lib/kind-detect";
 import { assertAnonRunAllowed } from "@/lib/anon-rate-limit";
+import { runPersonPipeline, type PersonPayload } from "@/lib/runs/execute-person";
+import { makeDbSink } from "@/lib/runs/sink";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
 
-const ALLOWED_IMAGE_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-]);
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+// Same anon-owning cookie the apply route sets — signed-out runs persist and
+// stay observable across a background+reload.
+const ANON_COOKIE = "jugaadu_anon";
+const ANON_COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
 type ParsedInput = {
   input: RunReachOutInput;
   screenshot_id?: string;
 };
 
-async function parseInput(req: NextRequest): Promise<
-  ParsedInput | { error: string; status: number }
-> {
+// Parse the request into the reach-out input + optional screenshot id. A raw
+// multipart `intent_image` is still accepted for back-compat, but the durable
+// pipeline reloads the image from storage via screenshot_id (a background job
+// can't re-read a request File), so the raw bytes are validated then dropped.
+async function parseInput(req: NextRequest): Promise<ParsedInput | { error: string; status: number }> {
   const contentType = req.headers.get("content-type") ?? "";
 
   if (contentType.includes("multipart/form-data")) {
@@ -56,7 +60,8 @@ async function parseInput(req: NextRequest): Promise<
       }
     }
 
-    let intent_image: RunReachOutInput["intent_image"];
+    // Validate the image if present (keeps the old 415/413 contract), but the
+    // pipeline loads it from storage — so we don't forward the raw bytes.
     if (image instanceof File && image.size > 0) {
       if (!ALLOWED_IMAGE_TYPES.has(image.type)) {
         return { error: `unsupported image type: ${image.type}`, status: 415 };
@@ -64,8 +69,6 @@ async function parseInput(req: NextRequest): Promise<
       if (image.size > MAX_IMAGE_BYTES) {
         return { error: "image exceeds 5MB limit", status: 413 };
       }
-      const data = Buffer.from(await image.arrayBuffer()).toString("base64");
-      intent_image = { data, media_type: image.type };
     }
 
     return {
@@ -73,17 +76,11 @@ async function parseInput(req: NextRequest): Promise<
         text,
         intent: typeof intent === "string" && intent ? intent : undefined,
         picked,
-        intent_image,
         provided_email:
-          typeof providedEmail === "string" && providedEmail.trim()
-            ? providedEmail.trim()
-            : undefined,
+          typeof providedEmail === "string" && providedEmail.trim() ? providedEmail.trim() : undefined,
         agents,
       },
-      screenshot_id:
-        typeof screenshotId === "string" && screenshotId.trim()
-          ? screenshotId.trim()
-          : undefined,
+      screenshot_id: typeof screenshotId === "string" && screenshotId.trim() ? screenshotId.trim() : undefined,
     };
   }
 
@@ -92,27 +89,24 @@ async function parseInput(req: NextRequest): Promise<
     input: {
       text: (body?.text ?? "").toString(),
       intent: body?.intent ? body.intent.toString() : undefined,
-      picked:
-        body?.picked && typeof body.picked === "object" ? body.picked : undefined,
+      picked: body?.picked && typeof body.picked === "object" ? body.picked : undefined,
       provided_email:
-        typeof body?.provided_email === "string" && body.provided_email.trim()
-          ? body.provided_email.trim()
-          : undefined,
+        typeof body?.provided_email === "string" && body.provided_email.trim() ? body.provided_email.trim() : undefined,
       agents: parseAgents(body?.agents),
     },
-    screenshot_id:
-      typeof body?.screenshot_id === "string" && body.screenshot_id.trim()
-        ? body.screenshot_id.trim()
-        : undefined,
+    screenshot_id: typeof body?.screenshot_id === "string" && body.screenshot_id.trim() ? body.screenshot_id.trim() : undefined,
   };
 }
 
+// POST /api/compose
+//
+// Starts a durable person (reach-out) run: persists a compose_runs row carrying
+// the run's inputs (payload), then drives it to completion in a background
+// continuation (next/server `after()`) that outlives this request — so
+// backgrounding the app no longer strands the run. The cron worker
+// (/api/cron/run-worker) re-drives anything whose lease goes stale. The client
+// observes progress by polling /api/compose/history/[id].
 export async function POST(req: NextRequest) {
-  // The reach-out agent reads the current user (getProfile, people dedupe, draft
-  // persistence) via the AsyncLocalStorage context. Establish it here or every
-  // currentUserId() call deep in the pipeline throws. A null userId is an
-  // anonymous blur-gate teaser: the crew runs but persists nothing (the agent
-  // gates its writes on maybeUserId()). Cap anonymous compute first.
   const userId = await resolveUserId();
   if (!userId) {
     const limited = await assertAnonRunAllowed(req);
@@ -128,158 +122,67 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "empty input" }, { status: 400 });
   }
 
-  // Insert the compose_runs row up front so a run kicked off on mobile shows up
-  // on desktop even if the stream dies mid-flight. We'll update outcome /
-  // collected output once the stream terminates.
-  const sb = supabaseAdmin();
-  // Anonymous runs persist nothing — no compose_runs row. composeRunId stays
-  // null, which the stream + final update already treat as "don't persist".
-  let composeRunId: string | null = null;
-  if (userId) {
-    try {
-      const { data, error } = await sb
-        .from("compose_runs")
-        .insert({
-          user_id: userId,
-          kind: "person",
-          input: input.text,
-          intent: input.intent ?? null,
-          provided_email: input.provided_email ?? null,
-          screenshot_id: screenshot_id ?? null,
-          picked: input.picked ?? null,
-          outcome: "in_flight",
-        })
-        .select("id")
-        .single();
-      if (error) throw error;
-      composeRunId = data?.id ?? null;
-    } catch (e) {
-      // Non-fatal: a failed insert shouldn't block the live stream — it just
-      // means this run won't appear in /app/history. Log and keep going.
-      console.error("[compose_runs] insert failed", e);
+  // Resolve or mint the anon token for a signed-out run so its row is owned and
+  // observable.
+  let anonId: string | null = null;
+  if (!userId) {
+    const jar = await cookies();
+    anonId = jar.get(ANON_COOKIE)?.value || null;
+    if (!anonId) {
+      anonId = randomUUID();
+      jar.set(ANON_COOKIE, anonId, {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: ANON_COOKIE_MAX_AGE,
+        secure: process.env.NODE_ENV === "production",
+      });
     }
   }
 
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    async start(controller) {
-      await runWithUser(userId, async () => {
-        // Collected per-step output so we can patch compose_runs at the end.
-        // Mirrors what runs-store.ts builds client-side, but on the server.
-        const drafts: unknown[] = [];
-        let person: unknown = null;
-        let enrichment: unknown = null;
-        let candidates: unknown[] | null = null;
-        let personId: string | null = null;
-        let outcome: "complete" | "error" | "needs_disambiguation" = "error";
-        let errorMessage: string | null = null;
+  const payload: PersonPayload = {
+    text: input.text,
+    intent: input.intent,
+    picked: input.picked ?? null,
+    provided_email: input.provided_email,
+    screenshot_id,
+    agents: input.agents,
+  };
 
-        // Guarded enqueue: once the client disconnects (e.g. the phone was
-        // locked) enqueue throws. Swallow it so the agent loop keeps running to
-        // completion and we still persist the result — the client recovers by
-        // polling compose_runs.
-        const send = (obj: unknown) => {
-          try {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
-          } catch {
-            // stream already closed/cancelled — drop the event, keep working
-          }
-        };
+  const nowIso = new Date().toISOString();
+  let composeRunId: string | null = null;
+  try {
+    const { data, error } = await supabaseAdmin()
+      .from("compose_runs")
+      .insert({
+        user_id: userId,
+        anon_id: anonId,
+        kind: "person",
+        input: input.text,
+        intent: input.intent ?? null,
+        provided_email: input.provided_email ?? null,
+        screenshot_id: screenshot_id ?? null,
+        picked: input.picked ?? null,
+        payload,
+        outcome: "in_flight",
+        heartbeat_at: nowIso,
+        locked_at: nowIso,
+      })
+      .select("id")
+      .single();
+    if (error) throw error;
+    composeRunId = data?.id ?? null;
+  } catch (e) {
+    console.error("[compose_runs] insert failed", e);
+  }
 
-        try {
-          if (composeRunId) {
-            // Send the run id back so the client can stash it (used later when
-            // the user reopens the run from /app/history).
-            send({ type: "compose_run", id: composeRunId });
-          }
-          if (isJobBoardUrl(input.text) && !input.picked) {
-            // The person flow was handed a job-board URL — tip the client off
-            // so a research dead-end can offer the job path instead.
-            send({ type: "kind_suggestion", suggest: "job" });
-          }
-          for await (const evt of runReachOutStream({
-            ...input,
-            compose_run_id: composeRunId ?? undefined,
-          })) {
-            send(evt);
+  if (!composeRunId) {
+    return Response.json({ error: "could not start run" }, { status: 500 });
+  }
+  const runId = composeRunId;
 
-            if (evt.type === "step" && evt.id === "research" && evt.status === "done") {
-              person = evt.data;
-            } else if (
-              evt.type === "step" &&
-              evt.id === "email_lookup" &&
-              (evt.status === "done" || evt.status === "skipped")
-            ) {
-              enrichment = evt.data;
-            } else if (evt.type === "step" && evt.id === "person_saved") {
-              personId = evt.data.id;
-            } else if (evt.type === "step" && evt.id === "draft" && evt.status === "done") {
-              drafts.push(evt.data);
-            } else if (evt.type === "needs_disambiguation") {
-              candidates = Array.isArray(evt.data) ? evt.data : null;
-              outcome = "needs_disambiguation";
-            } else if (evt.type === "complete") {
-              if (outcome !== "needs_disambiguation") outcome = "complete";
-            } else if (evt.type === "error") {
-              outcome = "error";
-              errorMessage = evt.message;
-            }
-          }
-        } catch (e) {
-          outcome = "error";
-          errorMessage = String(e instanceof Error ? e.message : e);
-          send({ type: "error", message: errorMessage });
-        } finally {
-          // Persist the run row BEFORE closing the stream. If we close first,
-          // the serverless platform can reclaim the function before this awaited
-          // write lands, stranding the row at `in_flight` (which the 10-min
-          // sweep later mislabels "error"). Writing while the stream is still
-          // open keeps the function alive until the durable write completes.
-          if (composeRunId) {
-            try {
-              await sb
-                .from("compose_runs")
-                .update({
-                  person_id: personId,
-                  // Backfill the effective intent: an explicit one wins, else the
-                  // intent research synthesized from the paste/screenshot (the
-                  // one-box "who + why" path stores null up front). Keeps the
-                  // history subline honest about what the draft was geared toward.
-                  intent:
-                    input.intent ??
-                    (person as { outreach_intent?: string | null } | null)
-                      ?.outreach_intent ??
-                    null,
-                  output: { person, enrichment, candidates, drafts },
-                  outcome,
-                  error: errorMessage,
-                  completed_at: new Date().toISOString(),
-                })
-                .eq("id", composeRunId)
-                .eq("user_id", userId);
-            } catch (e) {
-              console.error("[compose_runs] update failed", e);
-            }
-          }
+  // Execute in the background so the run survives the client disconnecting.
+  after(() => runPersonPipeline(runId, makeDbSink({ table: "compose_runs", id: runId, statusColumn: "outcome" })));
 
-          // Guard against a double/late close throwing — on a disconnected
-          // stream that rejection would surface as an HTTP 500.
-          try {
-            controller.close();
-          } catch {
-            // already closed
-          }
-        }
-      });
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    },
-  });
+  return Response.json({ composeRunId: runId, outcome: "in_flight" }, { status: 202 });
 }
