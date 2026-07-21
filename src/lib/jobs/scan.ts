@@ -55,7 +55,7 @@ export function extractPins(cs: unknown): string[] {
   return [];
 }
 
-function postedThreshold(posted: PostedWithin): string | null {
+export function postedThreshold(posted: PostedWithin): string | null {
   const day = 86_400_000;
   const now = Date.now();
   if (posted === "24h") return new Date(now - day).toISOString();
@@ -72,7 +72,17 @@ const LOC_MATCHERS: Record<string, RegExp> = {
   la: /los angeles|santa monica|\bl\.?a\.?\b/i,
 };
 
-function matchesLocations(job: Job, locations: string[]): boolean {
+// Structural subset of a jobs row the preference matchers need, so both full
+// `Job` rows (scan time) and the feed's joined rows (read time) qualify.
+export interface LocatableJob {
+  location_raw: string | null;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  remote_type: string;
+}
+
+export function matchesLocations(job: LocatableJob, locations: string[]): boolean {
   if (!locations.length || locations.includes("anywhere")) return true;
   const hay = [job.location_raw, job.city, job.region, job.country].filter(Boolean).join(" ");
   for (const loc of locations) {
@@ -87,16 +97,23 @@ function matchesLocations(job: Job, locations: string[]): boolean {
 
 // Lenient on company_size: unknown (unenriched) passes so we don't hide jobs the
 // enrichment pass hasn't reached yet.
-function matchesSize(job: Job, sizes: SizeBucket[]): boolean {
+export function matchesSize(job: { company_size: SizeBucket | null }, sizes: SizeBucket[]): boolean {
   if (!sizes.length) return true;
   if (!job.company_size) return true;
   return sizes.includes(job.company_size);
 }
 
+// Followed company_ids for a user (catalog ids, already resolved — no name
+// lookup needed). Separate helper so the feed route and scan can both reuse it.
+export async function loadFollowedCompanyIds(sb: SupabaseClient, uid: string): Promise<string[]> {
+  const { data } = await sb.from("followed_companies").select("company_id").eq("user_id", uid);
+  return (data ?? []).map((r) => r.company_id as string);
+}
+
 export async function loadScanPrefs(
   sb: SupabaseClient,
   uid: string,
-): Promise<{ prefs: ScanPrefs; pins: string[] }> {
+): Promise<{ prefs: ScanPrefs; pins: string[]; follows: string[] }> {
   const { data: row } = await sb.from("job_preferences").select("*").eq("user_id", uid).maybeSingle();
   const prefs: ScanPrefs = row
     ? {
@@ -109,17 +126,22 @@ export async function loadScanPrefs(
       }
     : { ...DEFAULT_PREFS };
   const { data: prof } = await sb.from("user_profile").select("context_structured").eq("user_id", uid).maybeSingle();
-  return { prefs, pins: extractPins(prof?.context_structured) };
+  const follows = await loadFollowedCompanyIds(sb, uid);
+  return { prefs, pins: extractPins(prof?.context_structured), follows };
 }
 
-// The catalog companies that match a user's interests (sector overlap) or pins
-// (exact normalized-name). Shared by the targeted fetch and candidate selection.
+// The catalog companies that match a user's interests (sector overlap), pins
+// (exact normalized-name), or explicit follows (catalog ids). Shared by the
+// targeted fetch and candidate selection. Follows are unioned in verbatim so a
+// company the user follows keeps being scanned even when it's outside their
+// sectors — that's the whole point of following.
 export async function resolveCompanyIds(
   sb: SupabaseClient,
   prefs: ScanPrefs,
   pins: string[],
+  follows: string[] = [],
 ): Promise<string[]> {
-  const companyIds = new Set<string>();
+  const companyIds = new Set<string>(follows);
   if (prefs.interests.length) {
     const { data } = await sb.from("companies").select("id").eq("active", true).overlaps("sectors", prefs.interests);
     for (const c of data ?? []) companyIds.add(c.id as string);
@@ -132,13 +154,20 @@ export async function resolveCompanyIds(
   return [...companyIds];
 }
 
+// A single prolific company (a Databricks-sized board posts hundreds of roles)
+// must not consume the whole scoring budget: cap how many of its listings can
+// enter one scan so the candidate set — and therefore the feed — stays varied.
+const MAX_CANDIDATES_PER_COMPANY = 10;
+const MAX_CANDIDATES = 80;
+
 export async function selectCandidateJobs(
   sb: SupabaseClient,
   prefs: ScanPrefs,
   pins: string[],
   companyIds?: string[],
+  follows: string[] = [],
 ): Promise<Job[]> {
-  const ids = companyIds ?? (await resolveCompanyIds(sb, prefs, pins));
+  const ids = companyIds ?? (await resolveCompanyIds(sb, prefs, pins, follows));
   if (!ids.length) return [];
 
   const threshold = postedThreshold(prefs.posted_within);
@@ -148,12 +177,24 @@ export async function selectCandidateJobs(
     .in("company_id", ids)
     .eq("is_active", true)
     .order("posted_date", { ascending: false, nullsFirst: false })
-    .limit(120);
+    .limit(300);
   if (threshold) q = q.or(`posted_date.gte.${threshold},posted_date.is.null`);
 
   const { data: jobsData } = await q;
   const jobs = (jobsData ?? []) as Job[];
-  return jobs.filter((j) => matchesLocations(j, prefs.locations) && matchesSize(j, prefs.company_sizes)).slice(0, 80);
+  const matching = jobs.filter((j) => matchesLocations(j, prefs.locations) && matchesSize(j, prefs.company_sizes));
+
+  const perCompany = new Map<string, number>();
+  const picked: Job[] = [];
+  for (const j of matching) {
+    if (picked.length >= MAX_CANDIDATES) break;
+    const key = j.company_id ?? j.company;
+    const n = perCompany.get(key) ?? 0;
+    if (n >= MAX_CANDIDATES_PER_COMPANY) continue;
+    perCompany.set(key, n + 1);
+    picked.push(j);
+  }
+  return picked;
 }
 
 export interface UserScanSummary {
@@ -168,8 +209,8 @@ export interface UserScanSummary {
 // score whatever the catalog already holds. MUST run inside a user context.
 export async function runUserScan(uid: string): Promise<UserScanSummary> {
   const sb = supabaseAdmin();
-  const { prefs, pins } = await loadScanPrefs(sb, uid);
-  if (!prefs.interests.length && !pins.length) {
+  const { prefs, pins, follows } = await loadScanPrefs(sb, uid);
+  if (!prefs.interests.length && !pins.length && !follows.length) {
     return { candidates: 0, scored: 0, skipped: 0, reason: "no_preferences" };
   }
 
@@ -181,7 +222,7 @@ export async function runUserScan(uid: string): Promise<UserScanSummary> {
   }
 
   // Resolve AFTER coverage so newly-added companies are included.
-  const companyIds = await resolveCompanyIds(sb, prefs, pins);
+  const companyIds = await resolveCompanyIds(sb, prefs, pins, follows);
   if (!companyIds.length) return { candidates: 0, scored: 0, skipped: 0, reason: "no_companies" };
 
   // Fetch listings for just this user's companies, then enrich (both best-effort).
@@ -196,7 +237,7 @@ export async function runUserScan(uid: string): Promise<UserScanSummary> {
     console.error("[jobs/refresh] enrich failed", e);
   }
 
-  const candidates = await selectCandidateJobs(sb, prefs, pins, companyIds);
+  const candidates = await selectCandidateJobs(sb, prefs, pins, companyIds, follows);
   if (!candidates.length) return { candidates: 0, scored: 0, skipped: 0 };
 
   const summary = await scoreJobsForUser({

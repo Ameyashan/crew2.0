@@ -12,6 +12,7 @@ export interface FeedJoinRow {
   status: MatchStatus;
   jobs: {
     id: string;
+    company_id: string | null;
     title: string;
     company: string;
     location_raw: string | null;
@@ -47,6 +48,7 @@ export function feedItemFromJoin(row: FeedJoinRow): FeedItem | null {
     job_id: j.id,
     title: j.title,
     company: j.company,
+    company_id: j.company_id,
     location: jobLocation(j),
     remote_type: j.remote_type,
     compensation: j.compensation,
@@ -68,6 +70,7 @@ export function jobDetail(job: Job, match: JobMatch | null): JobDetail {
     job_id: job.id,
     title: job.title,
     company: job.company,
+    company_id: job.company_id,
     location: jobLocation(job),
     remote_type: job.remote_type,
     compensation: job.compensation,

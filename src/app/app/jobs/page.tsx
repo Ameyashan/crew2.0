@@ -18,7 +18,8 @@ import {
 } from "@/lib/jobs/format";
 import { sectorLabel } from "@/lib/jobs/catalog/sectors";
 import { CompanyLogo } from "@/components/paper/CompanyLogo";
-import type { FeedItem, PreferencesDTO } from "@/lib/jobs/types";
+import { FollowButton } from "@/components/paper/FollowButton";
+import type { FeedItem, FollowingItem, PreferencesDTO } from "@/lib/jobs/types";
 
 // The boolean (toggle) filter keys — `location` is free text and is set
 // separately, so `toggle()` is scoped to just these.
@@ -98,12 +99,27 @@ function QuietPill({
   );
 }
 
-function JobCard({ item, isMobile, onOpen }: { item: FeedItem; isMobile: boolean; onOpen: () => void }) {
+function JobCard({
+  item,
+  isMobile,
+  onOpen,
+  following,
+  onToggleFollow,
+}: {
+  item: FeedItem;
+  isMobile: boolean;
+  onOpen: () => void;
+  following: boolean;
+  onToggleFollow: (companyId: string, following: boolean) => void;
+}) {
   const [hover, setHover] = useState(false);
   const posted = postedAgo(item.posted_date, item.posted_date_approx);
   const comp = compDisplay(item.compensation);
   const fit = fitColors(item.score);
   const visaColors = visaChipColors(item.visa_confidence);
+  const followBtn = (
+    <FollowButton companyId={item.company_id} following={following} onChange={onToggleFollow} compact />
+  );
 
   // Shared pieces so the mobile and desktop layouts stay in sync.
   const fitBox = (
@@ -227,6 +243,7 @@ function JobCard({ item, isMobile, onOpen }: { item: FeedItem; isMobile: boolean
             {companyName}
             {postedLabel}
           </div>
+          <div style={{ marginLeft: "auto", flex: "none" }}>{followBtn}</div>
         </div>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
           <div
@@ -260,6 +277,7 @@ function JobCard({ item, isMobile, onOpen }: { item: FeedItem; isMobile: boolean
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
           {companyName}
           {postedLabel}
+          <div style={{ marginLeft: "auto", flex: "none" }}>{followBtn}</div>
         </div>
         <div
           style={{
@@ -284,12 +302,157 @@ function JobCard({ item, isMobile, onOpen }: { item: FeedItem; isMobile: boolean
   );
 }
 
+// "New at companies you follow" — a recency-first strip above the ranked feed.
+// Independent of fit score: the point is the company, not the match. Fresh
+// listings (first seen <24h) get a green NEW badge. Renders nothing when empty
+// so it never nags.
+function FollowingStrip({
+  items,
+  followedCount,
+  isMobile,
+  onOpen,
+}: {
+  items: FollowingItem[];
+  followedCount: number;
+  isMobile: boolean;
+  onOpen: (jobId: string) => void;
+}) {
+  // Nothing to say only when the user follows no companies at all. When they
+  // follow companies but nothing currently fits, say so — otherwise following
+  // reads as a no-op.
+  if (!items.length && followedCount === 0) return null;
+  const freshCount = items.filter((i) => i.is_fresh).length;
+  return (
+    <div
+      style={{
+        border: `1px solid ${TOKENS.amberLine}`,
+        background: TOKENS.cardWarm,
+        borderRadius: RADII.card,
+        padding: isMobile ? "16px 16px 8px" : "18px 20px 10px",
+        marginBottom: 26,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+        <span
+          style={{
+            fontFamily: PAPER_FONTS_V2.mono,
+            fontSize: 10.5,
+            letterSpacing: ".1em",
+            textTransform: "uppercase",
+            color: TOKENS.amber,
+          }}
+        >
+          New at companies you follow
+        </span>
+        {freshCount > 0 && (
+          <span style={{ fontFamily: "system-ui, sans-serif", fontSize: 12, color: TOKENS.muted }}>
+            {freshCount} in the last 24h
+          </span>
+        )}
+      </div>
+      {items.length ? (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {items.map((it, i) => (
+            <FollowingRow key={it.job_id} item={it} onOpen={() => onOpen(it.job_id)} first={i === 0} />
+          ))}
+        </div>
+      ) : (
+        <p
+          style={{
+            margin: "0 0 8px",
+            fontFamily: PAPER_FONTS_V2.serif,
+            fontStyle: "italic",
+            fontSize: 13.5,
+            lineHeight: 1.5,
+            color: TOKENS.muted2,
+          }}
+        >
+          No new roles matching your preferences at the {followedCount === 1 ? "company" : `${followedCount} companies`}{" "}
+          you follow yet — we&apos;ll surface them here as they open.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function FollowingRow({ item, onOpen, first }: { item: FollowingItem; onOpen: () => void; first: boolean }) {
+  const [hover, setHover] = useState(false);
+  const posted = postedAgo(item.posted_date, item.posted_date_approx);
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "10px 8px",
+        borderTop: first ? "none" : `1px solid ${TOKENS.lineSoft}`,
+        borderRadius: RADII.buttonTight,
+        background: hover ? TOKENS.hoverWash : "transparent",
+        cursor: "pointer",
+      }}
+    >
+      <CompanyLogo company={item.company} size={30} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontFamily: PAPER_FONTS_V2.serif,
+            fontSize: 15,
+            lineHeight: 1.3,
+            color: TOKENS.ink,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {item.title}
+        </div>
+        <div style={{ fontFamily: "system-ui, sans-serif", fontSize: 12, lineHeight: 1.4, color: TOKENS.muted }}>
+          {item.company}
+          {item.location ? ` · ${item.location}` : ""}
+          {posted ? ` · ${posted}` : ""}
+        </div>
+      </div>
+      {item.is_fresh && (
+        <span
+          style={{
+            fontFamily: PAPER_FONTS_V2.mono,
+            fontWeight: 500,
+            fontSize: 9.5,
+            letterSpacing: ".08em",
+            color: TOKENS.green,
+            background: TOKENS.greenBg,
+            borderRadius: 4,
+            padding: "4px 7px",
+            flex: "none",
+          }}
+        >
+          NEW
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function JobsFeedPage() {
   const isMobile = useIsMobile();
   const router = useRouter();
   const [jobs, setJobs] = useState<FeedItem[] | null>(null);
   const [prefs, setPrefs] = useState<PreferencesDTO | null>(null);
+  const [belowBar, setBelowBar] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
+  const [following, setFollowing] = useState<FollowingItem[]>([]);
   const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
   const [refreshing, setRefreshing] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -299,13 +462,46 @@ export default function JobsFeedPage() {
 
   const fetchFeed = useCallback(() => fetch("/api/jobs/feed").then((r) => r.json()), []);
 
-  const applyFeed = useCallback((j: { error?: string; jobs?: FeedItem[] }) => {
+  // Follow state lives in two places: the set of followed company_ids (drives
+  // each card's button) and the recency strip's rows. Loaded together and
+  // reloaded whenever a follow toggles.
+  const loadFollowing = useCallback(async () => {
+    try {
+      const [ids, recent] = await Promise.all([
+        fetch("/api/jobs/follow").then((r) => r.json()),
+        fetch("/api/jobs/following").then((r) => r.json()),
+      ]);
+      setFollowedIds(new Set(Array.isArray(ids?.company_ids) ? ids.company_ids : []));
+      setFollowing(Array.isArray(recent?.recent) ? recent.recent : []);
+    } catch {
+      /* strip is best-effort; a failure just leaves it empty */
+    }
+  }, []);
+
+  // Optimistically reflect a card's toggle in the followed set, then refresh the
+  // strip so a newly-followed company's recent roles appear (or a removed one's
+  // drop off).
+  const onToggleFollow = useCallback(
+    (companyId: string, isFollowing: boolean) => {
+      setFollowedIds((prev) => {
+        const next = new Set(prev);
+        if (isFollowing) next.add(companyId);
+        else next.delete(companyId);
+        return next;
+      });
+      void loadFollowing();
+    },
+    [loadFollowing],
+  );
+
+  const applyFeed = useCallback((j: { error?: string; jobs?: FeedItem[]; fallback?: boolean }) => {
     if (j.error) {
       setError(j.error);
       setJobs([]);
     } else {
       setError(null);
       setJobs(Array.isArray(j.jobs) ? j.jobs : []);
+      setBelowBar(j.fallback === true);
     }
   }, []);
 
@@ -322,6 +518,7 @@ export default function JobsFeedPage() {
         setError(j.error);
       } else {
         applyFeed(await fetchFeed());
+        void loadFollowing();
         if (j.reason === "no_preferences") {
           setNote("Set your interests first, then refresh to fill your feed.");
         } else if (j.candidates === 0) {
@@ -337,7 +534,24 @@ export default function JobsFeedPage() {
     } finally {
       setRefreshing(false);
     }
-  }, [fetchFeed, applyFeed]);
+  }, [fetchFeed, applyFeed, loadFollowing]);
+
+  useEffect(() => {
+    // Mirror the accepted feed-load pattern below (setState inside a .then, not
+    // synchronously in the effect body) rather than calling loadFollowing here.
+    let alive = true;
+    Promise.all([
+      fetch("/api/jobs/follow").then((r) => r.json()).catch(() => null),
+      fetch("/api/jobs/following").then((r) => r.json()).catch(() => null),
+    ]).then(([ids, recent]) => {
+      if (!alive) return;
+      setFollowedIds(new Set(Array.isArray(ids?.company_ids) ? ids.company_ids : []));
+      setFollowing(Array.isArray(recent?.recent) ? recent.recent : []);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -374,14 +588,10 @@ export default function JobsFeedPage() {
 
   const toggle = (key: BooleanFilterKey) => setFilters((f) => ({ ...f, [key]: !f[key] }));
 
-  // Filter, then sort by FIT score descending. The feed already arrives
-  // score-ordered from the server, but ties break arbitrarily there (which can
-  // look alphabetical); sorting here makes the order explicit and stable
-  // (Array.sort is stable, so equal scores keep server order).
-  const visible = useMemo(() => {
-    const filtered = jobs ? filterJobs(jobs, filters) : [];
-    return [...filtered].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-  }, [jobs, filters]);
+  // Filter only — the server's order is deliberate (score-ranked, then spread
+  // across companies so one prolific board can't wall the feed); re-sorting by
+  // raw score here would clump those companies back together.
+  const visible = useMemo(() => (jobs ? filterJobs(jobs, filters) : []), [jobs, filters]);
   // Location suggestions for the filter's datalist: the distinct locations
   // actually in the feed, plus major US cities and Remote. The input still
   // accepts free text, so this is a convenience list, not a hard constraint.
@@ -459,6 +669,13 @@ export default function JobsFeedPage() {
         {jobs !== null && total > 0 && "."}
       </div>
 
+      <FollowingStrip
+        items={following}
+        followedCount={followedIds.size}
+        isMobile={isMobile}
+        onOpen={(jobId) => router.push(`/app/jobs/${jobId}`)}
+      />
+
       {jobs !== null && total > 0 && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 26 }}>
           <FilterPill label="Sponsors visa" active={filters.sponsorsVisa} onClick={() => toggle("sponsorsVisa")} />
@@ -512,6 +729,26 @@ export default function JobsFeedPage() {
               ))}
             </datalist>
           </div>
+        </div>
+      )}
+
+      {belowBar && jobs !== null && total > 0 && (
+        <div
+          style={{
+            fontFamily: PAPER_FONTS_V2.serif,
+            fontStyle: "italic",
+            fontSize: 13.5,
+            lineHeight: 1.5,
+            color: TOKENS.muted2,
+            border: `1px solid ${TOKENS.lineSoft}`,
+            background: TOKENS.cardWarm,
+            borderRadius: RADII.panelTight,
+            padding: "10px 14px",
+            marginBottom: 16,
+          }}
+        >
+          Nothing clears your fit bar right now, so these are the closest matches we have. Try Refresh, or broaden
+          your preferences to bring in stronger fits.
         </div>
       )}
 
@@ -636,6 +873,8 @@ export default function JobsFeedPage() {
                 item={item}
                 isMobile={isMobile}
                 onOpen={() => router.push(`/app/jobs/${item.job_id}`)}
+                following={!!item.company_id && followedIds.has(item.company_id)}
+                onToggleFollow={onToggleFollow}
               />
             ))}
           </div>
