@@ -103,10 +103,17 @@ export function matchesSize(job: { company_size: SizeBucket | null }, sizes: Siz
   return sizes.includes(job.company_size);
 }
 
+// Followed company_ids for a user (catalog ids, already resolved — no name
+// lookup needed). Separate helper so the feed route and scan can both reuse it.
+export async function loadFollowedCompanyIds(sb: SupabaseClient, uid: string): Promise<string[]> {
+  const { data } = await sb.from("followed_companies").select("company_id").eq("user_id", uid);
+  return (data ?? []).map((r) => r.company_id as string);
+}
+
 export async function loadScanPrefs(
   sb: SupabaseClient,
   uid: string,
-): Promise<{ prefs: ScanPrefs; pins: string[] }> {
+): Promise<{ prefs: ScanPrefs; pins: string[]; follows: string[] }> {
   const { data: row } = await sb.from("job_preferences").select("*").eq("user_id", uid).maybeSingle();
   const prefs: ScanPrefs = row
     ? {
@@ -119,17 +126,22 @@ export async function loadScanPrefs(
       }
     : { ...DEFAULT_PREFS };
   const { data: prof } = await sb.from("user_profile").select("context_structured").eq("user_id", uid).maybeSingle();
-  return { prefs, pins: extractPins(prof?.context_structured) };
+  const follows = await loadFollowedCompanyIds(sb, uid);
+  return { prefs, pins: extractPins(prof?.context_structured), follows };
 }
 
-// The catalog companies that match a user's interests (sector overlap) or pins
-// (exact normalized-name). Shared by the targeted fetch and candidate selection.
+// The catalog companies that match a user's interests (sector overlap), pins
+// (exact normalized-name), or explicit follows (catalog ids). Shared by the
+// targeted fetch and candidate selection. Follows are unioned in verbatim so a
+// company the user follows keeps being scanned even when it's outside their
+// sectors — that's the whole point of following.
 export async function resolveCompanyIds(
   sb: SupabaseClient,
   prefs: ScanPrefs,
   pins: string[],
+  follows: string[] = [],
 ): Promise<string[]> {
-  const companyIds = new Set<string>();
+  const companyIds = new Set<string>(follows);
   if (prefs.interests.length) {
     const { data } = await sb.from("companies").select("id").eq("active", true).overlaps("sectors", prefs.interests);
     for (const c of data ?? []) companyIds.add(c.id as string);
@@ -153,8 +165,9 @@ export async function selectCandidateJobs(
   prefs: ScanPrefs,
   pins: string[],
   companyIds?: string[],
+  follows: string[] = [],
 ): Promise<Job[]> {
-  const ids = companyIds ?? (await resolveCompanyIds(sb, prefs, pins));
+  const ids = companyIds ?? (await resolveCompanyIds(sb, prefs, pins, follows));
   if (!ids.length) return [];
 
   const threshold = postedThreshold(prefs.posted_within);
@@ -196,8 +209,8 @@ export interface UserScanSummary {
 // score whatever the catalog already holds. MUST run inside a user context.
 export async function runUserScan(uid: string): Promise<UserScanSummary> {
   const sb = supabaseAdmin();
-  const { prefs, pins } = await loadScanPrefs(sb, uid);
-  if (!prefs.interests.length && !pins.length) {
+  const { prefs, pins, follows } = await loadScanPrefs(sb, uid);
+  if (!prefs.interests.length && !pins.length && !follows.length) {
     return { candidates: 0, scored: 0, skipped: 0, reason: "no_preferences" };
   }
 
@@ -209,7 +222,7 @@ export async function runUserScan(uid: string): Promise<UserScanSummary> {
   }
 
   // Resolve AFTER coverage so newly-added companies are included.
-  const companyIds = await resolveCompanyIds(sb, prefs, pins);
+  const companyIds = await resolveCompanyIds(sb, prefs, pins, follows);
   if (!companyIds.length) return { candidates: 0, scored: 0, skipped: 0, reason: "no_companies" };
 
   // Fetch listings for just this user's companies, then enrich (both best-effort).
@@ -224,7 +237,7 @@ export async function runUserScan(uid: string): Promise<UserScanSummary> {
     console.error("[jobs/refresh] enrich failed", e);
   }
 
-  const candidates = await selectCandidateJobs(sb, prefs, pins, companyIds);
+  const candidates = await selectCandidateJobs(sb, prefs, pins, companyIds, follows);
   if (!candidates.length) return { candidates: 0, scored: 0, skipped: 0 };
 
   const summary = await scoreJobsForUser({

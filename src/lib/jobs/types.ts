@@ -79,6 +79,7 @@ export interface FeedItem {
   job_id: string;
   title: string;
   company: string;
+  company_id: string | null; // catalog id — lets the card follow the company
   location: string | null;
   remote_type: RemoteType;
   compensation: string | null;
@@ -99,6 +100,28 @@ export interface JobDetail extends FeedItem {
   city: string | null;
   region: string | null;
   country: string | null;
+}
+
+// One row in the "New at companies you follow" strip. Recency-first (ordered by
+// when WE first saw the listing), independent of fit score — the point is the
+// company, not the match. `is_fresh` flags listings first seen within 24h.
+export interface FollowingItem {
+  job_id: string;
+  title: string;
+  company: string;
+  company_id: string | null;
+  location: string | null;
+  posted_date: string | null;
+  posted_date_approx: boolean;
+  first_seen_at: string;
+  is_fresh: boolean;
+  url: string;
+}
+
+// A followed company, surfaced for management UIs / the strip's empty state.
+export interface FollowedCompanyDTO {
+  company_id: string;
+  name: string;
 }
 
 // How the user wants roles matched: like their CURRENT title (read from the

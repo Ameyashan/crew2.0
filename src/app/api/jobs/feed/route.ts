@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
 
     const sb = supabaseAdmin();
     const SELECT =
-      "id, score, reasons, status, jobs!inner(id, title, company, location_raw, city, region, country, remote_type, compensation, posted_date, posted_date_approx, url, visa_confidence, company_size, is_active)";
+      "id, score, reasons, status, jobs!inner(id, company_id, title, company, location_raw, city, region, country, remote_type, compensation, posted_date, posted_date_approx, url, visa_confidence, company_size, is_active)";
     let q = sb
       .from("job_matches")
       .select(SELECT)

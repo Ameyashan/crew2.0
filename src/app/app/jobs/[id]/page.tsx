@@ -7,6 +7,7 @@ import { TOKENS, RADII } from "@/components/paper/tokens";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { startRun } from "@/lib/runs-store";
 import { CompanyLogo } from "@/components/paper/CompanyLogo";
+import { FollowButton } from "@/components/paper/FollowButton";
 import {
   postedAgo,
   compDisplay,
@@ -25,6 +26,7 @@ export default function JobDetailPage() {
   const id = params?.id;
 
   const [job, setJob] = useState<JobDetail | null>(null);
+  const [following, setFollowing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [backHover, setBackHover] = useState(false);
@@ -39,7 +41,10 @@ export default function JobDetailPage() {
       .then((j) => {
         if (!alive) return;
         if (j.error) setError(j.error);
-        else setJob(j.job);
+        else {
+          setJob(j.job);
+          setFollowing(j.following === true);
+        }
       })
       .catch((e) => alive && setError(String(e?.message || e)));
     return () => {
@@ -350,6 +355,13 @@ export default function JobDetailPage() {
                     >
                       {visaChipLabel(job.visa_confidence)}
                     </span>
+                    <div style={{ marginLeft: "auto", flex: "none" }}>
+                      <FollowButton
+                        companyId={job.company_id}
+                        following={following}
+                        onChange={(_id, f) => setFollowing(f)}
+                      />
+                    </div>
                   </div>
                   <div
                     style={{
