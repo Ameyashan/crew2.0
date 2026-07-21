@@ -308,14 +308,19 @@ function JobCard({
 // so it never nags.
 function FollowingStrip({
   items,
+  followedCount,
   isMobile,
   onOpen,
 }: {
   items: FollowingItem[];
+  followedCount: number;
   isMobile: boolean;
   onOpen: (jobId: string) => void;
 }) {
-  if (!items.length) return null;
+  // Nothing to say only when the user follows no companies at all. When they
+  // follow companies but nothing currently fits, say so — otherwise following
+  // reads as a no-op.
+  if (!items.length && followedCount === 0) return null;
   const freshCount = items.filter((i) => i.is_fresh).length;
   return (
     <div
@@ -345,11 +350,27 @@ function FollowingStrip({
           </span>
         )}
       </div>
-      <div style={{ display: "flex", flexDirection: "column" }}>
-        {items.map((it, i) => (
-          <FollowingRow key={it.job_id} item={it} onOpen={() => onOpen(it.job_id)} first={i === 0} />
-        ))}
-      </div>
+      {items.length ? (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {items.map((it, i) => (
+            <FollowingRow key={it.job_id} item={it} onOpen={() => onOpen(it.job_id)} first={i === 0} />
+          ))}
+        </div>
+      ) : (
+        <p
+          style={{
+            margin: "0 0 8px",
+            fontFamily: PAPER_FONTS_V2.serif,
+            fontStyle: "italic",
+            fontSize: 13.5,
+            lineHeight: 1.5,
+            color: TOKENS.muted2,
+          }}
+        >
+          No new roles matching your preferences at the {followedCount === 1 ? "company" : `${followedCount} companies`}{" "}
+          you follow yet — we&apos;ll surface them here as they open.
+        </p>
+      )}
     </div>
   );
 }
@@ -648,7 +669,12 @@ export default function JobsFeedPage() {
         {jobs !== null && total > 0 && "."}
       </div>
 
-      <FollowingStrip items={following} isMobile={isMobile} onOpen={(jobId) => router.push(`/app/jobs/${jobId}`)} />
+      <FollowingStrip
+        items={following}
+        followedCount={followedIds.size}
+        isMobile={isMobile}
+        onOpen={(jobId) => router.push(`/app/jobs/${jobId}`)}
+      />
 
       {jobs !== null && total > 0 && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 26 }}>
