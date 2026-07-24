@@ -218,3 +218,9 @@ export interface JobMatch {
   status: MatchStatus;
   scored_at: string;
 }
+
+export interface FollowedCompany {
+  user_id: string;
+  company_id: string;
+  created_at: string;
+}

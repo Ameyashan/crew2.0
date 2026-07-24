@@ -117,6 +117,9 @@ const DEFAULTS: PreferencesDTO = {
   company_sizes: [],
   locations: [],
   visa_required: false,
+  role_mode: null,
+  target_roles: [],
+  current_role: null,
 };
 
 export default function JobsPreferencesPage() {
@@ -256,6 +259,75 @@ export default function JobsPreferencesPage() {
             {SECTORS.map((s) => (
               <Chip key={s.id} label={s.label} active={prefs.interests.includes(s.id)} onClick={() => toggle("interests", s.id)} />
             ))}
+          </Group>
+
+          <Group
+            eyebrow="Which roles"
+            color={TOKENS.gold}
+            hint="Sectors pick which companies we watch; this picks which roles. Otherwise you'd see every opening at those companies."
+          >
+            <Chip
+              label="Like my current title"
+              active={prefs.role_mode === "current"}
+              onClick={() => {
+                setPrefs({ ...prefs, role_mode: "current" });
+                setSaved(false);
+              }}
+            />
+            <Chip
+              label="A different role"
+              active={prefs.role_mode === "different"}
+              onClick={() => {
+                setPrefs({ ...prefs, role_mode: "different" });
+                setSaved(false);
+              }}
+            />
+            {/* Full-width helper row under the two chips. */}
+            <div style={{ flexBasis: "100%", height: 0 }} />
+            {prefs.role_mode === "current" &&
+              (prefs.current_role ? (
+                <p style={{ margin: "10px 0 0", fontFamily: PAPER_FONTS_V2.serif, fontStyle: "italic", fontSize: 13.5, color: TOKENS.inkSoft }}>
+                  We&apos;ll match roles like <strong>{prefs.current_role}</strong> — read from your resume.
+                </p>
+              ) : (
+                <p style={{ margin: "10px 0 0", fontFamily: PAPER_FONTS_V2.serif, fontStyle: "italic", fontSize: 13.5, color: TOKENS.red }}>
+                  We don&apos;t know your current title yet.{" "}
+                  <button
+                    onClick={() => router.push("/app/resume")}
+                    style={{ border: "none", background: "transparent", padding: 0, color: TOKENS.red, textDecoration: "underline", cursor: "pointer", font: "inherit" }}
+                  >
+                    Upload your resume
+                  </button>{" "}
+                  so we can match your role, or pick “A different role”.
+                </p>
+              ))}
+            {prefs.role_mode === "different" && (
+              <input
+                value={prefs.target_roles.join(", ")}
+                onChange={(e) => {
+                  const roles = e.target.value
+                    .split(",")
+                    .map((r) => r.trim())
+                    .filter(Boolean);
+                  setPrefs({ ...prefs, target_roles: roles });
+                  setSaved(false);
+                }}
+                placeholder="e.g. Product Manager, Program Manager"
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  marginTop: 10,
+                  border: `1px solid ${prefs.target_roles.length ? TOKENS.ink : TOKENS.line}`,
+                  borderRadius: RADII.panelTight,
+                  padding: "12px 14px",
+                  background: TOKENS.card,
+                  color: TOKENS.ink,
+                  fontFamily: PAPER_FONTS_V2.serif,
+                  fontSize: 15,
+                  outline: "none",
+                }}
+              />
+            )}
           </Group>
 
           <Group eyebrow="Posted within" color={TOKENS.gold}>

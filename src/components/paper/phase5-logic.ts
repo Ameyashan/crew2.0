@@ -8,6 +8,8 @@
 //
 // Nothing here touches the DOM, localStorage, Supabase, or the network.
 
+import { RUN_STATUS_LABEL } from "./run-status.ts";
+
 // ── Follow-up cadence (Settings + Onboarding) ────────────────────────────────
 // The nudge-cadence control persists to `profile.followup_days` (0 = never).
 // Both Settings and Onboarding share the same option set and label⇄days mapping.
@@ -175,16 +177,17 @@ export function skipLeavesStoryThin(patch: Record<string, unknown>): boolean {
 export type ChipTone = "done" | "progress" | "attention" | "error";
 export type HistoryChip = { label: string; tone: ChipTone };
 
+// Labels come from the shared run-status lexicon (run-status.ts); tones unchanged.
 export function composeOutcomeChip(outcome: string | null | undefined): HistoryChip {
-  if (outcome === "complete") return { label: "ready", tone: "done" };
-  if (outcome === "in_flight") return { label: "in progress…", tone: "progress" };
-  if (outcome === "needs_disambiguation") return { label: "needs pick", tone: "attention" };
-  return { label: "error", tone: "error" };
+  if (outcome === "complete") return { label: RUN_STATUS_LABEL.ready, tone: "done" };
+  if (outcome === "in_flight") return { label: RUN_STATUS_LABEL.running, tone: "progress" };
+  if (outcome === "needs_disambiguation") return { label: RUN_STATUS_LABEL["needs-you"], tone: "attention" };
+  return { label: RUN_STATUS_LABEL["needs-you"], tone: "error" };
 }
 
 export function resumeRowChip(row: { status?: string | null; ats_score?: number | null }): HistoryChip {
-  if (row?.status === "in_flight") return { label: "in progress…", tone: "progress" };
-  if (row?.status === "error") return { label: "error", tone: "error" };
+  if (row?.status === "in_flight") return { label: RUN_STATUS_LABEL.running, tone: "progress" };
+  if (row?.status === "error") return { label: RUN_STATUS_LABEL["needs-you"], tone: "error" };
   return { label: row?.ats_score != null ? `ATS ${row.ats_score}` : "tailored", tone: "done" };
 }
 

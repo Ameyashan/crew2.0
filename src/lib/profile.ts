@@ -11,6 +11,7 @@ export interface UserProfile {
   resume_filename: string | null;
   writing_samples: string | null;
   followup_days: number | null;
+  resume_pages: number | null;
   context_prompt: string | null;
   context_structured: Record<string, unknown> | null;
   onboarded_at: string | null;
@@ -38,6 +39,7 @@ export interface ProfilePatch {
   resume_filename?: string | null;
   writing_samples?: string | null;
   followup_days?: number | null;
+  resume_pages?: number | null;
   context_prompt?: string | null;
   context_structured?: Record<string, unknown> | null;
   onboarded_at?: string | null;

@@ -51,6 +51,8 @@ export async function POST(req: NextRequest) {
   if ("followup_days" in body)
     patch.followup_days =
       typeof body.followup_days === "number" ? body.followup_days : null;
+  if ("resume_pages" in body)
+    patch.resume_pages = body.resume_pages === 2 ? 2 : body.resume_pages === 1 ? 1 : null;
   if (incomingContext !== undefined) patch.context_prompt = incomingContext;
   if (context_structured !== undefined) patch.context_structured = context_structured;
   if ("resume_text" in body) patch.resume_text = body.resume_text ?? null;

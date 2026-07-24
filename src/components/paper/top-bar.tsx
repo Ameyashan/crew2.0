@@ -7,13 +7,22 @@ import { PAPER_FONTS_V2 } from "./fonts";
 import { TOKENS, RADII, SHADOWS } from "./tokens";
 import { supabaseBrowser, signInWithGoogle } from "@/lib/supabase-browser";
 import { useSessionUser } from "@/lib/use-signed-in";
+import { useIsMobile } from "@/lib/use-is-mobile";
 import { useRuns, useFocusedRun, setFocusedRun, beginAuthNavigation } from "@/lib/runs-store";
 import { TOP_NAV, nameFromEmail, isNavActive, avatarBg, avatarInitial, crewChip } from "./top-bar-logic";
-import { serializePendingRun, PENDING_RUN_KEY } from "./run-view-logic";
+import {
+  serializePendingRun,
+  PENDING_RUN_KEY,
+  serializePendingResults,
+  PENDING_RESULTS_KEY,
+} from "./run-view-logic";
 
 export function TopBar() {
   const pathname = usePathname();
   const router = useRouter();
+  // Phones get a compact single-row bar: tighter pills and a nav strip that
+  // scrolls sideways instead of wrapping the whole cluster under the wordmark.
+  const isMobile = useIsMobile();
 
   // Live agent runs (compose + resume share the module store), so "what's still
   // working" is visible from every screen — same activeRuns/runsTarget logic the
@@ -130,6 +139,27 @@ export function TopBar() {
           screenshotName: run.screenshot?.name ?? null,
         }),
       );
+      // Stash the people/outreach RESULTS for a completed anon job run so, after
+      // login, we re-open it with that work done and only run the resume. Only
+      // when outreach actually finished (drafts present) — signing in mid-run
+      // would otherwise restore partial work and skip the unfinished agents.
+      // Skip screenshot runs (not restorable). Otherwise we fall back to a fresh
+      // full run, which re-runs everything (correct when nothing was finished).
+      if (run.kind === "job" && !run.screenshot && Array.isArray(run.drafts) && run.drafts.length > 0) {
+        sessionStorage.setItem(
+          PENDING_RESULTS_KEY,
+          serializePendingResults({
+            parsed: run.parsed ?? null,
+            person: run.person ?? null,
+            enrichment: run.enrichment ?? null,
+            candidates: Array.isArray(run.candidates) ? run.candidates : null,
+            drafts: Array.isArray(run.drafts) ? run.drafts : null,
+            contacts: run.contacts ?? null,
+          }),
+        );
+      } else {
+        sessionStorage.removeItem(PENDING_RESULTS_KEY);
+      }
     } catch {
       /* private mode — degrade to a fresh Desk after sign-in */
     }
@@ -141,10 +171,11 @@ export function TopBar() {
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        gap: 12,
-        flexWrap: "wrap",
-        rowGap: 10,
-        padding: "20px clamp(16px, 4vw, 44px) 0",
+        gap: isMobile ? 8 : 12,
+        // Single row: the nav strip inside the right cluster absorbs any
+        // overflow (it scrolls), so the cluster never wraps under the wordmark.
+        flexWrap: "nowrap",
+        padding: isMobile ? "16px 16px 0" : "20px clamp(16px, 4vw, 44px) 0",
         flexShrink: 0,
         background: TOKENS.paper,
         color: TOKENS.ink,
@@ -168,9 +199,10 @@ export function TopBar() {
           textDecoration: "none",
           color: "inherit",
           cursor: lockWordmark ? "default" : "pointer",
+          flexShrink: 0,
         }}
       >
-        <span style={{ fontFamily: PAPER_FONTS_V2.serif, fontWeight: 500, fontSize: 21, lineHeight: 1 }}>
+        <span style={{ fontFamily: PAPER_FONTS_V2.serif, fontWeight: 500, fontSize: isMobile ? 19 : 21, lineHeight: 1 }}>
           Jugaadu
         </span>
         <span
@@ -186,45 +218,61 @@ export function TopBar() {
         </span>
       </Link>
 
-      {/* Right cluster */}
+      {/* Right cluster — one row; the nav strip inside absorbs overflow. */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 8,
-          flexWrap: "wrap",
-          rowGap: 8,
+          gap: isMobile ? 6 : 8,
+          flexWrap: "nowrap",
+          minWidth: 0,
           fontFamily: PAPER_FONTS_V2.sans,
           fontSize: 13,
         }}
       >
-        {!isSignedOut &&
-          TOP_NAV.map((n) => {
-            const active = isNavActive(pathname, n.match);
-            return (
-              <Link
-                key={n.id}
-                href={n.href}
-                onClick={n.id === "desk" ? () => setFocusedRun(null) : undefined}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: RADII.pill,
-                  textDecoration: "none",
-                  fontSize: 13,
-                  // Prototype navOn: ink text on the chip wash, weight 400 both
-                  // states — NOT inverted ink-bg/paper-text.
-                  fontWeight: 400,
-                  color: active ? TOKENS.ink : TOKENS.muted2,
-                  background: active ? TOKENS.chip : "transparent",
-                  lineHeight: 1,
-                  whiteSpace: "nowrap",
-                  transition: "color .15s, background .15s",
-                }}
-              >
-                {n.label}
-              </Link>
-            );
-          })}
+        {!isSignedOut && (
+          <nav
+            className="no-scrollbar"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: isMobile ? 4 : 8,
+              // On phones the pills slide sideways rather than pushing the
+              // account avatar off-screen or wrapping the whole cluster.
+              flexWrap: "nowrap",
+              overflowX: "auto",
+              minWidth: 0,
+            }}
+          >
+            {TOP_NAV.map((n) => {
+              const active = isNavActive(pathname, n.match);
+              return (
+                <Link
+                  key={n.id}
+                  href={n.href}
+                  onClick={n.id === "desk" ? () => setFocusedRun(null) : undefined}
+                  style={{
+                    padding: isMobile ? "6px 10px" : "8px 12px",
+                    borderRadius: RADII.pill,
+                    textDecoration: "none",
+                    fontSize: isMobile ? 12.5 : 13,
+                    // Prototype navOn: ink text on the chip wash, weight 400 both
+                    // states — NOT inverted ink-bg/paper-text.
+                    fontWeight: 400,
+                    color: active ? TOKENS.ink : TOKENS.muted2,
+                    background: active ? TOKENS.chip : "transparent",
+                    lineHeight: 1,
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                    transition: "color .15s, background .15s",
+                  }}
+                >
+                  {n.label}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
 
         {/* Live-runs chip: green while working, amber when something needs eyes.
             Reopens the run full-screen on the Desk (matches the prototype). */}
@@ -285,7 +333,7 @@ export function TopBar() {
 
         {/* Account avatar + popover */}
         {!isSignedOut && (
-          <div ref={acctRef} style={{ position: "relative", marginLeft: 10, display: "flex" }}>
+          <div ref={acctRef} style={{ position: "relative", marginLeft: isMobile ? 6 : 10, display: "flex", flexShrink: 0 }}>
             <button
               onClick={() => setAcctOpen((o) => !o)}
               title={email ?? undefined}

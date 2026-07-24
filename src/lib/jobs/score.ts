@@ -10,10 +10,10 @@ import { extractJson } from "@/lib/claude";
 import { logAgentRun } from "@/lib/agent-runs";
 import { supabaseAdmin } from "@/lib/supabase";
 import { currentUserId } from "@/lib/user-context";
-import { getProfile, senderContextFromProfile } from "@/lib/profile";
+import { getProfile, senderContextFromProfile, type UserProfile } from "@/lib/profile";
 import { jdText } from "@/lib/jobs/util";
 import type { Job } from "@/lib/db/schema";
-import type { ScoreResult } from "@/lib/jobs/types";
+import type { ScoreResult, RoleMode } from "@/lib/jobs/types";
 
 const MODEL = "claude-sonnet-4-6";
 const BATCH = 15;
@@ -30,14 +30,18 @@ function client() {
 
 const SYSTEM = `You are a job-matching assistant. Given a candidate's background/goals and a list of jobs, score how well EACH job fits the candidate.
 
+The candidate block may include a "Target role" line — the role FAMILY they want (either their current title or a different role they named). When it is present, ROLE/TITLE FIT IS THE PRIMARY AXIS:
+- A job in a clearly different function scores LOW even at a great company. (A Product Manager posting is a weak fit for a Business Analyst; a Backend Engineer posting is a weak fit for a Designer.) Prestige does not rescue a role mismatch.
+- Adjacent/transferable titles in the same family can score mid-to-high; call out the adjacency in the reason.
+
 Scoring (0–100):
-- 80–100: strong fit — role, level, and domain align with their background and what they want.
-- 50–79: plausible fit with gaps.
-- 0–49: weak fit.
+- 80–100: strong fit — role/title family matches AND level and domain align with their background and what they want.
+- 50–79: plausible fit — same family with a gap, or an adjacent role they could credibly move into.
+- 0–49: weak fit — wrong role family, or wrong level/domain.
 
-For each job give ONE short, concrete reason (max ~15 words) citing the actual match or gap ("Backend role matches their Go/infra background"). No flattery, no filler.
+For each job give ONE short, concrete reason (max ~15 words) citing the actual match or gap ("Analyst role matches their current BA title", "PM role — different function from their analyst background"). No flattery, no filler.
 
-If the candidate info is sparse, score by general role desirability/seniority and say so briefly. Score every job; never skip one.
+If NO target role is given and the candidate info is otherwise sparse, score by general role desirability/seniority and say so briefly. Score every job; never skip one.
 
 Output strict JSON only, no prose:
 { "scores": [ { "i": number, "score": number, "reasons": string } ] }`;
@@ -52,10 +56,17 @@ function buildJobsBlock(batch: Job[]): string {
     .join("\n\n");
 }
 
-async function scoreBatch(senderContext: string, batch: Job[]): Promise<ScoreResult[]> {
+async function scoreBatch(
+  senderContext: string,
+  batch: Job[],
+  targetRoleLine: string | null,
+): Promise<ScoreResult[]> {
+  const candidateBlock = [senderContext || "(limited profile information available)", targetRoleLine]
+    .filter(Boolean)
+    .join("\n");
   const userPrompt = [
     `# Candidate`,
-    senderContext || "(limited profile information available)",
+    candidateBlock,
     `# Jobs (score each by its number)`,
     buildJobsBlock(batch),
   ].join("\n\n");
@@ -122,7 +133,39 @@ export interface ScoreSummary {
   skipped: number; // already-scored jobs left untouched
 }
 
-export async function scoreJobsForUser({ jobs }: { jobs: Job[] }): Promise<ScoreSummary> {
+// Resolve the role FAMILY line handed to the scorer as the primary axis:
+// - role_mode "different" → the titles the user typed.
+// - role_mode "current" (or unset, the legacy default) → the profile's
+//   current_role, so an analyst is matched to analyst-family roles.
+// Returns null when neither signal exists (fall back to general desirability).
+function resolveTargetRoleLine(
+  roleMode: RoleMode,
+  targetRoles: string[],
+  profile: UserProfile | null,
+): string | null {
+  if (roleMode === "different" && targetRoles.length) {
+    return `Target role: ${targetRoles.join(", ")} (match this role family; a different function is a weak fit even at a strong company)`;
+  }
+  const cs = profile?.context_structured;
+  const currentRole =
+    cs && typeof cs === "object" && typeof (cs as Record<string, unknown>).current_role === "string"
+      ? ((cs as Record<string, unknown>).current_role as string).trim()
+      : "";
+  if (currentRole) {
+    return `Target role: roles like their current title "${currentRole}" (match this role family; a different function is a weak fit even at a strong company)`;
+  }
+  return null;
+}
+
+export async function scoreJobsForUser({
+  jobs,
+  roleMode = null,
+  targetRoles = [],
+}: {
+  jobs: Job[];
+  roleMode?: RoleMode;
+  targetRoles?: string[];
+}): Promise<ScoreSummary> {
   const userId = currentUserId();
   if (!jobs.length) return { scored: 0, skipped: 0 };
   const sb = supabaseAdmin();
@@ -141,11 +184,12 @@ export async function scoreJobsForUser({ jobs }: { jobs: Job[] }): Promise<Score
 
   const profile = await getProfile();
   const senderContext = senderContextFromProfile(profile);
+  const targetRoleLine = resolveTargetRoleLine(roleMode, targetRoles, profile);
 
   let scored = 0;
   for (let i = 0; i < todo.length; i += BATCH) {
     const batch = todo.slice(i, i + BATCH);
-    const results = await scoreBatch(senderContext, batch);
+    const results = await scoreBatch(senderContext, batch, targetRoleLine);
     if (!results.length) continue;
     const nowIso = new Date().toISOString();
     const rows = results.map((r) => ({

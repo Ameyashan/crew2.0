@@ -12,7 +12,9 @@ import {
   useRuns,
   useFocusedRun,
   setFocusedRun,
+  hydrateRun,
   startRun,
+  startRestoredRun,
   startImageRun,
   dismissRun,
   retryRun,
@@ -57,6 +59,9 @@ import {
   serializePendingRun,
   parsePendingRun,
   PENDING_RUN_KEY,
+  serializePendingResults,
+  parsePendingResults,
+  PENDING_RESULTS_KEY,
   buildRunSteps,
   stepActivityPhrase,
   runViewTitle,
@@ -204,10 +209,34 @@ function ComposeV3({ p, go }) {
     ? liveNonResume.find((run) => run.id === focusedRunId) || null
     : null;
   const firstTime = isFirstTime(composeRuns.length, resumeRuns.length) && liveNonResume.length === 0;
-  const earlier = deskEarlierRuns(composeRuns, resumeRuns, 4);
+  // A run that's currently LIVE in the store (running, or reconnecting after a
+  // background+reload) is surfaced as the top-bar chip / focused card — so
+  // exclude its history row from "Earlier runs", otherwise the one run shows
+  // twice. Keyed by the server row id each live run carries.
+  const liveRunIds = new Set(
+    runs.flatMap((r) => [r.composeRunId, r.resumeGenerationId]).filter(Boolean),
+  );
+  const earlier = deskEarlierRuns(composeRuns, resumeRuns, 4, liveRunIds);
   // Prototype shows the Story nudge for signed-in accounts only.
   const showNudge = signedIn === true && !!nudgeKey && storyIsEmpty && !nudgeDismissed;
   const headline = deskHeadline(signedIn, firstTime, name);
+
+  // Open a specific earlier run in place (not the generic history list): pull its
+  // full persisted row, hydrate it into the store, and focus it — reusing the
+  // same RunCard screen a live run uses. Résumé rows live on the Story page.
+  async function openRun(row) {
+    if (row.agent === 'resume') { go('resume'); return; }
+    try {
+      const res = await fetch(`/api/compose/history/${row.id}`);
+      const json = await res.json().catch(() => null);
+      if (json?.run) {
+        const localId = hydrateRun(json.run);
+        setFocusedRun(localId);
+        return;
+      }
+    } catch { /* fall through to the list */ }
+    go('history');
+  }
 
   // Seed the composer from a suggestion pill / first-time card.
   function fillComposer(text) { setInput(text); }
@@ -237,18 +266,33 @@ function ComposeV3({ p, go }) {
   useEffect(() => {
     if (signedIn !== true || typeof window === 'undefined') return;
     let raw = null;
+    let rawResults = null;
     try { raw = sessionStorage.getItem(PENDING_RUN_KEY); } catch { raw = null; }
+    try { rawResults = sessionStorage.getItem(PENDING_RESULTS_KEY); } catch { rawResults = null; }
     const pending = parsePendingRun(raw);
     if (!pending) return;
+    const results = parsePendingResults(rawResults);
     try { sessionStorage.removeItem(PENDING_RUN_KEY); } catch { /* private mode */ }
+    try { sessionStorage.removeItem(PENDING_RESULTS_KEY); } catch { /* private mode */ }
     if (pending.input && pending.input.trim()) {
       const kind = pending.kind && pending.kind !== 'fuzzy' ? pending.kind : classifyKind(pending.input);
-      const restoredId = startRun(pending.input, {
-        intent: pending.intent,
-        providedEmail: pending.providedEmail,
-        kind: kind === 'job' ? 'job' : 'person',
-        selectedAgents: pending.selectedAgents,
-      });
+      // Anon runs skip Resume Darzi + Sawaal Jawaab (signed-out gates), running
+      // only the people pipeline. If that people work survived (results present)
+      // and this is a job run, re-open it with that work DONE and run only the
+      // resume + application agents — instead of re-running the whole crew. Any
+      // other case (person run, no results, private mode) replays fresh.
+      const restoredId =
+        kind === 'job' && results
+          ? startRestoredRun(pending.input, results, {
+              intent: pending.intent,
+              providedEmail: pending.providedEmail,
+            })
+          : startRun(pending.input, {
+              intent: pending.intent,
+              providedEmail: pending.providedEmail,
+              kind: kind === 'job' ? 'job' : 'person',
+              selectedAgents: pending.selectedAgents,
+            });
       // Reopen the run full-screen (now unlocked) rather than dropping the user
       // on a fresh Desk after the OAuth round-trip.
       if (restoredId) setFocusedRun(restoredId);
@@ -446,7 +490,7 @@ function ComposeV3({ p, go }) {
           }}>Earlier runs</div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {earlier.map((row) => (
-              <div key={row.key} className="dk-row" onClick={() => go('history')} style={{
+              <div key={row.key} className="dk-row" onClick={() => openRun(row)} style={{
                 display: 'flex', alignItems: 'center', gap: 16, padding: '15px 8px', margin: '0 -8px',
                 borderTop: `1px solid ${TOKENS.lineRow}`, cursor: 'pointer', borderRadius: 8,
                 transition: 'background .15s', flexWrap: 'wrap',
@@ -597,6 +641,7 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
     parsedLabel,
     thin,
     skipResume,
+    resumePresent: !!parsed?.resume,
     pulling: showPull,
     peopleCount,
     personLabel: stepPerson?.name || null,
@@ -679,7 +724,7 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
       {/* ─── steps list ─── */}
       {steps.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', maxWidth: 820 }}>
-          {steps.map((s) => <StepRow key={s.id} s={s}/>)}
+          {steps.map((s) => <StepRow key={s.id} s={s} activity={run.activity?.[s.id]}/>)}
         </div>
       )}
 
@@ -744,16 +789,19 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
 // per-agent failure gets an amber ! circle. Title 14.5/500 + mono agent chip,
 // muted sub underneath (prototype lines 549–565).
 
-// Rotating "what the agent is doing right now" caption, shown only while a step
-// is active. Advances on its own ~2.4s timer so the line keeps moving — the
-// reassurance an LLM search UI gives ("refining search · looking for people").
-function StepActivity({ id }) {
+// "What the agent is doing right now" caption, shown only while a step is
+// active. Prefers the REAL activity streamed from the run (a web_search on the
+// JD, the live bullet count, how many people were sourced); falls back to the
+// hand-authored STEP_ACTIVITY timer only until a real signal lands, so the line
+// still moves during the quiet gaps.
+function StepActivity({ id, activity }) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setTick((n) => n + 1), 2400);
     return () => clearInterval(t);
   }, []);
-  const phrase = stepActivityPhrase(id, tick);
+  const real = typeof activity === "string" ? activity.trim() : "";
+  const phrase = real || stepActivityPhrase(id, tick);
   if (!phrase) return null;
   return (
     <div style={{
@@ -771,7 +819,7 @@ function StepActivity({ id }) {
   );
 }
 
-function StepRow({ s }) {
+function StepRow({ s, activity }) {
   return (
     <div style={{
       display: 'flex', gap: 16, padding: '15px 0',
@@ -827,7 +875,7 @@ function StepRow({ s }) {
             color: s.state === 'error' ? TOKENS.amber : s.state === 'pending' ? TOKENS.faint : TOKENS.muted, marginTop: 3,
           }}>{s.sub}</div>
         )}
-        {s.state === 'active' && <StepActivity id={s.id}/>}
+        {s.state === 'active' && <StepActivity id={s.id} activity={activity}/>}
       </div>
     </div>
   );
@@ -2249,6 +2297,27 @@ function BlurGateOverlay({ kind, run, input }) {
           screenshotName: run?.screenshot?.name ?? null,
         });
         try { sessionStorage.setItem(PENDING_RUN_KEY, payload); } catch { /* private mode */ }
+        // Stash the people/outreach RESULTS so the run re-opens after login with
+        // that work done and only the resume re-runs. Only when outreach actually
+        // finished (drafts present); signing in mid-run replays fresh instead of
+        // restoring partial work. Job runs only; screenshot runs aren't restorable.
+        try {
+          if (run?.kind === 'job' && !run?.screenshot && Array.isArray(run?.drafts) && run.drafts.length > 0) {
+            sessionStorage.setItem(
+              PENDING_RESULTS_KEY,
+              serializePendingResults({
+                parsed: run?.parsed ?? null,
+                person: run?.person ?? null,
+                enrichment: run?.enrichment ?? null,
+                candidates: Array.isArray(run?.candidates) ? run.candidates : null,
+                drafts: Array.isArray(run?.drafts) ? run.drafts : null,
+                contacts: run?.contacts ?? null,
+              }),
+            );
+          } else {
+            sessionStorage.removeItem(PENDING_RESULTS_KEY);
+          }
+        } catch { /* private mode */ }
       }
       // Suppress the "Load failed" flash from the run's stream being torn down
       // by the OAuth navigation.

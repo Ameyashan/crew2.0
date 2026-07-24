@@ -164,11 +164,11 @@ test("deskRunTitle picks the right label per agent/kind", () => {
 
 test("deskRunChips maps outcomes/status to labelled tones", () => {
   assert.deepEqual(deskRunChips("compose", { outcome: "complete" }), [{ label: "ready", tone: "done" }]);
-  assert.deepEqual(deskRunChips("compose", { outcome: "in_flight" }), [{ label: "in progress", tone: "progress" }]);
-  assert.deepEqual(deskRunChips("compose", { outcome: "needs_disambiguation" }), [{ label: "needs pick", tone: "attention" }]);
-  assert.deepEqual(deskRunChips("compose", { outcome: "boom" }), [{ label: "error", tone: "error" }]);
+  assert.deepEqual(deskRunChips("compose", { outcome: "in_flight" }), [{ label: "running", tone: "progress" }]);
+  assert.deepEqual(deskRunChips("compose", { outcome: "needs_disambiguation" }), [{ label: "needs you", tone: "attention" }]);
+  assert.deepEqual(deskRunChips("compose", { outcome: "boom" }), [{ label: "needs you", tone: "error" }]);
   assert.deepEqual(deskRunChips("resume", { ats_score: 82 }), [{ label: "ATS 82", tone: "done" }]);
-  assert.deepEqual(deskRunChips("resume", { status: "in_flight" }), [{ label: "in progress", tone: "progress" }]);
+  assert.deepEqual(deskRunChips("resume", { status: "in_flight" }), [{ label: "running", tone: "progress" }]);
   assert.deepEqual(deskRunChips("resume", {}), [{ label: "tailored", tone: "done" }]);
 });
 

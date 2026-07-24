@@ -38,7 +38,21 @@ export async function GET(
       match.status = "seen";
     }
 
-    return Response.json({ job: jobDetail(job as Job, (match as JobMatch | null) ?? null) });
+    // Whether the viewer follows this job's company, so the detail header can
+    // render the Follow button in the right state.
+    let following = false;
+    const companyId = (job as Job).company_id;
+    if (companyId) {
+      const { data: follow } = await sb
+        .from("followed_companies")
+        .select("company_id")
+        .eq("user_id", userId)
+        .eq("company_id", companyId)
+        .maybeSingle();
+      following = !!follow;
+    }
+
+    return Response.json({ job: jobDetail(job as Job, (match as JobMatch | null) ?? null), following });
   });
 }
 

@@ -36,10 +36,10 @@ import {
 } from "./run-view-logic.ts";
 
 // ── Status chip relabel ──────────────────────────────────────────────────────
-test("runStatusChip maps the 4-state machine to RUNNING/DONE/NEEDS-YOU", () => {
+test("runStatusChip maps the 4-state machine to RUNNING/READY/NEEDS-YOU", () => {
   assert.deepEqual(runStatusChip("parsing"), { label: "RUNNING", tone: "running", pulse: true });
   assert.deepEqual(runStatusChip("working"), { label: "RUNNING", tone: "running", pulse: true });
-  assert.deepEqual(runStatusChip("done"), { label: "DONE", tone: "done", pulse: false });
+  assert.deepEqual(runStatusChip("done"), { label: "READY", tone: "done", pulse: false });
   assert.deepEqual(runStatusChip("error"), { label: "NEEDS YOU", tone: "attention", pulse: false });
 });
 
@@ -49,7 +49,7 @@ test("runStatusChip: working + reconnecting swaps the label but stays a pulsing 
   assert.equal(chip.tone, "running");
   assert.equal(chip.pulse, true);
   // reconnecting only matters while working
-  assert.equal(runStatusChip("done", { reconnecting: true }).label, "DONE");
+  assert.equal(runStatusChip("done", { reconnecting: true }).label, "READY");
 });
 
 test("runStatusChip: unknown/nullish stage degrades to a running chip", () => {
@@ -246,6 +246,7 @@ test("buildRunSteps: done marks every selected step done with real subs", () => 
     kind: "job",
     progress: { resume: 100, person: 100, email: 100, outreach: 100 },
     ats: { before: 61, after: 88 },
+    resumePresent: true,
     peopleCount: 3,
     personLabel: "Anika Mehta",
     emailVerdict: "96% verified",
@@ -268,6 +269,25 @@ test("buildRunSteps: done marks every selected step done with real subs", () => 
   assert.equal(application.title, "2 application questions found");
 });
 
+test("buildRunSteps: resume step done without an artifact reads honestly, not 'PDF + Word below'", () => {
+  // The server can send step:resume done with data.resume=null (no base resume,
+  // agent returned nothing). The download card is gated on the artifact, so the
+  // row must not promise a download that never renders.
+  const rows = buildRunSteps({
+    stage: "done",
+    kind: "job",
+    progress: { resume: 100, person: 100, email: 100, outreach: 100 },
+    resumePresent: false,
+    peopleCount: 1,
+    personLabel: "Anika Mehta",
+    draftCount: 1,
+  });
+  const resume = rows.find((r) => r.id === "resume");
+  assert.equal(resume.state, "error");
+  assert.equal(resume.title, "No resume to show this time");
+  assert.doesNotMatch(resume.sub, /PDF \+ Word below/);
+});
+
 test("buildRunSteps: selectedAgents filters agent rows (parse always stays)", () => {
   const rows = buildRunSteps({
     stage: "done",
@@ -285,6 +305,7 @@ test("buildRunSteps: thin story flavors resume + outreach rows", () => {
     progress: {},
     thin: true,
     ats: { after: 71 },
+    resumePresent: true,
     // A thin run still drafts — thin means no Story to hook from, not no drafts.
     draftCount: 3,
   });
