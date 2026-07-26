@@ -11,12 +11,14 @@ import {
   type FindEmailResult,
   type EmailGuess,
 } from "@/lib/apollo";
+import { emailDomainCandidates, buildGuessesForDomains } from "@/lib/email/domain";
 import { lookupEmployer } from "@/lib/employer";
 import { findEmailHunter as findEmail } from "@/lib/hunter";
 import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase";
 import { currentUserId, isAnonymousRun } from "@/lib/user-context";
 import { getProfile, senderContextFromProfile } from "@/lib/profile";
+import { listStoryEntries } from "@/lib/story";
 import { agentEnabled } from "@/lib/agent-selection";
 
 export interface RunReachOutInput {
@@ -209,13 +211,41 @@ export async function* runReachOutStream(
       // neither provider returns usable data. The authoritative org domain wins.
       const finalDomain =
         employerDomain ?? enrichment.domain ?? inferDomain({ company: ctx.company, links: ctx.links });
-      const finalGuesses =
-        enrichment.guesses && enrichment.guesses.length
-          ? enrichment.guesses
-          : finalDomain
-            ? buildGuesses(lookupName, finalDomain)
-            : [];
-      enrichmentForUi = { ...enrichment, domain: finalDomain, guesses: finalGuesses };
+      // Guess across EVERY plausible email domain we surfaced — the employer/work
+      // domain AND any other domain the research turned up (personal site,
+      // newsletter/Substack, …) — so the alternates aren't five variants of one
+      // host. Work-domain-first; social/link hosts are filtered out.
+      const domainCandidates = emailDomainCandidates({
+        employerDomain,
+        foundDomain: enrichment.domain,
+        finalDomain,
+        company: ctx.company,
+        links: ctx.links,
+      });
+      const multiGuesses = buildGuessesForDomains(lookupName, domainCandidates, {
+        perDomain: 4,
+        total: 10,
+      });
+      // Keep any provider-returned guess first — it can carry a real secondary
+      // address (e.g. a self-published mailbox surfaced alongside the primary) —
+      // then append the multi-domain pattern guesses, dedupe against the primary
+      // email, and cap the list.
+      const primaryKey = (enrichment.email ?? "").toLowerCase();
+      const seenGuess = new Set<string>(primaryKey ? [primaryKey] : []);
+      const finalGuesses: EmailGuess[] = [];
+      for (const g of [...(enrichment.guesses ?? []), ...multiGuesses]) {
+        const key = g.email?.toLowerCase();
+        if (!key || seenGuess.has(key)) continue;
+        seenGuess.add(key);
+        finalGuesses.push(g);
+        if (finalGuesses.length >= 10) break;
+      }
+      // Last-resort single-domain guesses if nothing else surfaced.
+      const guessesForUi =
+        finalGuesses.length || !finalDomain
+          ? finalGuesses
+          : buildGuesses(lookupName, finalDomain);
+      enrichmentForUi = { ...enrichment, domain: finalDomain, guesses: guessesForUi };
       yield { type: "step", id: "email_lookup", status: "done", data: enrichmentForUi };
     }
 
@@ -296,6 +326,24 @@ export async function* runReachOutStream(
       for (const c of channels) yield { type: "step", id: "draft", status: "start", channel: c };
 
       const senderCtx = senderContextFromProfile(profile);
+      // The sender's own Story entries — real things they've done — so the draft
+      // can lead with a genuine "here's something close I've worked on" and turn
+      // the outreach into a curiosity/advice ask rather than a cold job pitch.
+      // Best-effort and signed-in only (anon runs have no Story); a failure here
+      // must never sink the drafts, so we swallow it and fall back to the resume
+      // excerpt already carried in sender_context.
+      let senderStories: string[] = [];
+      if (!isAnonymousRun()) {
+        try {
+          const entries = await listStoryEntries();
+          senderStories = entries
+            .map((e) => (e.bullet ?? e.raw ?? "").trim())
+            .filter(Boolean)
+            .slice(0, 8);
+        } catch (e) {
+          console.error("[reach-out] story fetch for draft failed", e);
+        }
+      }
       const draftPromises = channels.map((c) =>
         draft({
           person_context: ctx,
@@ -304,6 +352,7 @@ export async function* runReachOutStream(
           job_context: input.job_context,
           sender_context: senderCtx || undefined,
           sender_writing_samples: profile?.writing_samples ?? undefined,
+          sender_stories: senderStories.length ? senderStories : undefined,
           sender_full_name: profile?.full_name ?? undefined,
           sender_linkedin: profile?.linkedin_url ?? undefined,
         }).then((r) => ({ channel: c, result: r }))

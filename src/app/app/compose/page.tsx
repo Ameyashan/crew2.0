@@ -13,6 +13,7 @@ import {
   useFocusedRun,
   setFocusedRun,
   hydrateRun,
+  hydrateResumeRun,
   startRun,
   startRestoredRun,
   startImageRun,
@@ -205,8 +206,11 @@ function ComposeV3({ p, go }) {
   const liveNonResume = runs.filter((run) => run.kind !== 'resume');
   // The run to show full-screen instead of the Desk. Falls back to the Desk when
   // nothing is focused or the focused run was dismissed / not in the store.
+  // Search ALL runs (not just liveNonResume) so a résumé run reopened from
+  // "Earlier runs" can take over the screen too — live job/person runs are the
+  // only kinds that ever auto-focus, so nothing else surfaces unexpectedly.
   const focusedRun = focusedRunId
-    ? liveNonResume.find((run) => run.id === focusedRunId) || null
+    ? runs.find((run) => run.id === focusedRunId) || null
     : null;
   const firstTime = isFirstTime(composeRuns.length, resumeRuns.length) && liveNonResume.length === 0;
   // A run that's currently LIVE in the store (running, or reconnecting after a
@@ -223,9 +227,23 @@ function ComposeV3({ p, go }) {
 
   // Open a specific earlier run in place (not the generic history list): pull its
   // full persisted row, hydrate it into the store, and focus it — reusing the
-  // same RunCard screen a live run uses. Résumé rows live on the Story page.
+  // same RunCard screen a live run uses. Résumé rows hydrate their own
+  // resume_generations row (they have no parent compose run) so the click reopens
+  // THAT tailored résumé rather than the generic Story page.
   async function openRun(row) {
-    if (row.agent === 'resume') { go('resume'); return; }
+    if (row.agent === 'resume') {
+      try {
+        const res = await fetch(`/api/resume/history/${row.id}`);
+        const json = await res.json().catch(() => null);
+        if (json?.generation) {
+          const localId = hydrateResumeRun(json.generation);
+          setFocusedRun(localId);
+          return;
+        }
+      } catch { /* fall through to the Story page */ }
+      go('resume');
+      return;
+    }
     try {
       const res = await fetch(`/api/compose/history/${row.id}`);
       const json = await res.json().catch(() => null);
@@ -654,15 +672,17 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
     questionCount: Array.isArray(run.applicationQuestions) ? run.applicationQuestions.length : null,
   });
 
-  const title = runViewTitle({
-    kind: run.kind === 'job' ? 'job' : 'person',
-    role: run.kind === 'job' ? (jobParsed?.role ?? run.screenshotRole ?? null) : null,
-    company: run.kind === 'job'
-      ? (jobParsed?.company ?? run.screenshotCompany ?? null)
-      : (stepPerson?.company ?? null),
-    personName: run.kind === 'job' ? null : (stepPerson?.name ?? null),
-    fallback: jobHost(run.input) || run.intent || run.input,
-  });
+  const title = run.kind === 'resume'
+    ? ([parsed?.role, parsed?.company].filter(Boolean).join(' · ') || 'Tailored résumé')
+    : runViewTitle({
+        kind: run.kind === 'job' ? 'job' : 'person',
+        role: run.kind === 'job' ? (jobParsed?.role ?? run.screenshotRole ?? null) : null,
+        company: run.kind === 'job'
+          ? (jobParsed?.company ?? run.screenshotCompany ?? null)
+          : (stepPerson?.company ?? null),
+        personName: run.kind === 'job' ? null : (stepPerson?.name ?? null),
+        fallback: jobHost(run.input) || run.intent || run.input,
+      });
 
   // Resume Darzi was opted in, but the resolved kind is a person — there's no
   // JD to tailor against. Warn and continue with the rest of the crew.
@@ -704,7 +724,9 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
       {/* ─── sub-line: intent echo + screenshot chip (12×9 hatch swatch) ─── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
         <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, lineHeight: 1.6, color: TOKENS.muted }}>
-          from &ldquo;{run.intent || run.input}&rdquo; · crew assembled automatically
+          {run.kind === 'resume'
+            ? 'Tailored résumé · reopened from an earlier run'
+            : <>from &ldquo;{run.intent || run.input}&rdquo; · crew assembled automatically</>}
         </div>
         {run.screenshot && (
           <span style={{
@@ -722,7 +744,7 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
       </div>
 
       {/* ─── steps list ─── */}
-      {steps.length > 0 && (
+      {run.kind !== 'resume' && steps.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', maxWidth: 820 }}>
           {steps.map((s) => <StepRow key={s.id} s={s} activity={run.activity?.[s.id]}/>)}
         </div>
@@ -763,7 +785,7 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
         >
           {showPull && <PullPanel go={go} signedIn={signedIn} onConfirm={() => setPullDone(true)}/>}
 
-          {run.kind === 'job' && parsed?.resume && (
+          {(run.kind === 'job' || run.kind === 'resume') && parsed?.resume && (
             <ResumeOutCard p={p} run={run} go={go} thin={thin}/>
           )}
 

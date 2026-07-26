@@ -1339,6 +1339,7 @@ export interface DraftInput {
   parent_draft?: { channel: Channel; body: string }; // for followups
   sender_context?: string;                            // about the user — name, resume excerpt
   sender_writing_samples?: string;                    // pasted samples from onboarding
+  sender_stories?: string[];                          // the sender's own Story entries — real things they've done, to draw a genuine connection from
   sender_full_name?: string;                          // for sign-off
   sender_linkedin?: string;                           // appended under the name in email signatures
   // Job-application flow: the role/company this outreach is actually about.
@@ -1396,10 +1397,12 @@ Length: ${LENGTH_BUDGETS[channel]}
 
 ${antiAiWritingGuide("prose")}${coldOutreach}
 
-Outreach specifics:
-- Reference exactly ONE specific thing the recipient did, said, or shipped (from the research). Name the thing.
-- If the research has no specific facts, tie the user's own background or intent to the recipient's company/role rather than fabricating a reference. Honest > fluffy.
-- One concrete ask. A single question, not several.
+Outreach specifics — write as genuine curiosity, not a pitch:
+- The sender is reaching out because they're genuinely curious about something the recipient has done and want to learn from them — NOT to ask for a job outright. Interest in the role/company can come through, but the message LEADS with curiosity and a specific question, never with an ask for work.
+- Build it around ONE real connection between the sender's own experience and the recipient's. Pull something concrete from the sender's own background/stories (a thing they actually built or worked on), note that the recipient has done this — often at a scale or in a context the sender wants to understand — and ask a specific, genuine question about how it actually works in their world. This is an advice ask, not a job ask.
+- Reference exactly ONE specific thing the recipient did, said, or shipped (from the research). Name the thing. If the research has no specific facts, tie the sender's own background to the recipient's company/role rather than fabricating a reference. Honest > fluffy.
+- Exactly ONE ask, and make it a low-friction question they can answer from experience — how they approached X, how it works on their team, what they'd do differently. Never "can I have a job", never "can we hop on a call".
+- If there's a role in play (a job application), let interest in it sit UNDERNEATH the curiosity — one light, honest line that they'd love to be part of work like this — never a direct request to be hired, referred, or considered. The advice question stays the main ask.
 - No adjectives that flatter the recipient.
 - ${signOffInstruction(channel, signOffName, signOffLinkedin)}
 - Do NOT respond with meta-commentary like "I need more context" — write the best message you can with what you have.
@@ -1534,6 +1537,15 @@ export async function draft(input: DraftInput): Promise<DraftResult> {
 
   if (input.sender_context) {
     userBlocks.push(`# About the sender (you are writing as this person)\n${input.sender_context}`);
+  }
+
+  if (input.sender_stories?.length) {
+    userBlocks.push(
+      `# The sender's own stories — real things they've done\nDraw ONE genuine connection from here to what the recipient has done (the "here's something close I've worked on" that sets up the advice question). Use the single most relevant one; do NOT list several, and do not invent details beyond these.\n${input.sender_stories
+        .slice(0, 8)
+        .map((s) => `- ${s}`)
+        .join("\n")}`
+    );
   }
 
   if (input.sender_writing_samples) {

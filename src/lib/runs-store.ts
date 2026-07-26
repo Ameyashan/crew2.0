@@ -899,6 +899,74 @@ export function hydrateRun(persisted: PersistedComposeRun): string {
   return localId;
 }
 
+// The resume twin of hydrateRun: build a focused kind:"resume" run from a
+// persisted resume_generations row so a résumé row in "Earlier runs" reopens in
+// the same RunCard screen a live run uses — instead of dumping the user on the
+// Story page. Standalone tailors have no parent compose run, so we hydrate the
+// generation row directly (mirroring the fields applyPersistedResume sets).
+// Deduped on the generation id so re-clicking the same row refocuses it.
+export function hydrateResumeRun(gen: {
+  id: string;
+  status?: string | null;
+  error?: string | null;
+  resume?: unknown;
+  ats_score?: number | null;
+  target_role?: string | null;
+  target_company?: string | null;
+  job_url?: string | null;
+  highlights?: string | null;
+  page_count?: number | null;
+  created_at?: string | null;
+}): string {
+  const existing = runs.find((r) => r.resumeGenerationId === gen.id);
+  if (existing) return existing.id;
+
+  const resume = gen.resume ?? null;
+  const complete = gen.status === "complete" && !!resume;
+  const role = gen.target_role ?? resume?.meta?.target_role ?? null;
+  const company = gen.target_company ?? resume?.meta?.target_company ?? null;
+  const localId =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `run_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  const run: Run = {
+    id: localId,
+    input: gen.job_url || role || "Resume",
+    intent: undefined,
+    providedEmail: false,
+    kind: "resume",
+    stage: complete ? "done" : "error",
+    parsed: complete
+      ? {
+          resume,
+          ats_score: gen.ats_score ?? resume?.meta?.ats_score ?? null,
+          ats_score_before: resume?.meta?.ats_score_before ?? null,
+          role,
+          company,
+        }
+      : null,
+    progress: complete ? { tailor: 100 } : {},
+    drafts: null,
+    enrichment: null,
+    person: null,
+    candidates: null,
+    contacts: null,
+    error: complete ? null : (gen.error || "Resume tailoring failed."),
+    createdAt: gen.created_at ? new Date(gen.created_at).getTime() : Date.now(),
+    resumeGenerationId: gen.id,
+    resumeRequest: {
+      jobUrl: gen.job_url || undefined,
+      highlights: gen.highlights || undefined,
+      pageCount: gen.page_count === 2 ? 2 : 1,
+    },
+  };
+
+  runs = [run, ...runs];
+  emit();
+  return localId;
+}
+
 // Re-pick a different hiring-manager candidate on a finished job run. Re-runs
 // only the email + draft for that person (server skips resume + sourcing) and
 // patches the email/person/draft in place — the package card stays visible.
@@ -1088,12 +1156,20 @@ export async function pickCandidate(
 // resume (+ ATS, role/company) in place — the rest of the package is untouched.
 export async function regenerateResume(id: string, notes: string) {
   const run = runs.find((r) => r.id === id);
-  if (!run || run.kind !== "job") return;
+  if (!run || (run.kind !== "job" && run.kind !== "resume")) return;
   const trimmed = (notes || "").trim();
   if (!trimmed || run.regenerating) return;
 
-  const jobUrl = run.input.match(/^https?:\/\//) ? run.input : `https://${run.input}`;
-  const pageCount = run.parsed?.resume?.meta?.page_count === 2 ? 2 : 1;
+  // A résumé run reopened from history carries its original request on
+  // resumeRequest (it has no live job stream); a job run derives it from input.
+  const req = run.resumeRequest ?? null;
+  const rawUrl = req?.jobUrl || (run.kind === "job" ? run.input : "");
+  const jobUrl = rawUrl
+    ? (rawUrl.match(/^https?:\/\//) ? rawUrl : `https://${rawUrl}`)
+    : undefined;
+  const highlights = req?.highlights || undefined;
+  const pageCount =
+    run.parsed?.resume?.meta?.page_count === 2 ? 2 : (req?.pageCount === 2 ? 2 : 1);
 
   patch(id, () => ({ regenerating: true, regenError: null }));
 
@@ -1101,7 +1177,7 @@ export async function regenerateResume(id: string, notes: string) {
     const res = await fetch("/api/resume/tailor", {
       method: "POST",
       headers: { "content-type": "application/json", accept: "text/event-stream" },
-      body: JSON.stringify({ job_url: jobUrl, regenerate_notes: trimmed, page_count: pageCount }),
+      body: JSON.stringify({ job_url: jobUrl, highlights, regenerate_notes: trimmed, page_count: pageCount }),
     });
     if (!res.ok || !res.body) throw new Error(`regenerate failed: ${res.status}`);
     const reader = res.body.getReader();
