@@ -91,3 +91,90 @@ export function buildGuesses(fullName: string, domain: string): EmailGuess[] {
   }
   return out.slice(0, 5);
 }
+
+// Social / link-shortener hosts that are never a personal email domain — kept out
+// of the guess set so we never fabricate name@linkedin.com. Newsletter and
+// publication hosts (substack, medium, …) are intentionally NOT here: a person
+// active there is a real second place to try, so we surface those guesses too.
+const NON_EMAIL_HOSTS = new Set<string>([
+  "linkedin.com",
+  "twitter.com",
+  "x.com",
+  "github.com",
+  "facebook.com",
+  "instagram.com",
+  "youtube.com",
+  "t.co",
+  "bit.ly",
+  "linktr.ee",
+  "calendly.com",
+]);
+
+function usableEmailHost(host: string | null): host is string {
+  if (!host) return false;
+  const h = host.toLowerCase().replace(/^www\./, "");
+  if (!h.includes(".")) return false;
+  return !NON_EMAIL_HOSTS.has(h);
+}
+
+// Every plausible email domain for a person, work-domain-first and de-duplicated.
+// Pulls from the authoritative employer domain, the company name, any address a
+// provider actually found, the inferred website host, and each link's host — so
+// the guess list can span BOTH the work domain (e.g. anthropic.com) and any other
+// domain the research surfaced (a personal site, a Substack), instead of five
+// variants of a single host. Social/link hosts are filtered out.
+export function emailDomainCandidates(args: {
+  employerDomain?: string | null;
+  foundDomain?: string | null;
+  finalDomain?: string | null;
+  company?: string | null;
+  links?: Record<string, string> | null;
+}): string[] {
+  const links = args.links ?? {};
+  const ordered: (string | null)[] = [
+    args.employerDomain ?? null, // authoritative work domain (e.g. anthropic.com)
+    guessDomain(args.company), // company name → .com — surfaces the work domain even with no provider
+    args.foundDomain ?? null, // the domain of an address a provider actually found
+    args.finalDomain ?? null,
+    inferDomain({ company: args.company, links }), // real website host
+    ...Object.values(links).map((v) => hostnameFrom(v)), // personal site, newsletter (substack), etc.
+  ];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const d of ordered) {
+    const host = d ? d.toLowerCase().replace(/^www\./, "") : null;
+    if (!usableEmailHost(host)) continue;
+    if (seen.has(host)) continue;
+    seen.add(host);
+    out.push(host);
+  }
+  return out;
+}
+
+// Format guesses across several domains, grouped by domain (work domain first).
+// `perDomain` caps how many patterns each domain contributes so a single host
+// can't crowd the others out; `total` caps the whole list.
+export function buildGuessesForDomains(
+  fullName: string,
+  domains: string[],
+  opts: { perDomain?: number; total?: number } = {},
+): EmailGuess[] {
+  const perDomain = opts.perDomain ?? 4;
+  const total = opts.total ?? 10;
+  const seen = new Set<string>();
+  const out: EmailGuess[] = [];
+  for (const domain of domains) {
+    if (!domain) continue;
+    let n = 0;
+    for (const g of buildGuesses(fullName, domain)) {
+      if (n >= perDomain || out.length >= total) break;
+      const key = g.email.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(g);
+      n++;
+    }
+    if (out.length >= total) break;
+  }
+  return out;
+}

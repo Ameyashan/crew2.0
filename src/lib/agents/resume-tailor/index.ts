@@ -5,6 +5,7 @@ import { logAgentRun } from "@/lib/agent-runs";
 import { getProfile } from "@/lib/profile";
 import { lintAntiAi, describeViolations, antiAiWritingGuide } from "@/lib/writing/anti-ai";
 import { SYSTEM_PROMPT, SKILL_SYSTEM_SUFFIX, buildUserPrompt } from "./prompt";
+import { fitResumeToPageCount } from "./fit";
 import type {
   ResumeChange,
   ResumeChangeKind,
@@ -285,6 +286,38 @@ export async function* runResumeTailorStream(
     };
 
     yield { type: "step", id: "tailor", status: "start" };
+
+    // Fit the resume to the user's target page count against the REAL rendered
+    // PDF. The model treats page_count as a soft cap and @react-pdf paginates
+    // freely, so a "1 page" target can still spill onto a second page on
+    // download — the exact mismatch the preview label hid. Render → measure →
+    // trim the lowest-priority content until it actually fits, then stamp
+    // meta.page_count with the measured count so the label, the PDF, and the
+    // DOCX all agree. Best-effort: any failure leaves the resume untouched.
+    try {
+      const fitted = await fitResumeToPageCount(parsed, input.page_count);
+      parsed.summary = fitted.resume.summary;
+      parsed.experience = fitted.resume.experience;
+      parsed.projects = fitted.resume.projects;
+      parsed.education = fitted.resume.education;
+      parsed.skills = fitted.resume.skills;
+      parsed.extras = fitted.resume.extras;
+      parsed.meta.page_count = fitted.resume.meta.page_count;
+      // Record honestly what was trimmed to fit, so "what changed" stays truthful.
+      if (fitted.dropped.length) {
+        const trimNote = `trimmed to fit ${input.page_count} page${input.page_count > 1 ? "s" : ""}`;
+        const trimEntries: ResumeChange[] = fitted.dropped.slice(0, 4).map((d) => ({
+          section: d.section,
+          kind: "dropped" as const,
+          before: d.removed,
+          reason: trimNote,
+        }));
+        parsed.changes = [...(parsed.changes ?? []), ...trimEntries];
+      }
+    } catch (e) {
+      console.error("[resume-tailor] page-fit failed", e);
+    }
+
     yield {
       type: "step",
       id: "tailor",
