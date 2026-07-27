@@ -27,7 +27,12 @@ async function loadOwnedRun(
     query = query.eq("anon_id", anonId);
   }
   const { data, error } = await query.maybeSingle();
-  return { run: (data as Record<string, unknown>) ?? null, error: error?.message ?? null };
+  // A dynamic `.select(string)` widens Supabase's inferred row type to its
+  // parse-error shape, so route the result through `unknown` before narrowing.
+  return {
+    run: (data as unknown as Record<string, unknown> | null) ?? null,
+    error: error?.message ?? null,
+  };
 }
 
 // GET /api/compose/history/[id]
