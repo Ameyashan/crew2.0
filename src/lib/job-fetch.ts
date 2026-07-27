@@ -1,5 +1,5 @@
-// Direct readers for the ATS boards that expose a public JSON API for a single
-// posting (Greenhouse, Lever). Handing Claude a bare job URL and asking it to
+// Direct readers for the ATS boards that expose a public API for a single
+// posting (Greenhouse, Lever, Ashby). Handing Claude a bare job URL and asking it to
 // web_search for the posting is unreliable for numeric ATS URLs — the model can
 // land on a *different* opening at the same company (e.g. "Design Engineer,
 // Claude" instead of the "Product Manager, Human Data Platform" the URL points
@@ -9,7 +9,7 @@
 // Everything here is best-effort: any failure returns null and the callers fall
 // back to the existing web_search path, so this can only improve accuracy.
 
-import { getJson, str, htmlToText, slugToName } from "@/lib/jobs/util";
+import { getJson, postJson, str, htmlToText, slugToName } from "@/lib/jobs/util";
 
 export interface FetchedJob {
   title: string | null; // the role title exactly as posted
@@ -19,9 +19,10 @@ export interface FetchedJob {
   text: string; // plain-text JD body
   // Free-text/essay questions the application form asks ("Why <company>?",
   // "Tell us about a project…"). Empty when the board doesn't expose them or the
-  // form has none. Only Greenhouse exposes these via its public API today.
+  // form has none. Greenhouse and Ashby expose these via their public APIs;
+  // Lever does not, so its callers fall back to LLM extraction from the JD.
   questions: string[];
-  source: "greenhouse" | "lever";
+  source: "greenhouse" | "lever" | "ashby";
   url: string;
 }
 
@@ -68,6 +69,45 @@ export function extractApplicationQuestions(raw: unknown): string[] {
   return out;
 }
 
+// Ashby exposes the application form as `sections[].fieldEntries[].field`, each
+// field a JSON object with a `title`, a `type` (String | LongText | Email |
+// File | Boolean | Date | Location | Phone | MultiValueSelect | …), and a `path`
+// (system fields like name/email/resume/location carry a `_systemfield_` path).
+// Mirror the Greenhouse rule: keep the free-text essay prompts — a LongText
+// field (the textarea equivalent, e.g. the "Additional Information" box), or a
+// field whose title reads like an essay — while dropping uploads, system fields,
+// and the demographic/logistics questions we never answer.
+export function extractAshbyFormQuestions(sections: unknown): string[] {
+  if (!Array.isArray(sections)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const section of sections) {
+    const entries = Array.isArray((section as { fieldEntries?: unknown })?.fieldEntries)
+      ? ((section as { fieldEntries: unknown[] }).fieldEntries)
+      : [];
+    for (const entry of entries) {
+      const field = (entry as { field?: unknown })?.field;
+      if (!field || typeof field !== "object") continue;
+      const f = field as { title?: unknown; type?: unknown; path?: unknown };
+      const label = str(f.title);
+      if (!label) continue;
+      const type = typeof f.type === "string" ? f.type : "";
+      const path = typeof f.path === "string" ? f.path : "";
+      // System fields (name/email/resume/location/…) and file uploads are never
+      // essay prompts.
+      if (path.startsWith("_systemfield_")) continue;
+      if (type === "File") continue;
+      if (NON_ESSAY_LABEL_RE.test(label)) continue;
+      if (type !== "LongText" && !ESSAY_LABEL_RE.test(label)) continue;
+      const key = label.trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(label.trim());
+    }
+  }
+  return out;
+}
+
 export async function fetchAtsPosting(url: string): Promise<FetchedJob | null> {
   let u: URL;
   try {
@@ -79,6 +119,7 @@ export async function fetchAtsPosting(url: string): Promise<FetchedJob | null> {
   try {
     if (host.endsWith("greenhouse.io")) return await fetchGreenhouse(u);
     if (host.endsWith("lever.co")) return await fetchLever(u);
+    if (host.endsWith("ashbyhq.com")) return await fetchAshbyPosting(u);
   } catch {
     return null;
   }
@@ -152,6 +193,59 @@ async function fetchLever(u: URL): Promise<FetchedJob | null> {
     // questions, so callers fall back to LLM extraction from the JD text.
     questions: [],
     source: "lever",
+    url: u.toString(),
+  };
+}
+
+// https://jobs.ashbyhq.com/{org}/{jobPostingId}[/application]
+// Ashby's board API (posting-api/job-board/{slug}) lists jobs but omits the
+// description and application form, so read the single posting from the public
+// GraphQL endpoint the hosted job page itself uses. `descriptionHtml` is the JD;
+// `applicationForm.sections[].fieldEntries[].field` is the form — including the
+// "Additional Information" long-text box that the board API never exposes.
+async function fetchAshbyPosting(u: URL): Promise<FetchedJob | null> {
+  const parts = u.pathname.split("/").filter(Boolean);
+  if (parts.length < 2) return null;
+  const org = parts[0];
+  const jobId = parts[1];
+  // Ashby posting ids are UUIDs; guard against non-posting paths (e.g. a bare
+  // /{org} board URL) so we don't fire a doomed GraphQL call.
+  if (!org || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) {
+    return null;
+  }
+
+  const data = await postJson<{
+    data?: {
+      jobPosting?: {
+        title?: unknown;
+        departmentName?: unknown;
+        locationName?: unknown;
+        descriptionHtml?: unknown;
+        applicationForm?: { sections?: unknown } | null;
+      } | null;
+    };
+  }>("https://jobs.ashbyhq.com/api/non-user-graphql?op=ApiJobPosting", {
+    operationName: "ApiJobPosting",
+    variables: { organizationHostedJobsPageName: org, jobPostingId: jobId },
+    query:
+      "query ApiJobPosting($organizationHostedJobsPageName: String!, $jobPostingId: String!) { " +
+      "jobPosting(organizationHostedJobsPageName: $organizationHostedJobsPageName, jobPostingId: $jobPostingId) { " +
+      "title departmentName locationName descriptionHtml " +
+      "applicationForm { sections { fieldEntries { field } } } } }",
+  });
+
+  const posting = data?.data?.jobPosting;
+  if (!posting) return null;
+  const text = htmlToText(typeof posting.descriptionHtml === "string" ? posting.descriptionHtml : "");
+  if (!text) return null;
+  return {
+    title: str(posting.title),
+    company: slugToName(org),
+    team: str(posting.departmentName),
+    location: str(posting.locationName),
+    text,
+    questions: extractAshbyFormQuestions(posting.applicationForm?.sections),
+    source: "ashby",
     url: u.toString(),
   };
 }

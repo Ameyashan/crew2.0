@@ -17,6 +17,28 @@ export async function getJson<T>(url: string): Promise<T | null> {
   }
 }
 
+// Best-effort JSON POST: null on any non-ok / network / abort. Used by the
+// single-posting reader for boards that expose their posting behind a POST
+// (Ashby's GraphQL endpoint), so a failure silently falls back like getJson.
+export async function postJson<T>(url: string, body: unknown): Promise<T | null> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ATS_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 // Strict JSON GET: throws on non-ok status, network error, or timeout. Used by
 // the board-listing fetchers so callers can isolate per-company errors and the
 // catalog validator can treat an error differently from an empty board.
