@@ -1068,6 +1068,10 @@ export async function pickCandidate(
         picked,
         intent: run.intent || undefined,
         agents: run.selectedAgents || undefined,
+        // The run this pick amends. The server re-drafts for the new candidate
+        // and merges it into THIS run's persisted package (updating history in
+        // place) instead of spawning a separate compose_runs row.
+        compose_run_id: run.composeRunId || undefined,
         // Keep the cold email anchored on the job, not the picked person's own
         // company, when we re-draft for a different candidate.
         job_context: { role: run.parsed?.role ?? null, company: run.parsed?.company ?? null },

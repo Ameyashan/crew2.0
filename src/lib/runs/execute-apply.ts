@@ -27,6 +27,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getProfile } from "@/lib/profile";
 import { runWithUser } from "@/lib/user-context";
 import { agentEnabled, parseAgents } from "@/lib/agent-selection";
+import { mergeRepickOutput } from "./repick-merge";
 import type { RunSink, DrainableSink } from "./sink";
 
 // The inputs a run needs to execute, captured on the compose_runs row at POST
@@ -82,6 +83,128 @@ async function finalizeRun(
   } catch (e) {
     console.error("[compose_runs] finalize failed", e);
   }
+}
+
+// Merge a re-pick's freshly-drafted contact into the parent run's persisted
+// `output`, preserving everything else the original run produced (résumé,
+// candidates, application questions). A dual-contact (screenshot) run updates
+// its hiring_manager slot; a single-contact run replaces the top-level
+// person/enrichment/drafts. Read-modify-write on the already-complete row — it
+// deliberately does NOT gate on outcome='in_flight' (the parent is done).
+async function mergeRepickIntoParent(
+  composeRunId: string,
+  amend: { person: unknown; enrichment: unknown; drafts: unknown[]; personId: string | null },
+): Promise<void> {
+  const sb = supabaseAdmin();
+  const { data: row } = await sb
+    .from("compose_runs")
+    .select("output, person_id")
+    .eq("id", composeRunId)
+    .maybeSingle();
+
+  const output = mergeRepickOutput(row?.output, {
+    person: amend.person,
+    enrichment: amend.enrichment,
+    drafts: amend.drafts,
+  });
+
+  try {
+    await sb
+      .from("compose_runs")
+      .update({
+        output,
+        person_id: amend.personId ?? row?.person_id ?? null,
+        heartbeat_at: new Date().toISOString(),
+      })
+      .eq("id", composeRunId);
+  } catch (e) {
+    console.error("[compose_runs] re-pick merge failed", e);
+  }
+}
+
+// Re-pick amendment: the user chose a different hiring-manager candidate on a
+// FINISHED job run. We re-draft email + outreach for that person and MERGE the
+// result into the parent run's package — instead of persisting a throwaway
+// compose_runs row (which used to surface in history as a duplicate, résumé-less
+// entry). The stream emits the exact step events pickCandidate already reads, so
+// the live view is unchanged; only the persistence target differs.
+export async function applyRepick(
+  parentComposeRunId: string,
+  picked: { name: string; role: string | null; company: string | null; linkedin: string | null },
+  opts: { intent?: string; agents?: unknown; job_context?: { role: string | null; company: string | null } | null },
+  sink: RunSink,
+): Promise<void> {
+  const sb = supabaseAdmin();
+  const { data: row, error: loadErr } = await sb
+    .from("compose_runs")
+    .select("id, user_id")
+    .eq("id", parentComposeRunId)
+    .maybeSingle();
+  if (loadErr || !row) {
+    sink.emit({ type: "error", message: "Couldn't find the run to update." });
+    return;
+  }
+
+  const userId: string | null = row.user_id ?? null;
+  const agents = parseAgents(opts.agents);
+  const send = (obj: unknown) => sink.emit(obj);
+
+  await runWithUser(userId, async () => {
+    let collectedPerson: unknown = null;
+    let collectedEnrichment: unknown = null;
+    const collectedDrafts: unknown[] = [];
+    let personId: string | null = null;
+    let errored: string | null = null;
+
+    send({ type: "compose_run", id: parentComposeRunId });
+    send({ type: "step", id: "person", status: "start" });
+    try {
+      for await (const evt of runReachOutStream({
+        text: picked.name,
+        intent: opts.intent || [picked.role, picked.company].filter(Boolean).join(" at ") || undefined,
+        picked,
+        job_context: opts.job_context ?? { role: picked.role, company: picked.company },
+        agents,
+        compose_run_id: parentComposeRunId,
+      })) {
+        if (evt.type === "step" && evt.id === "research") {
+          send({ type: "step", id: "person", status: evt.status, data: (evt as { data?: unknown }).data });
+          if (evt.status === "done") collectedPerson = (evt as { data?: unknown }).data;
+        } else if (evt.type === "step" && evt.id === "email_lookup") {
+          send({ type: "step", id: "email", status: evt.status, data: (evt as { data?: unknown }).data });
+          if ((evt as { data?: unknown }).data) collectedEnrichment = (evt as { data?: unknown }).data;
+        } else if (evt.type === "step" && evt.id === "person_saved") {
+          personId = evt.data.id;
+          send({ type: "person_saved", data: evt.data });
+        } else if (evt.type === "step" && evt.id === "draft") {
+          send({ type: "step", id: "outreach", status: evt.status, channel: evt.channel, data: (evt as { data?: unknown }).data });
+          if (evt.status === "done" && evt.data) collectedDrafts.push(evt.data);
+        } else if (evt.type === "error") {
+          errored = evt.message;
+          send({ type: "error", message: evt.message });
+        } else if (evt.type === "needs_disambiguation") {
+          send({ type: "step", id: "email", status: "done", data: { email: null, guesses: [] } });
+          send({ type: "step", id: "outreach", status: "done", channel: "email", data: null });
+        }
+      }
+    } catch (e) {
+      errored = "Re-pick failed.";
+      console.error("[applyRepick] reach-out failed", e);
+      send({ type: "error", message: errored });
+    }
+
+    // Only rewrite the parent's package once we actually have a new draft — a
+    // failed re-pick must leave the original contact intact.
+    if (!errored && collectedDrafts.length) {
+      await mergeRepickIntoParent(parentComposeRunId, {
+        person: collectedPerson,
+        enrichment: collectedEnrichment,
+        drafts: collectedDrafts,
+        personId,
+      });
+    }
+    send({ type: "complete" });
+  });
 }
 
 // Load a run's row and drive its pipeline to completion, emitting progress
