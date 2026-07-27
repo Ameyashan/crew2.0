@@ -36,6 +36,10 @@ export type ContactData = {
   sameAsPoster?: boolean;
 };
 
+// One shortlist candidate's drafted outreach — the shape held in a run's
+// `draftsByCandidate` cache and returned by streamCandidateDraft.
+export type CandidateDraft = { person: unknown; enrichment: unknown; drafts: unknown[] };
+
 // Real "just started" caption per step, keyed by the step id used in each
 // stream path (job path: resume/person/email/outreach/application; person path:
 // research/email_lookup/draft). Event-driven — shown the moment the agent's
@@ -198,6 +202,41 @@ const controllers = new Map<string, AbortController>();
 // Sharing `controllers` here is what used to kill an in-flight résumé the moment
 // the user clicked a different candidate, leaving it stuck at "Weaving…".
 const pickControllers = new Map<string, AbortController>();
+// Background prefetch of the OTHER shortlist candidates' outreach, so switching
+// between people in "Who to reach out to" is instant instead of re-drafting on
+// each click. Keyed `${runId}::${normalizeCandidateKey(name)}` — a registry
+// separate from pickControllers/controllers so a background draft is never
+// aborted by (nor aborts) a click or the run's main stream. `prefetchInFlight`
+// lets a click ADOPT an already-running background draft instead of firing a
+// duplicate request; `activePickKey` tracks the run's current pick target so a
+// superseded (stale) in-flight result is discarded rather than shown.
+const prefetchControllers = new Map<string, AbortController>();
+const prefetchInFlight = new Map<string, Promise<CandidateDraft | null>>();
+const activePickKey = new Map<string, string>();
+// Cap the background fan-out — draft at most this many alternate candidates so a
+// long shortlist can't spawn a dozen concurrent /api/compose/apply streams.
+const PREFETCH_MAX_CANDIDATES = 5;
+
+function prefetchId(id: string, cacheKey: string) {
+  return `${id}::${cacheKey}`;
+}
+
+// Cancel any background candidate prefetches belonging to a run (dismiss / reset
+// / relaunch) so they can't write drafts onto a run that's been torn down.
+function abortPrefetches(id: string) {
+  const prefix = `${id}::`;
+  for (const [pid, c] of prefetchControllers) {
+    if (pid.startsWith(prefix)) {
+      c.abort();
+      prefetchControllers.delete(pid);
+    }
+  }
+  for (const pid of [...prefetchInFlight.keys()]) {
+    if (pid.startsWith(prefix)) prefetchInFlight.delete(pid);
+  }
+  activePickKey.delete(id);
+}
+
 const subscribers = new Set<() => void>();
 
 function emit() {
@@ -666,6 +705,7 @@ export function dismissRun(id: string) {
   controllers.delete(id);
   pickControllers.get(id)?.abort();
   pickControllers.delete(id);
+  abortPrefetches(id);
   runs = runs.filter((r) => r.id !== id);
   if (focusedRunId === id) setFocusedRun(null);
   emit();
@@ -676,6 +716,10 @@ export function clearAllRuns() {
   controllers.clear();
   for (const c of pickControllers.values()) c.abort();
   pickControllers.clear();
+  for (const c of prefetchControllers.values()) c.abort();
+  prefetchControllers.clear();
+  prefetchInFlight.clear();
+  activePickKey.clear();
   runs = [];
   setFocusedRun(null);
   emit();
@@ -772,6 +816,7 @@ function relaunchRun(id: string, picked?: unknown) {
   // Cancel any in-flight re-pick so it can't patch onto the fresh stream.
   pickControllers.get(id)?.abort();
   pickControllers.delete(id);
+  abortPrefetches(id);
   patch(id, () => ({
     stage: "working",
     progress: {},
@@ -802,6 +847,7 @@ export function switchRunToJob(id: string) {
   controllers.delete(id);
   pickControllers.get(id)?.abort();
   pickControllers.delete(id);
+  abortPrefetches(id);
   forgetPending(run.composeRunId);
   patch(id, () => ({
     kind: "job",
@@ -967,6 +1013,117 @@ export function hydrateResumeRun(gen: {
   return localId;
 }
 
+// Fire /api/compose/apply for one picked candidate and read the SSE stream to
+// completion, returning their person / email enrichment / channel drafts. Shared
+// by an on-demand re-pick (pickCandidate) and the background prefetch. `onStep`
+// (optional) drives the live progress bars for a foreground pick; the background
+// prefetch omits it so it never touches the visible run state.
+async function streamCandidateDraft(
+  run: Run,
+  picked: { name?: string; role?: string | null; company?: string | null; linkedin?: string | null },
+  signal: AbortSignal,
+  onStep?: (id: string, status: string) => void,
+): Promise<CandidateDraft> {
+  const jobUrl = run.fromScreenshot
+    ? (run.screenshotJobUrl || "")
+    : (run.input.match(/^https?:\/\//) ? run.input : `https://${run.input}`);
+  const res = await fetch("/api/compose/apply", {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "text/event-stream" },
+    body: JSON.stringify({
+      job_url: jobUrl,
+      picked,
+      intent: run.intent || undefined,
+      agents: run.selectedAgents || undefined,
+      // Keep the cold email anchored on the job, not the picked person's own
+      // company, when we re-draft for a different candidate.
+      job_context: { role: run.parsed?.role ?? null, company: run.parsed?.company ?? null },
+      // So the re-pick passes server validation even when the screenshot had no
+      // fetchable URL (the picked branch short-circuits before using these).
+      detected_role: run.screenshotRole || undefined,
+      detected_company: run.screenshotCompany || undefined,
+    }),
+    signal,
+  });
+  if (!res.ok || !res.body) throw new Error(`pick failed: ${res.status}`);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  const drafts: unknown[] = [];
+  let enrichment: unknown = null;
+  let person: unknown = null;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split("\n\n");
+    buf = parts.pop() || "";
+    for (const raw of parts) {
+      const line = raw.split("\n").find((l) => l.startsWith("data: "));
+      if (!line) continue;
+      let evt;
+      try {
+        evt = JSON.parse(line.slice(6));
+      } catch {
+        continue;
+      }
+      if (evt.type === "step") {
+        onStep?.(evt.id, evt.status);
+        if (evt.id === "person" && evt.status === "done" && evt.data) person = evt.data;
+        if (evt.id === "email" && evt.data) enrichment = evt.data;
+        if (evt.id === "outreach" && evt.status === "done" && evt.data) drafts.push(evt.data);
+      } else if (evt.type === "error") {
+        throw new Error(evt.message || "pick error");
+      }
+    }
+  }
+  return { person, enrichment, drafts };
+}
+
+// Write a candidate's drafted outreach into the run's session cache so
+// re-selecting them later restores instantly (pickCandidate's cache-hit path).
+// `fallbackPerson` names the person when the stream didn't return one — the
+// picked shell for a foreground pick, the candidate shell for a prefetch.
+function cacheCandidateDraft(id: string, cacheKey: string, result: CandidateDraft, fallbackPerson?: unknown) {
+  patch(id, (r) => ({
+    draftsByCandidate: {
+      ...(r.draftsByCandidate || {}),
+      [cacheKey]: {
+        person: result.person ?? fallbackPerson ?? (r.contacts ? r.contacts?.hiring_manager?.person : r.person),
+        enrichment: result.enrichment,
+        drafts: result.drafts,
+      },
+    },
+  }));
+}
+
+// Fold the just-selected contact into the run's PERSISTED package so History
+// reflects the current pick — the drafting itself opens its own (hidden)
+// compose_runs row, so without this the parent run's saved output would keep
+// showing whoever it originally drafted for. Best-effort and fire-and-forget:
+// the live view is already patched; this only syncs the durable record. A no-op
+// for a run with no server row (never persisted) or an empty draft set. The
+// server merges via mergeRepickOutput — dual-contact runs update their
+// hiring_manager slot, single-contact runs the top-level person/drafts.
+function persistPickedContact(
+  composeRunId: string | null | undefined,
+  contact: { person: unknown; enrichment: unknown; drafts?: unknown[] | null },
+) {
+  if (!composeRunId) return;
+  if (!Array.isArray(contact.drafts) || !contact.drafts.length) return;
+  void fetch(`/api/compose/history/${composeRunId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      person: contact.person ?? null,
+      enrichment: contact.enrichment ?? null,
+      drafts: contact.drafts,
+    }),
+  }).catch(() => {
+    // History sync is best-effort; the live selection is already correct.
+  });
+}
+
 // Re-pick a different hiring-manager candidate on a finished job run. Re-runs
 // only the email + draft for that person (server skips resume + sourcing) and
 // patches the email/person/draft in place — the package card stays visible.
@@ -987,9 +1144,6 @@ export async function pickCandidate(
   // On a dual-contact (screenshot) run the re-pick updates the hiring-manager
   // slot; otherwise it replaces the single legacy contact.
   const dual = !!run.contacts;
-  const jobUrl = run.fromScreenshot
-    ? (run.screenshotJobUrl || "")
-    : (run.input.match(/^https?:\/\//) ? run.input : `https://${run.input}`);
   const newPerson = (prev: unknown) => ({
     ...((prev as object) || {}),
     name: picked.name,
@@ -1019,15 +1173,19 @@ export async function pickCandidate(
       };
     });
 
+  const cacheKey = normalizeCandidateKey(picked.name);
+  const pickedShell = newPerson(dual ? run.contacts?.hiring_manager?.person : run.person);
+
   // Already drafted this candidate this session? Restore instantly from the
   // per-candidate cache — no clear-to-[], no fetch/stream — so switching back to
-  // a person shows their saved draft immediately instead of re-drafting.
-  const cacheKey = normalizeCandidateKey(picked.name);
+  // a person shows their saved draft immediately instead of re-drafting. This is
+  // also the fast path a background prefetch (prefetchCandidateDrafts) primes.
   const cached = run.draftsByCandidate?.[cacheKey];
   if (cached && Array.isArray(cached.drafts) && cached.drafts.length) {
     pickControllers.get(id)?.abort();
+    activePickKey.set(id, cacheKey);
     patchPicked({
-      person: cached.person ?? newPerson(dual ? run.contacts?.hiring_manager?.person : run.person),
+      person: cached.person ?? pickedShell,
       enrichment: cached.enrichment,
       drafts: cached.drafts,
     });
@@ -1036,6 +1194,11 @@ export async function pickCandidate(
       repicked: true,
       progress: { ...r.progress, person: 100, email: 100, outreach: 100 },
     }));
+    persistPickedContact(run.composeRunId, {
+      person: cached.person ?? pickedShell,
+      enrichment: cached.enrichment,
+      drafts: cached.drafts,
+    });
     return;
   }
 
@@ -1043,116 +1206,167 @@ export async function pickCandidate(
   // previous contact's email + drafts, so the panel never keeps showing the old
   // person's message under the new name. `picking` flags the in-flight re-draft
   // so the cards read "drafting for {name}…" until the new copy lands.
-  patchPicked({
-    person: newPerson(dual ? run.contacts?.hiring_manager?.person : run.person),
-    enrichment: null,
-    drafts: [],
-  });
+  patchPicked({ person: pickedShell, enrichment: null, drafts: [] });
   patch(id, (r) => ({
     picking: picked.name || null,
     repicked: true,
     progress: { ...r.progress, person: 100, email: 10, outreach: 10 },
   }));
+  // This is now the run's active pick target; a later click on a different card
+  // supersedes it, and any result that lands afterwards is discarded below.
+  activePickKey.set(id, cacheKey);
 
-  // Cancel any prior in-flight re-pick, but NOT the run's main stream (which may
-  // still be weaving the résumé) — that's why picks use their own registry.
-  pickControllers.get(id)?.abort();
-  const controller = new AbortController();
-  pickControllers.set(id, controller);
-  try {
-    const res = await fetch("/api/compose/apply", {
-      method: "POST",
-      headers: { "content-type": "application/json", accept: "text/event-stream" },
-      body: JSON.stringify({
-        job_url: jobUrl,
-        picked,
-        intent: run.intent || undefined,
-        agents: run.selectedAgents || undefined,
-        // The run this pick amends. The server re-drafts for the new candidate
-        // and merges it into THIS run's persisted package (updating history in
-        // place) instead of spawning a separate compose_runs row.
-        compose_run_id: run.composeRunId || undefined,
-        // Keep the cold email anchored on the job, not the picked person's own
-        // company, when we re-draft for a different candidate.
-        job_context: { role: run.parsed?.role ?? null, company: run.parsed?.company ?? null },
-        // So the re-pick passes server validation even when the screenshot had no
-        // fetchable URL (the picked branch short-circuits before using these).
-        detected_role: run.screenshotRole || undefined,
-        detected_company: run.screenshotCompany || undefined,
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok || !res.body) throw new Error(`pick failed: ${res.status}`);
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = "";
-    const collectedDrafts: unknown[] = [];
-    let collectedEnrichment: unknown = null;
-    let collectedPerson: unknown = null;
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const parts = buf.split("\n\n");
-      buf = parts.pop() || "";
-      for (const raw of parts) {
-        const line = raw.split("\n").find((l) => l.startsWith("data: "));
-        if (!line) continue;
-        let evt;
-        try {
-          evt = JSON.parse(line.slice(6));
-        } catch {
-          continue;
-        }
-        if (evt.type === "step") {
-          const k = evt.id;
-          // The person is already chosen on a re-pick, so keep its row settled at
-          // "done" — don't let the server's person "start" event drop it back to
-          // 10 and read as "searching…" again.
-          if (evt.status === "start" && k !== "person") patch(id, (r) => ({ progress: { ...r.progress, [k]: 10 } }));
-          else if (evt.status === "done" || evt.status === "skipped")
-            patch(id, (r) => ({ progress: { ...r.progress, [k]: 100 } }));
-          if (k === "person" && evt.status === "done" && evt.data) collectedPerson = evt.data;
-          if (k === "email" && evt.data) collectedEnrichment = evt.data;
-          if (k === "outreach" && evt.status === "done" && evt.data) collectedDrafts.push(evt.data);
-        } else if (evt.type === "error") {
-          throw new Error(evt.message || "pick error");
-        }
-      }
+  // A background prefetch for this exact candidate may already be streaming —
+  // adopt it instead of firing a duplicate request. Otherwise draft on demand,
+  // driving the live progress bars under our own cancellable controller.
+  const inflight = prefetchInFlight.get(prefetchId(id, cacheKey));
+  let result: CandidateDraft | null = null;
+  if (inflight) {
+    result = await inflight.catch(() => null);
+  } else {
+    // Cancel any prior in-flight re-pick, but NOT the run's main stream (which may
+    // still be weaving the résumé) — that's why picks use their own registry.
+    pickControllers.get(id)?.abort();
+    const controller = new AbortController();
+    pickControllers.set(id, controller);
+    try {
+      result = await streamCandidateDraft(run, picked, controller.signal, (k, status) => {
+        // The person is already chosen on a re-pick, so keep its row settled at
+        // "done" — don't let the server's person "start" event drop it back to
+        // 10 and read as "searching…" again.
+        if (status === "start" && k !== "person") patch(id, (r) => ({ progress: { ...r.progress, [k]: 10 } }));
+        else if (status === "done" || status === "skipped")
+          patch(id, (r) => ({ progress: { ...r.progress, [k]: 100 } }));
+      });
+    } catch (e) {
+      if (controller.signal.aborted) return; // superseded by a newer pick
+      // Keep the existing package; just restore the bars and log.
+      patch(id, (r) => ({ picking: null, progress: { ...r.progress, email: 100, outreach: 100 } }));
+      console.error("[pickCandidate]", e);
+      return;
+    } finally {
+      // Only clear the registry if this controller is still the current one — a
+      // newer pick may have replaced it while we were streaming.
+      if (pickControllers.get(id) === controller) pickControllers.delete(id);
     }
+  }
+
+  // A newer pick (or a run reset) superseded this one while it streamed — its
+  // result is stale; leave the current selection alone.
+  if (activePickKey.get(id) !== cacheKey) return;
+
+  if (result && Array.isArray(result.drafts) && result.drafts.length) {
     patchPicked({
-      person: collectedPerson || undefined,
-      enrichment: collectedEnrichment || undefined,
-      drafts: collectedDrafts.length ? collectedDrafts : undefined,
+      person: result.person || undefined,
+      enrichment: result.enrichment || undefined,
+      drafts: result.drafts,
     });
     patch(id, (r) => ({
       picking: null,
       progress: { ...r.progress, person: 100, email: 100, outreach: 100 },
-      // Cache this candidate's freshly-drafted outreach so re-selecting them
-      // later restores instantly.
-      ...(collectedDrafts.length
-        ? {
-            draftsByCandidate: {
-              ...(r.draftsByCandidate || {}),
-              [cacheKey]: {
-                person: collectedPerson ?? (dual ? r.contacts?.hiring_manager?.person : r.person),
-                enrichment: collectedEnrichment,
-                drafts: collectedDrafts,
-              },
-            },
-          }
-        : {}),
     }));
-  } catch (e) {
-    if (controller.signal.aborted) return; // superseded by a newer pick
-    // Keep the existing package; just restore the bars and log.
+    // Cache this candidate's freshly-drafted outreach so re-selecting them later
+    // restores instantly (reads r.person after the patchPicked above).
+    cacheCandidateDraft(id, cacheKey, result, dual ? undefined : pickedShell);
+    // Keep the run's saved package in sync so History shows this selection.
+    persistPickedContact(run.composeRunId, {
+      person: result.person ?? pickedShell,
+      enrichment: result.enrichment,
+      drafts: result.drafts,
+    });
+  } else {
+    // Nothing usable came back (an adopted prefetch failed, or an empty draft) —
+    // restore the bars so the panel doesn't hang on "Drafting…".
     patch(id, (r) => ({ picking: null, progress: { ...r.progress, email: 100, outreach: 100 } }));
-    console.error("[pickCandidate]", e);
-  } finally {
-    // Only clear the registry if this controller is still the current one — a
-    // newer pick may have replaced it while we were streaming.
-    if (pickControllers.get(id) === controller) pickControllers.delete(id);
   }
+}
+
+// Background-draft the OTHER shortlist candidates the moment a settled job run
+// shows its "Who to reach out to" list, so switching between people is instant
+// (pickCandidate restores from draftsByCandidate on a cache hit) instead of
+// re-drafting on every click. Idempotent: skips the person already on screen,
+// anyone already cached, and anyone already streaming. Bounded by
+// PREFETCH_MAX_CANDIDATES and a small concurrency window so a long shortlist
+// can't fan out into a dozen simultaneous /api/compose/apply streams.
+export function prefetchCandidateDrafts(id: string) {
+  const run = runs.find((r) => r.id === id);
+  if (!run || run.kind !== "job") return;
+  const shortlist = Array.isArray(run.candidates) ? run.candidates : [];
+  if (shortlist.length < 2) return;
+  // The shortlist is only the clickable list on a single-contact run; a dual
+  // (screenshot) run drives selection through its poster / hiring-manager slots.
+  if (run.contacts) return;
+
+  // Seed the person currently on screen (the main run's best-match) into the
+  // cache too, so switching AWAY and back to them is instant — they were never
+  // re-picked, so they'd otherwise miss the cache and re-draft.
+  const activePerson = run.person as { name?: string } | null;
+  const activeDrafts = run.drafts;
+  const activeKey = activePerson?.name ? normalizeCandidateKey(activePerson.name) : null;
+  if (activeKey && Array.isArray(activeDrafts) && activeDrafts.length && !run.draftsByCandidate?.[activeKey]) {
+    cacheCandidateDraft(
+      id,
+      activeKey,
+      { person: activePerson, enrichment: run.enrichment, drafts: activeDrafts as unknown[] },
+      activePerson,
+    );
+  }
+
+  type Cand = { name?: string; role?: string | null; company?: string | null; linkedin?: string | null };
+  const queue: Cand[] = [];
+  for (const c of shortlist as Cand[]) {
+    if (!c?.name) continue;
+    const key = normalizeCandidateKey(c.name);
+    if (key === activeKey) continue; // already on screen / just seeded above
+    if (run.draftsByCandidate?.[key]) continue; // drafted this session already
+    if (prefetchInFlight.has(prefetchId(id, key))) continue; // already streaming
+    if (queue.some((q) => normalizeCandidateKey(q.name!) === key)) continue; // dupe name
+    queue.push(c);
+    if (queue.length >= PREFETCH_MAX_CANDIDATES) break;
+  }
+  if (!queue.length) return;
+
+  // Drain the queue with a small concurrency window rather than all at once.
+  let cursor = 0;
+  const CONCURRENCY = 2;
+  const runNext = () => {
+    if (cursor >= queue.length) return;
+    const c = queue[cursor++];
+    const key = normalizeCandidateKey(c.name!);
+    const pid = prefetchId(id, key);
+    if (prefetchInFlight.has(pid)) {
+      runNext();
+      return;
+    }
+    const picked = {
+      name: c.name,
+      role: c.role ?? null,
+      company: c.company ?? null,
+      linkedin: c.linkedin ?? null,
+    };
+    const shell = {
+      name: c.name,
+      role: c.role ?? null,
+      company: c.company ?? null,
+      links: c.linkedin ? { linkedin: c.linkedin } : {},
+      context_lines: [],
+    };
+    const controller = new AbortController();
+    prefetchControllers.set(pid, controller);
+    const p = streamCandidateDraft(run, picked, controller.signal)
+      .then((res) => {
+        if (Array.isArray(res.drafts) && res.drafts.length) cacheCandidateDraft(id, key, res, shell);
+        return res;
+      })
+      .catch(() => null)
+      .finally(() => {
+        if (prefetchControllers.get(pid) === controller) prefetchControllers.delete(pid);
+        prefetchInFlight.delete(pid);
+        runNext();
+      });
+    prefetchInFlight.set(pid, p);
+  };
+  for (let i = 0; i < Math.min(CONCURRENCY, queue.length); i++) runNext();
 }
 
 // Re-run ONLY the resume agent for a finished job run, applying the user's
