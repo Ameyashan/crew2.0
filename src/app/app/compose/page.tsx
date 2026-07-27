@@ -22,6 +22,7 @@ import {
   switchRunToJob,
   resumePendingRuns,
   pickCandidate,
+  prefetchCandidateDrafts,
   regenerateResume,
   regenerateDraft,
   steerAllChannels,
@@ -793,7 +794,7 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
             <SentRow sent={sent} onBack={() => dismissRun(run.id)}/>
           ) : (
             hasOutput && (
-              <PeoplePanel run={run} go={go} thin={thin}
+              <PeoplePanel run={run} go={go} thin={thin} gated={gated}
                 onSent={(info) => setSent(info)}/>
             )
           )}
@@ -1271,7 +1272,7 @@ function ResumeOutCard({ p, run, go, thin }) {
 // inline angle pills and the handoff → "did it go out?" flow. Everything shown
 // is real crew output; panels degrade honestly when an agent returned nothing.
 
-function PeoplePanel({ run, go, thin, onSent }) {
+function PeoplePanel({ run, go, thin, gated, onSent }) {
   const isMobile = useIsMobile();
   const contacts = run.contacts || null;
   const hasDual = !!(contacts && (contacts.poster || contacts.hiring_manager));
@@ -1311,6 +1312,15 @@ function PeoplePanel({ run, go, thin, onSent }) {
     && (!hasDual || (!dualConfirmed && runSettled))
     ? run.candidates
     : [];
+
+  // Once the shortlist is on screen, draft the other candidates' outreach in the
+  // background so picking any of them (or switching back to the best match) is
+  // instant instead of loading on each click. Idempotent in the store — safe to
+  // re-fire as the run settles or the shortlist grows.
+  useEffect(() => {
+    if (shortlist.length > 1 && runSettled && !gated) prefetchCandidateDrafts(run.id);
+  }, [run.id, shortlist.length, runSettled, gated]);
+
   const personName = effPerson?.name || null;
   const personRole = effPerson?.role || null;
   const personCompany = effPerson?.company || run.parsed?.company || null;
