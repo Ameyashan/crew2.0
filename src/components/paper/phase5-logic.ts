@@ -217,6 +217,9 @@ type DetailRun = {
   created_at?: string | null;
   output?: RunOutput;
   person?: { name?: string | null; company?: string | null } | null;
+  // Joined by the history list (compose_runs → resume_generations) so a job row
+  // shows its real role/company even though the list omits the heavy `output`.
+  resume_generation?: { target_role?: string | null; target_company?: string | null } | null;
 };
 
 function readOutput(run: DetailRun): RunOutput {
@@ -229,8 +232,10 @@ export function runDetailTitle(run: DetailRun): { title: string; company: string
   const out = readOutput(run);
   if (run?.kind === "job") {
     const parsed = out?.parsed ?? null;
-    const role = parsed?.target_role || parsed?.role || "Job application";
-    const company = parsed?.target_company || parsed?.company || run?.person?.company || "";
+    const gen = run?.resume_generation ?? null;
+    const role = parsed?.target_role || parsed?.role || gen?.target_role || "Job application";
+    const company =
+      parsed?.target_company || parsed?.company || gen?.target_company || run?.person?.company || "";
     return { title: role, company: company || "Job" };
   }
   const name = run?.person?.name || out?.person?.name || run?.input || "Outreach";
