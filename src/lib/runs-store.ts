@@ -2,7 +2,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { detectKind } from "@/lib/kind-detect";
+import { detectKind, firstUrl } from "@/lib/kind-detect";
 import { normalizeCandidateKey } from "@/components/paper/run-view-logic";
 
 // Shown when a signed-out visitor exceeds the anonymous-run cap (HTTP 429 from
@@ -1026,7 +1026,7 @@ async function streamCandidateDraft(
 ): Promise<CandidateDraft> {
   const jobUrl = run.fromScreenshot
     ? (run.screenshotJobUrl || "")
-    : (run.input.match(/^https?:\/\//) ? run.input : `https://${run.input}`);
+    : (firstUrl(run.input) ?? "");
   const res = await fetch("/api/compose/apply", {
     method: "POST",
     headers: { "content-type": "application/json", accept: "text/event-stream" },
@@ -1780,9 +1780,14 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
       // with a cron-worker backstop, so it finishes even if this connection dies
       // (the classic mobile-background drop). The client only kicks it off and
       // polls the persisted row — see observeRun.
+      // Only an actual link becomes a job_url; prose ("find me people at Macy's")
+      // is never fabricated into `https://<sentence>` — that bogus URL is exactly
+      // what fed the résumé tailor garbage and left the people search with no
+      // company. Post routing-fix a prose run lands on the person path, so this
+      // is also a belt-and-suspenders guard for any restored/legacy job run.
       const jobUrl = run.fromScreenshot
         ? (run.screenshotJobUrl || "")
-        : (run.input.match(/^https?:\/\//) ? run.input : `https://${run.input}`);
+        : (firstUrl(run.input) ?? "");
 
       const res = await fetch("/api/compose/apply", {
         method: "POST",
