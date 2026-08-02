@@ -1329,6 +1329,120 @@ export async function sourceHiringManagers(
   };
 }
 
+// ---------- SOURCE PEOPLE FROM TEXT ----------
+// Free-text sibling of sourceHiringManagers. The person flow gets requests that
+// describe a KIND of person at a company ("find me people at Macy's in supply
+// chain / inventory / transportation analytics") rather than one named
+// individual. research() can only resolve a single person and dead-ends on those
+// with an empty shortlist, so this enumerates a real, currently-employed
+// shortlist straight from the description. Reuses the IdentifyCandidate /
+// IdentifyResult shape so the existing needs_disambiguation picker renders the
+// results with no UI change.
+
+export interface SourcePeopleFromTextInput {
+  text: string;      // the user's free-text request ("find me people at Macy's who…")
+  intent?: string;   // optional extra angle to rank candidates by
+}
+
+const SOURCE_PEOPLE_SYSTEM = `You are a sourcing researcher. The user has described, in their own words, the KIND of person they want to reach — usually a company plus a role / function / team (e.g. "people at Macy's in supply-chain, inventory management, transportation analytics"). They have NOT named a specific individual. Return a SHORT ranked list of real, currently-employed people who match that description, so the user can pick one before we draft outreach.
+
+First read the request and identify:
+- the target COMPANY (or other concrete employer). This is REQUIRED to search — if the text names no company you can search against, return an empty list.
+- the role / function / team focus.
+- any seniority or decision-maker cue ("who would be hiring", "leads", "runs", "senior", "head of").
+
+Search strategy (how a person would do it by hand):
+1. Primary query: "[role/function] [company]" and "site:linkedin.com/in [role/function] [company]" — e.g. "supply chain analyst Macy's".
+2. If the user implies a manager / decision-maker ("who would be hiring", "leads", "runs"), also search the team's leadership: "[company] head of [function]", "[company] [function] director/VP/manager".
+3. Check the company's team / about / leadership pages when LinkedIn is thin.
+
+CURRENT EMPLOYMENT IS MANDATORY:
+- Only return people who CURRENTLY work at the target company. Exclude anyone whose public profile or recent press shows they have LEFT for another employer.
+- Same-name collisions are common: return only the person you can verify is currently at this company; never blend a famous namesake's history onto a different person who merely shares the name.
+
+Ranking:
+- Rank by fit to the described role / function first (closest title or team). When the user asked who "would be hiring", put likely decision-makers (team leads, managers, directors) ahead of individual contributors.
+
+Rules:
+- NEVER fabricate. Only return people you actually found evidence for, currently at the company. If you find nobody plausible, return an empty list.
+- Fill role, company, location, and the linkedin URL whenever you can find them. The "company" for each candidate must be their current (target) employer.
+- "why" is one short factual line tying them to the request ("Sr. Analyst, Supply Chain at Macy's — matches 'inventory / transportation analytics'").
+
+Output strict JSON only, no prose:
+{
+  "candidates": [
+    { "name": string, "role": string|null, "company": string|null, "location": string|null, "linkedin": string|null, "why": string|null }
+  ]
+}`;
+
+export async function sourcePeopleFromText(
+  input: SourcePeopleFromTextInput
+): Promise<IdentifyResult> {
+  const query = (input.text || "").trim();
+  if (!query) return { candidates: [], raw: "" };
+
+  const started = Date.now();
+  const userPrompt = [
+    `Request: ${query}`,
+    input.intent && `Intent (use to rank candidates): ${input.intent}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 1400,
+      system: SOURCE_PEOPLE_SYSTEM,
+      tools: [
+        {
+          type: "web_search_20250305",
+          name: "web_search",
+          max_uses: 5,
+        } as unknown as Anthropic.Messages.Tool,
+      ],
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") text += block.text;
+    }
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: "reach_out:source_people",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+    });
+  }
+
+  const json = extractJson(text);
+  let parsed: { candidates?: IdentifyCandidate[] } = {};
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    parsed = {};
+  }
+  return {
+    candidates: Array.isArray(parsed.candidates) ? parsed.candidates.slice(0, 5) : [],
+    raw: text,
+  };
+}
+
 // ---------- DRAFT ----------
 
 export interface DraftInput {
