@@ -163,6 +163,9 @@ export type ComposeRunRow = {
   outcome?: string | null;
   input?: string | null;
   person?: { name?: string | null } | null;
+  // The tailored résumé joined by the history list (compose_runs → resume_generations).
+  // Gives a job row its real role/company without shipping the full `output` blob.
+  resume_generation?: { target_role?: string | null; target_company?: string | null } | null;
   output?: {
     parsed?: { target_role?: string; role?: string; target_company?: string } | null;
     person?: { name?: string | null } | null;
@@ -192,8 +195,21 @@ export function deskRunTitle(agent: "compose" | "resume", row: RunRow): string {
     return row?.target_role || (row?.status === "in_flight" ? "Tailoring…" : "Tailored resume");
   }
   if (row?.kind === "job") {
+    // `output` is only present on the detail fetch; the history list instead
+    // joins the tailored résumé, so read the role/company from either source
+    // before falling back to the job link's host — anything but a row of
+    // indistinguishable "Job application" entries.
     const parsed = row?.output?.parsed;
-    return parsed?.target_role || parsed?.role || parsed?.target_company || "Job application";
+    const gen = row?.resume_generation;
+    return (
+      parsed?.target_role ||
+      parsed?.role ||
+      gen?.target_role ||
+      parsed?.target_company ||
+      gen?.target_company ||
+      personHost(row?.input) ||
+      "Job application"
+    );
   }
   return row?.person?.name || row?.output?.person?.name || personHost(row?.input) || row?.input || "Outreach";
 }

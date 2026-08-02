@@ -143,7 +143,10 @@ export async function POST(req: NextRequest) {
   }
   const runId = composeRunId;
 
-  // ── Re-pick: stream the amendment live (fast, user is watching).
+  // ── Re-pick: stream the amendment live (fast, user is watching). Its row
+  // carries `picked`, so the history list hides it — the picked contact is
+  // folded into the parent run's saved package by the client (a PATCH to
+  // /api/compose/history/[id]) once the selection settles.
   if (picked) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({

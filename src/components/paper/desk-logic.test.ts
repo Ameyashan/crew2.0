@@ -162,6 +162,26 @@ test("deskRunTitle picks the right label per agent/kind", () => {
   assert.equal(deskRunTitle("resume", {}), "Tailored resume");
 });
 
+test("deskRunTitle titles job rows from the joined résumé and the job host, not a generic label", () => {
+  // The history list omits `output` but joins the tailored résumé — a job row
+  // should read its real role from there instead of a bare "Job application".
+  assert.equal(
+    deskRunTitle("compose", { kind: "job", resume_generation: { target_role: "Staff Designer" } }),
+    "Staff Designer",
+  );
+  assert.equal(
+    deskRunTitle("compose", { kind: "job", resume_generation: { target_company: "Acme" } }),
+    "Acme",
+  );
+  // With neither role nor company, fall back to the job link's host before the
+  // last-resort literal — so distinct applications don't all collapse to one title.
+  assert.equal(
+    deskRunTitle("compose", { kind: "job", input: "https://jobs.lever.co/acme/123" }),
+    "jobs.lever.co",
+  );
+  assert.equal(deskRunTitle("compose", { kind: "job" }), "Job application");
+});
+
 test("deskRunChips maps outcomes/status to labelled tones", () => {
   assert.deepEqual(deskRunChips("compose", { outcome: "complete" }), [{ label: "ready", tone: "done" }]);
   assert.deepEqual(deskRunChips("compose", { outcome: "in_flight" }), [{ label: "running", tone: "progress" }]);

@@ -1097,6 +1097,33 @@ function cacheCandidateDraft(id: string, cacheKey: string, result: CandidateDraf
   }));
 }
 
+// Fold the just-selected contact into the run's PERSISTED package so History
+// reflects the current pick — the drafting itself opens its own (hidden)
+// compose_runs row, so without this the parent run's saved output would keep
+// showing whoever it originally drafted for. Best-effort and fire-and-forget:
+// the live view is already patched; this only syncs the durable record. A no-op
+// for a run with no server row (never persisted) or an empty draft set. The
+// server merges via mergeRepickOutput — dual-contact runs update their
+// hiring_manager slot, single-contact runs the top-level person/drafts.
+function persistPickedContact(
+  composeRunId: string | null | undefined,
+  contact: { person: unknown; enrichment: unknown; drafts?: unknown[] | null },
+) {
+  if (!composeRunId) return;
+  if (!Array.isArray(contact.drafts) || !contact.drafts.length) return;
+  void fetch(`/api/compose/history/${composeRunId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      person: contact.person ?? null,
+      enrichment: contact.enrichment ?? null,
+      drafts: contact.drafts,
+    }),
+  }).catch(() => {
+    // History sync is best-effort; the live selection is already correct.
+  });
+}
+
 // Re-pick a different hiring-manager candidate on a finished job run. Re-runs
 // only the email + draft for that person (server skips resume + sourcing) and
 // patches the email/person/draft in place — the package card stays visible.
@@ -1167,6 +1194,11 @@ export async function pickCandidate(
       repicked: true,
       progress: { ...r.progress, person: 100, email: 100, outreach: 100 },
     }));
+    persistPickedContact(run.composeRunId, {
+      person: cached.person ?? pickedShell,
+      enrichment: cached.enrichment,
+      drafts: cached.drafts,
+    });
     return;
   }
 
@@ -1236,6 +1268,12 @@ export async function pickCandidate(
     // Cache this candidate's freshly-drafted outreach so re-selecting them later
     // restores instantly (reads r.person after the patchPicked above).
     cacheCandidateDraft(id, cacheKey, result, dual ? undefined : pickedShell);
+    // Keep the run's saved package in sync so History shows this selection.
+    persistPickedContact(run.composeRunId, {
+      person: result.person ?? pickedShell,
+      enrichment: result.enrichment,
+      drafts: result.drafts,
+    });
   } else {
     // Nothing usable came back (an adopted prefetch failed, or an empty draft) —
     // restore the bars so the panel doesn't hang on "Drafting…".
