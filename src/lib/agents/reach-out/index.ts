@@ -2,6 +2,7 @@ import {
   research,
   draft,
   findPublicEmail,
+  sourcePeopleFromText,
   type Channel,
   type PublicEmailResult,
 } from "@/lib/claude";
@@ -109,8 +110,34 @@ export async function* runReachOutStream(
     // gated result forces a re-pick here rather than drafting a confidently-wrong
     // brief — even when no alternative candidates came back.
     if (!ctx.name) {
-      yield { type: "step", id: "research", status: "done", data: ctx };
-      yield { type: "needs_disambiguation", data: ctx.candidates ?? [] };
+      // research() resolves ONE specific person and returns name=null when it
+      // can't. A free-text "find me a KIND of person at <company>" request (no
+      // name, link, screenshot, or already-picked candidate) has no single
+      // identity to resolve, so it lands here with an empty shortlist — the
+      // "couldn't identify a specific person" dead-end. Fall back to sourcing a
+      // real shortlist straight from the description so the user has people to
+      // pick from; picking one flows back through research → email → drafts on
+      // retry, and the existing needs_disambiguation picker renders the list
+      // with no UI change.
+      let candidates: NonNullable<Awaited<ReturnType<typeof research>>["candidates"]> =
+        ctx.candidates ?? [];
+      const isCategoryQuery =
+        !input.picked && !input.intent_image && "free_text" in classify(input.text);
+      if (candidates.length === 0 && isCategoryQuery) {
+        try {
+          const sourced = await sourcePeopleFromText({ text: input.text, intent: input.intent });
+          candidates = sourced.candidates.map((c) => ({
+            name: c.name,
+            role: c.role ?? undefined,
+            company: c.company ?? undefined,
+            linkedin: c.linkedin ?? undefined,
+          }));
+        } catch (e) {
+          console.error("[reach-out] people-from-text fallback failed", e);
+        }
+      }
+      yield { type: "step", id: "research", status: "done", data: { ...ctx, candidates } };
+      yield { type: "needs_disambiguation", data: candidates };
       yield { type: "complete" };
       return;
     }
