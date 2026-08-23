@@ -3,7 +3,7 @@ import { extractJson } from "@/lib/claude";
 import { fetchAtsPosting } from "@/lib/job-fetch";
 import { logAgentRun } from "@/lib/agent-runs";
 import { getProfile } from "@/lib/profile";
-import { lintAntiAi, describeViolations, antiAiWritingGuide } from "@/lib/writing/anti-ai";
+import { lintAntiAi, describeViolations, antiAiWritingGuide, stripEmDashes } from "@/lib/writing/anti-ai";
 import { sanitizeInlineBold, stripInlineBold } from "@/lib/writing/inline-markup";
 import { SYSTEM_PROMPT, SKILL_SYSTEM_SUFFIX, buildUserPrompt } from "./prompt";
 import { fitResumeToPageCount } from "./fit";
@@ -308,9 +308,11 @@ export async function* runResumeTailorStream(
       if (fitted.dropped.length) {
         const trimNote = `trimmed to fit ${input.page_count} page${input.page_count > 1 ? "s" : ""}`;
         const trimEntries: ResumeChange[] = fitted.dropped.slice(0, 4).map((d) => ({
-          section: d.section,
+          section: stripInlineBold(d.section),
           kind: "dropped" as const,
-          before: d.removed,
+          // These bypass sanitizeChanges (they're built here, not parsed from the
+          // model), so strip the markup explicitly or raw ** reaches the UI.
+          before: stripInlineBold(d.removed),
           reason: trimNote,
         }));
         parsed.changes = [...(parsed.changes ?? []), ...trimEntries];
@@ -360,13 +362,18 @@ function collectArtifacts(
   }
 }
 
-// Drop empties and normalize the model's **bold** markup: at most two emphasis
-// spans per line, no stray asterisks, never a fully-bolded bullet.
+// Normalize one piece of résumé copy: **bold** markup capped at two spans per
+// line, no stray asterisks, no em dashes.
+function cleanCopy(text: string): string {
+  return stripEmDashes(sanitizeInlineBold(text));
+}
+
+// Drop empties and normalize every bullet the same way.
 function cleanBullets(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((b): b is string => typeof b === "string" && b.trim().length > 0)
-    .map((b) => sanitizeInlineBold(b));
+    .map((b) => cleanCopy(b));
 }
 
 function parseTailored(text: string, input: ResumeTailorInput): TailoredResume {
@@ -395,7 +402,7 @@ function parseTailored(text: string, input: ResumeTailorInput): TailoredResume {
       phone: header.phone,
       links: header.links,
     },
-    summary: raw.summary ? sanitizeInlineBold(raw.summary) : undefined,
+    summary: raw.summary ? cleanCopy(raw.summary) : undefined,
     experience: experience.map((e) => ({
       company: e.company ?? "",
       role: e.role ?? "",
@@ -407,7 +414,9 @@ function parseTailored(text: string, input: ResumeTailorInput): TailoredResume {
         ? e.tracks
             .map((t) => ({
               title: t?.title ?? "",
-              context: t?.context ? sanitizeInlineBold(t.context) : undefined,
+              start: t?.start,
+              end: t?.end,
+              context: t?.context ? cleanCopy(t.context) : undefined,
               bullets: cleanBullets(t?.bullets),
             }))
             // A track with neither a title nor a bullet is noise on the page.
@@ -444,7 +453,7 @@ function parseTailored(text: string, input: ResumeTailorInput): TailoredResume {
               location: r?.location,
               start: r?.start,
               end: r?.end,
-              context: r?.context ? sanitizeInlineBold(r.context) : undefined,
+              context: r?.context ? cleanCopy(r.context) : undefined,
               bullets: cleanBullets(r?.bullets),
             }))
             .filter((r) => r.role || r.bullets.length)
@@ -623,7 +632,7 @@ Output strict JSON only, one entry for EVERY fragment you were given, reusing th
       lintAntiAi(stripInlineBold(next)).length <
         lintAntiAi(stripInlineBold(target.text)).length
     ) {
-      target.set(sanitizeInlineBold(next));
+      target.set(cleanCopy(next));
     }
   }
 }

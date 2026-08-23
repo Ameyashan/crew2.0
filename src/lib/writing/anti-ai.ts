@@ -152,6 +152,27 @@ const PARTICIPLE_TELLS = [
   "ushering in",
 ];
 
+// "-ing" words that legitimately open a trailing clause: they introduce a list or
+// a method rather than padding the sentence with a restated outcome.
+const PARTICIPLE_SAFE = new Set([
+  "including",
+  "excluding",
+  "spanning",
+  "covering",
+  "ranging",
+  "comprising",
+  "using",
+  "regarding",
+  "following",
+  "totalling",
+  "totaling",
+  "averaging",
+  "reaching",
+  "growing",
+  "serving",
+]);
+
+
 export type AntiAiViolationKind =
   | "phrase"
   | "word"
@@ -231,7 +252,47 @@ export function lintAntiAi(text: string): AntiAiViolation[] {
     push({ kind: "participle-ending", match: pm[0].trim(), hint: "cut the '…, -ing' add-on; end the sentence on the fact" });
   }
 
+  // The same tell in its commonest disguise: a trailing "-ing" clause that carries
+  // no figure. The wordlist above only catches the abstract ones ("…, underscoring
+  // our commitment"); in practice the padding sounds concrete and is just as empty
+  // ("…, enabling real-time decision-making"). The discriminator is a number: a
+  // tail that states a result earns its place, a tail that restates the sentence
+  // does not.
+  //
+  // A comma-participle anywhere confirms we are in a tail; the clause that matters
+  // is the LAST one, because a long tail often banks its number early and then
+  // pads ("…, improving speed by 20% … and enabling real-time decision-making").
+  if (/,\s+[a-z]+ing\b/i.test(text)) {
+    let last: { word: string; rest: string } | null = null;
+    const clauseRe = /(?:,|\band)\s+([a-z]+ing)\b/gi;
+    let cm: RegExpExecArray | null;
+    while ((cm = clauseRe.exec(text))) {
+      last = { word: cm[1], rest: text.slice(cm.index + cm[0].length) };
+    }
+    if (last && !PARTICIPLE_SAFE.has(last.word.toLowerCase()) && !/\d/.test(last.rest)) {
+      push({
+        kind: "participle-ending",
+        match: `, ${last.word}…`,
+        hint: "the trailing '-ing' clause adds no fact; end on the result, or give the clause a number",
+      });
+    }
+  }
+
   return out;
+}
+
+// Deterministic backstop for the em-dash rule above, for copy that must not carry
+// one at all (résumé bullets). It is a last resort, not a substitute for writing
+// the sentence properly: the generator is told to restructure rather than reach
+// for a dash, and lintAntiAi flags any that survive. This catches the stragglers.
+// A dash between numbers is a range and becomes an en dash; anywhere else it
+// becomes a comma.
+export function stripEmDashes(text: string): string {
+  return text
+    .replace(/(\d)\s*—\s*(\d)/g, "$1 – $2")
+    .replace(/\s*—\s*/g, ", ")
+    .replace(/,\s*,/g, ",")
+    .replace(/\s+,/g, ",");
 }
 
 // Render violations as a compact instruction block for a rewrite prompt.

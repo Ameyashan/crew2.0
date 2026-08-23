@@ -61,11 +61,17 @@ const styles = StyleSheet.create({
   companyCell: { flex: 1.2, fontSize: 11, fontFamily: "Times-Bold", textAlign: "center" },
   dateCell: { flex: 1, fontSize: 11, fontFamily: "Times-Italic", textAlign: "right" },
 
+  // A stint's title sits left with its own dates right: without per-stint dates a
+  // reader cannot tell which move came first or whether it was a promotion.
+  trackRow: { flexDirection: "row", alignItems: "flex-end", marginTop: 8 },
+  trackTitle: { flex: 1, fontSize: 10, fontFamily: "Times-Italic" },
+  trackDates: { fontSize: 10, fontFamily: "Times-Italic", textAlign: "right" },
+  // The scope line underneath: what was owned, how big, who depended on it.
   trackLine: {
     fontSize: 10,
     fontFamily: "Times-Italic",
     textAlign: "center",
-    marginTop: 8,
+    marginTop: 3,
     marginHorizontal: 18,
     lineHeight: 1.1,
   },
@@ -155,14 +161,18 @@ function CompanyRow({
 }
 
 function TrackBlock({ track }: { track: ResumeTrack }) {
-  // The italic line reads "<sub-role> | <outcome framing>"; either half may be
-  // missing, so join only what's there.
-  const line = [track.title, track.context].filter(Boolean).join(" | ");
+  const dates = dateRange(track.start, track.end);
   return (
     <View wrap={false}>
-      {line ? (
+      {track.title || dates ? (
+        <View style={styles.trackRow}>
+          <Text style={styles.trackTitle}>{track.title}</Text>
+          {dates ? <Text style={styles.trackDates}>{dates}</Text> : null}
+        </View>
+      ) : null}
+      {track.context ? (
         <Text style={styles.trackLine}>
-          <Rich>{line}</Rich>
+          <Rich>{track.context}</Rich>
         </Text>
       ) : null}
       {track.bullets.map((b, i) => (

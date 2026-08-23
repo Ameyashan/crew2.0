@@ -17,6 +17,7 @@
 import { renderToBuffer } from "@react-pdf/renderer";
 import { ResumeDoc } from "@/components/resume/ResumeDoc";
 import type { TailoredResume } from "./types";
+import { BULLET_CAPS, VENTURE_BULLET_CAP } from "./prompt";
 
 // One removed fragment, so the caller can record an honest "dropped" changelog.
 export interface DroppedUnit {
@@ -24,13 +25,43 @@ export interface DroppedUnit {
   removed: string;
 }
 
-async function countPdfPages(resume: TailoredResume): Promise<number> {
+// Page geometry, mirroring ResumeDoc's page style: US Letter, 40pt top padding,
+// 36pt bottom. Used to work out how far down the last page the content reaches.
+const PAGE_HEIGHT = 792;
+const CONTENT_TOP = PAGE_HEIGHT - 40;
+const CONTENT_BOTTOM = 36;
+const USABLE_HEIGHT = CONTENT_TOP - CONTENT_BOTTOM;
+
+interface Measurement {
+  pages: number;
+  // How far down the final page the content runs, 0 to 1. A two-page resume whose
+  // second page is barely used reads as a one-page resume that spilled.
+  lastPageFill: number;
+}
+
+async function measure(resume: TailoredResume): Promise<Measurement> {
   const buf = await renderToBuffer(<ResumeDoc resume={resume} />);
   // unpdf bundles pdf.js and is a Node-external package (see next.config.ts), so
   // import it dynamically like the resume-upload path does.
   const { getDocumentProxy } = await import("unpdf");
   const pdf = await getDocumentProxy(new Uint8Array(buf));
-  return pdf.numPages;
+  const pages = pdf.numPages;
+
+  let lastPageFill = 1;
+  try {
+    const page = await pdf.getPage(pages);
+    const content = await page.getTextContent();
+    // pdf.js reports text bottom-up; transform[5] is the baseline y.
+    let lowest = CONTENT_TOP;
+    for (const item of content.items as { transform?: number[] }[]) {
+      const y = item.transform?.[5];
+      if (typeof y === "number" && y < lowest) lowest = y;
+    }
+    lastPageFill = Math.min(1, Math.max(0, (CONTENT_TOP - lowest) / USABLE_HEIGHT));
+  } catch {
+    // Measurement is a nicety; a failure here must not fail the whole export.
+  }
+  return { pages, lastPageFill };
 }
 
 // Remove exactly ONE unit of content, cheapest-to-lose first. Returns the removed
@@ -147,6 +178,44 @@ export interface FitResult {
   dropped: DroppedUnit[];
 }
 
+// Enforce the per-stint bullet caps before anything is measured. The model treats
+// the budget as advice and routinely returns six bullets on its favourite job;
+// past four, the reader picks which ones to read and the rest are decoration.
+// Trimming here (rather than only when the page overflows) is what keeps one
+// employer from eating the whole document.
+function capBullets(r: TailoredResume, cap: number): DroppedUnit[] {
+  const dropped: DroppedUnit[] = [];
+  const trimTo = (list: string[], limit: number, section: string) => {
+    while (list.length > limit) {
+      dropped.push({ section, removed: list.pop()! });
+    }
+  };
+
+  for (const e of r.experience) {
+    if (e.tracks?.length) {
+      for (const t of e.tracks) {
+        trimTo(t.bullets, cap, `Experience · ${e.company} · ${t.title}`);
+      }
+    } else {
+      trimTo(e.bullets, cap, `Experience · ${e.company}`);
+    }
+  }
+  for (const g of r.extras ?? []) {
+    for (const role of g.roles ?? []) {
+      trimTo(role.bullets, VENTURE_BULLET_CAP, `${g.heading || "Ventures"} · ${role.role}`);
+    }
+  }
+  return dropped;
+}
+
+// Below this, the last page is carrying so little that the resume reads as a
+// shorter one that spilled rather than a longer one that earned the page.
+const UNDERFILL_THRESHOLD = 0.35;
+// How much content it is worth giving up to reclaim that page. A couple of
+// bullets to turn a 1.1-page resume into a tight one-pager is a good trade; five
+// is not, so past this we leave the two-page version alone.
+const MAX_RECLAIM_TRIMS = 3;
+
 // Render → measure → trim → re-measure until the resume fits `target` pages (or
 // nothing more can be safely trimmed). Returns a NEW resume (the input is left
 // untouched) with meta.page_count stamped to the REAL measured page count.
@@ -156,19 +225,40 @@ export async function fitResumeToPageCount(
 ): Promise<FitResult> {
   const maxPages = target === 2 ? 2 : 1;
   const working: TailoredResume = structuredClone(resume);
-  const dropped: DroppedUnit[] = [];
+  const dropped: DroppedUnit[] = capBullets(working, BULLET_CAPS[maxPages as 1 | 2]);
 
-  let pages = await countPdfPages(working);
+  let m = await measure(working);
   // A generous bound: a resume has far fewer than 40 trimmable units, and the
   // loop also exits the moment it fits or there's nothing left to cut.
-  for (let i = 0; i < 40 && pages > maxPages; i++) {
+  for (let i = 0; i < 40 && m.pages > maxPages; i++) {
     const unit = trimOneUnit(working);
     if (!unit) break; // can't trim further without breaking a hard rule
     dropped.push(unit);
-    pages = await countPdfPages(working);
+    m = await measure(working);
+  }
+
+  // A two-page resume whose second page runs out a third of the way down looks
+  // unfinished. If a small number of trims can pull it onto one tight page, do
+  // that; if it would cost more than that, the content has earned the page and we
+  // leave it be.
+  if (maxPages === 2 && m.pages === 2 && m.lastPageFill < UNDERFILL_THRESHOLD) {
+    const reclaimed: TailoredResume = structuredClone(working);
+    const reclaimedDrops: DroppedUnit[] = [];
+    let rm = m;
+    for (let i = 0; i < MAX_RECLAIM_TRIMS && rm.pages > 1; i++) {
+      const unit = trimOneUnit(reclaimed);
+      if (!unit) break;
+      reclaimedDrops.push(unit);
+      rm = await measure(reclaimed);
+    }
+    if (rm.pages === 1) {
+      Object.assign(working, reclaimed);
+      dropped.push(...reclaimedDrops);
+      m = rm;
+    }
   }
 
   // Stamp the honest, measured page count (clamped to the 1|2 the type allows).
-  working.meta.page_count = (pages >= 2 ? 2 : 1) as 1 | 2;
-  return { resume: working, pageCount: pages, dropped };
+  working.meta.page_count = (m.pages >= 2 ? 2 : 1) as 1 | 2;
+  return { resume: working, pageCount: m.pages, dropped };
 }

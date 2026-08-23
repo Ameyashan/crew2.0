@@ -1,6 +1,15 @@
 import type { ResumeTailorInput } from "./types";
 import { antiAiWritingGuide } from "@/lib/writing/anti-ai";
 
+// The per-stint bullet caps, in numeric form so the page-fitter can enforce them
+// deterministically. The model overshoots routinely, and six bullets on one stint
+// means the reader picks two and ignores the rest. Declared above BUDGETS because
+// the budget prose interpolates them.
+export const BULLET_CAPS = { 1: 3, 2: 4 } as const;
+// Ventures and independent-building entries are supporting evidence, not the main
+// event, at either length.
+export const VENTURE_BULLET_CAP = 3;
+
 // The template is dense — 10pt Times, 11pt leading, full-width bullets — so it
 // fits materially more than the airier layout these budgets were written for.
 // Undershooting here is what produced a half-empty page.
@@ -8,17 +17,19 @@ const BUDGETS = {
   1: {
     summary: "max 2 sentences (≈40 words)",
     experience:
-      "max 3 employers; at most 2 tracks on the most recent one and 1 elsewhere; max 4 bullets per track, ≤26 words/bullet",
+      `max 3 employers; at most 2 stints on the most recent one and 1 elsewhere; max ${BULLET_CAPS[1]} bullets per stint, ≤26 words/bullet`,
     education: "max 2 entries; gpa and coursework allowed, no notes",
     ventures: "omit unless the job clearly calls for them",
+    building: "1 entry max, 2 bullets, only if it is the candidate's strongest current signal",
     overall_words: "≈650 words total body",
   },
   2: {
     summary: "max 3 sentences (≈60 words)",
     experience:
-      "max 6 employers; up to 3 tracks on an employer the source resume actually splits that way; max 5 bullets per track, ≤32 words/bullet",
+      `max 6 employers; up to 3 stints on an employer the source resume actually splits that way; max ${BULLET_CAPS[2]} bullets per stint, ≤32 words/bullet`,
     education: "max 3 entries; gpa, coursework, and notes allowed if relevant",
-    ventures: "up to 3 ventures, 3 bullets each",
+    ventures: `up to 3 ventures, ${VENTURE_BULLET_CAP} bullets each`,
+    building: "up to 3 entries, 2 bullets each",
     overall_words: "≈1200 words total body",
   },
 } as const;
@@ -46,18 +57,34 @@ This applies to every bullet, the summary, and the headline.
 STRUCTURE
 The resume is typeset as: name, one-line headline, one contact line, then SUMMARY, EXPERIENCE, ENTREPRENEURIAL VENTURES, EDUCATION. There is no Skills section and no Projects section — do not emit "skills" or "projects"; fold the keywords they would have carried into the bullets and the headline, where they read as evidence rather than as a list.
 
-- TRACKS. An employer the candidate held several distinct stints, desks, or assignments under gets ONE experience entry with a "tracks" array, not several entries and not one flattened bullet list. The entry's "role" is the candidate's most senior title there and "start"/"end" span the whole tenure; each track then carries its own sub-title, framing, and bullets. Only split into tracks when the source resume actually shows separate stints — never invent one, and use a single track (or a plain "bullets" list) when the job really was one job.
-- Each track needs a "context": a Title Case line of at most 14 words framing what that stint delivered, no trailing period, e.g. "Scaled Polaris Into a Strategic Platform Across Credit, Equity and Real Estate". It is typeset centered and italic under the role, so write it as a headline, not a sentence.
-- ENTREPRENEURIAL VENTURES. Cofounder, side-venture, and startup roles belong in an "extras" section with heading "Entrepreneurial Ventures", using its "roles" array (each with role, org, location, start, end, context, bullets) — not in "experience". The venture "context" is a one- or two-line description of what the venture was, written as a sentence.
+- STINTS. An employer the candidate held several distinct stints, desks, or assignments under gets ONE experience entry with a "tracks" array, not several entries and not one flattened bullet list. The entry's "role" is the candidate's most senior title there and "start"/"end" span the whole tenure; each track then carries its own title, dates, scope line, and bullets. Only split into tracks when the source resume actually shows separate stints — never invent one, and use a single track (or a plain "bullets" list) when the job really was one job.
+- EVERY TRACK NEEDS ITS OWN "start" AND "end". This is not optional. Without per-stint dates a reader cannot tell which move came first, whether the stints were sequential or concurrent, or whether the candidate was promoted, and progression is the strongest thing a long tenure has to say. Order tracks newest first. If the source resume genuinely does not date a stint, infer nothing: put the tenure you can support and leave the other end out rather than guessing a month.
+- TRACK TITLES CARRY BAND AND FUNCTION. Many employers use seniority bands as titles: "Senior Vice President", "Vice President", "Principal", "Member of Technical Staff", "L6". A band is a pay grade, not a job, and a reader outside that industry gets no scope from it. When the employer title is a band, the track title must pair it with the actual function, e.g. "Senior Vice President, Product Lead for Private Markets" or "Vice President, Liquidity Risk: Unsecured Funding Lead". When the title is already a real job title, use it as-is.
+- THE "context" LINE IS SCOPE, NOT MARKETING. It answers: what did the candidate own, how big was it, who depended on it. Team size, budget, AUM, user count, the seniority of the stakeholders. Write it as a plain sentence of at most 16 words. e.g. "Owned regulatory liquidity reporting across US, EMEA and APAC. Team of 5." Do NOT write a Title Case headline, and do NOT write a list of three abstract nouns: "Strategic Execution, Cross-Regional Reporting, and Scalable Automation" tells a reader nothing and burns the most valuable line in the block. Omit "context" entirely rather than filling it with adjectives.
+- ENTREPRENEURIAL VENTURES. Cofounder, side-venture, and startup roles belong in an "extras" section with heading "Entrepreneurial Ventures", using its "roles" array (each with role, org, location, start, end, context, bullets) — not in "experience". The venture "context" is a one-sentence description of what the venture was.
+- INDEPENDENT BUILDING. If the source resume or the user's highlights show self-initiated products, launches, or AI work the candidate shipped outside their job, that is often their strongest current signal and it must appear. Give it its own "extras" section headed "Independent Building", using "roles" (name the product in "role", leave "org" out, date it, and put users or traction in "context"). Never bury it in a job's bullets, and never leave it off because the day job looks more formal. If no such work exists in the source, omit the section.
 - EDUCATION. Put a GPA in "gpa" (e.g. "3.73/4.00") and a coursework list in "coursework" (comma-separated) rather than as notes; both get their own typeset line.
+
+BULLETS
+Every bullet is context, action, result, and the result carries a number wherever the source resume honestly supports one.
+- PUT THE NUMBER IN THE LEAD CLAUSE. Screeners pattern-match impact in the first few words; they do not read to the end of a 30-word sentence to find it. "Drove reporting automation from 65% to 97% and cut delivery from ME+30 to ME+13" beats "Closed process gaps across data, ops and engineering, driving reporting automation from 65% to 97%". Same facts, and only one of them survives a six-second scan.
+- NAME WHAT THE WORK DECIDED OR CONTROLLED, not the activity around it. "Spearheaded the development of the platform" and "was recognized for outcome-driven leadership" describe motion with no owner and no outcome. Senior framing names the scope owned, who relied on it, and what capital, risk or capacity moved. Do this only as far as the source resume supports: precise ownership reads senior, borrowed ownership collapses in the interview.
+- NEVER inflate "helped build" or "contributed to" into "drove", "owned", or "led". The distinction is a feature.
+- AI BULLETS ARE HELD HIGHER. A vague AI bullet is worse than none, because every resume has one now. Each AI bullet should carry as many of these as the source honestly supports: the tool or model named, what the AI actually did (summarized, extracted, classified, routed, generated), a measurable outcome, the judgment call (why that model, the eval, the fallback, how hallucination was handled), and the candidate's own slice of the work. Lead with the business consequence: cost removed, risk reduced, revenue enabled, capacity unlocked.
+
+TYPOGRAPHY
+- NO EM DASHES anywhere in the output. Use a comma, a colon, parentheses, or a full stop, and restructure the sentence so it reads naturally instead of just swapping the dash for a comma. En dashes are fine in date and numeric ranges only.
+- NO PARTICIPLE ADD-ONS. A bullet that ends ", enabling real-time decision-making" or ", preserving client relationships under high stakes" is padding a sentence that already finished. End on the fact. A trailing "-ing" clause is only allowed when it carries a figure of its own, e.g. ", cutting runtime from 45 minutes to 20 seconds".
+- Vary the rhythm. Do not open five bullets in a row with the same verb, and prefer verbs that imply real work (rebuilt, scrapped, retuned, stood up, consolidated) over safe filler (leveraged, utilized, spearheaded, optimized).
 
 EMPHASIS
 Bullets, the summary, and track context lines may use **bold** to mark the one or two highest-signal spans in the line: the metric, the scope, or the outcome. e.g. "Drove **reporting automation from 65% to 97%** and cut delivery timelines by **17 days** by closing process gaps across data, ops, and engineering." Rules: at most two bold spans per line, never bold an entire bullet, never bold filler or a whole clause of setup. Most bullets should carry exactly one. Use no other markup — no italics, no underscores, no lists inside a bullet.
 
 BUDGET (page_count is enforced as a soft cap; respect it strictly)
-1 page: summary ${BUDGETS[1].summary}; experience ${BUDGETS[1].experience}; education ${BUDGETS[1].education}; ventures ${BUDGETS[1].ventures}; total ${BUDGETS[1].overall_words}.
-2 pages: summary ${BUDGETS[2].summary}; experience ${BUDGETS[2].experience}; education ${BUDGETS[2].education}; ventures ${BUDGETS[2].ventures}; total ${BUDGETS[2].overall_words}.
-Fill the budget. A resume that stops at half the target length wastes the page it was given.
+1 page: summary ${BUDGETS[1].summary}; experience ${BUDGETS[1].experience}; education ${BUDGETS[1].education}; ventures ${BUDGETS[1].ventures}; independent building ${BUDGETS[1].building}; total ${BUDGETS[1].overall_words}.
+2 pages: summary ${BUDGETS[2].summary}; experience ${BUDGETS[2].experience}; education ${BUDGETS[2].education}; ventures ${BUDGETS[2].ventures}; independent building ${BUDGETS[2].building}; total ${BUDGETS[2].overall_words}.
+The bullet caps are hard: a stint with six bullets gets two of them read, and the reader picks which two. Spend the budget on breadth (every stint, every venture, the building work) rather than depth on one employer, and never let a single employer carry more than about 40% of the total bullets.
+Fill the budget. A two-page resume whose second page runs out a third of the way down reads unfinished; either it earns the second page or it should have been one.
 
 OUTPUT
 Strict JSON only, no prose, no markdown fences. Schema:
@@ -67,7 +94,7 @@ Strict JSON only, no prose, no markdown fences. Schema:
   "summary"?: string,
   "experience": [ { "company": string, "role": string, "location"?: string, "start": string, "end": string,
                     "bullets": string[],
-                    "tracks"?: [ { "title": string, "context"?: string, "bullets": string[] } ] } ],
+                    "tracks"?: [ { "title": string, "start"?: string, "end"?: string, "context"?: string, "bullets": string[] } ] } ],
   "education":  [ { "school": string, "degree"?: string, "field"?: string, "start"?: string, "end"?: string,
                     "gpa"?: string, "coursework"?: string, "notes"?: string[] } ],
   "extras"?:    [ { "heading": string, "items": string[],

@@ -2761,8 +2761,16 @@ function ResumeModal({ p, resume, jobRole, jobCompany, atsScore, atsScoreBefore,
                 bullets, the same as in the PDF. */}
             {(exp.tracks || []).length > 0
               ? exp.tracks.map((t, j) => (
-                  <div key={j} style={{ marginTop: j === 0 ? 0 : 10 }}>
-                    <ResumeContextLine>{[t.title, t.context].filter(Boolean).join(' | ')}</ResumeContextLine>
+                  <div key={j} style={{ marginTop: j === 0 ? 6 : 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+                      <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontStyle: 'italic', fontSize: 13.5 }}>{t.title}</div>
+                      {(t.start || t.end) && (
+                        <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, color: TOKENS.muted2, whiteSpace: 'nowrap' }}>
+                          {[t.start, t.end].filter(Boolean).join(' – ')}
+                        </div>
+                      )}
+                    </div>
+                    <ResumeContextLine>{t.context}</ResumeContextLine>
                     <ResumeBullets bullets={t.bullets}/>
                   </div>
                 ))

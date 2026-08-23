@@ -21,8 +21,18 @@ export type ResumeChange = {
 // a single bullet list loses the shape of the career. Each track carries its own
 // sub-title, its own one-line framing, and its own bullets.
 export type ResumeTrack = {
-  title: string; // e.g. "Liquidity Risk: Unsecured Funding Lead"
-  context?: string; // Title Case outcome framing, rendered italic + centered
+  // The full title for this stint. When the employer's title is a seniority band
+  // rather than a job ("Senior Vice President"), this pairs the band with the
+  // function so a reader outside that industry can see the scope.
+  title: string; // e.g. "Vice President, Liquidity Risk: Unsecured Funding Lead"
+  // Dates for THIS stint, not the whole tenure. Without them a reader cannot tell
+  // which move came first or whether the candidate was promoted, which is the
+  // single strongest signal a long-tenure career has to offer.
+  start?: string;
+  end?: string;
+  // The scope line: team size, what was owned, who depended on it. Rendered
+  // italic under the title. Not a headline, and not a list of adjectives.
+  context?: string;
   bullets: string[]; // may carry **bold** spans (see lib/writing/inline-markup)
 };
 

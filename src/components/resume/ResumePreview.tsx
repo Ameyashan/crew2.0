@@ -53,9 +53,15 @@ export function ResumePreview({ resume }: { resume: TailoredResume }) {
                 {e.tracks?.length
                   ? e.tracks.map((t, j) => (
                       <div key={j} className="mt-1.5">
-                        <div className="text-[12px] italic text-[#444]">
-                          <Rich>{[t.title, t.context].filter(Boolean).join(" | ")}</Rich>
+                        <div className="flex justify-between items-baseline gap-3">
+                          <div className="text-[12px] italic font-semibold">{t.title}</div>
+                          <div className="text-[11px] text-[#666] shrink-0">
+                            {[t.start, t.end].filter(Boolean).join(" – ")}
+                          </div>
                         </div>
+                        {t.context ? (
+                          <div className="text-[12px] italic text-[#444]"><Rich>{t.context}</Rich></div>
+                        ) : null}
                         <Bullets items={t.bullets}/>
                       </div>
                     ))

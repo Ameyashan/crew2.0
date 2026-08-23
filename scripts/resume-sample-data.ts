@@ -1,9 +1,13 @@
 // Shared fixture for the two sample-render scripts. Dev aid, not shipped.
+//
+// It deliberately exercises every branch the template has: a three-stint employer
+// with dated tracks, a single-stint employer, inline **bold**, an Independent
+// Building section, dated ventures, and an education entry with GPA and
+// coursework. The copy also follows the generation rules the prompt enforces
+// (number in the lead clause, no em dashes, no trailing participle padding), so a
+// render doubles as a check that those read well on the page.
 import type { TailoredResume } from "../src/lib/agents/resume-tailor/types.ts";
 
-// A fixture that exercises every branch the template has: a multi-track
-// employer, a single-stint employer, inline bold, a ventures section, and an
-// education entry with a GPA and coursework.
 export const sampleResume: TailoredResume = {
   header: {
     full_name: "Ameya Shanbhag",
@@ -28,28 +32,41 @@ export const sampleResume: TailoredResume = {
       bullets: [],
       tracks: [
         {
-          title: "Product Lead, AWM Private Markets",
-          context: "Scaled Polaris Into a Strategic Platform Across Credit, Equity and Real Estate",
+          // Band plus function: "Senior Vice President" alone is a pay grade, and
+          // a reader outside finance gets no scope from it.
+          title: "Senior Vice President, Product Lead for AWM Private Markets",
+          start: "Mar 2023",
+          end: "Present",
+          // Scope, not adjectives: what was owned, how big, who depended on it.
+          context: "Owned Polaris across Private Credit, Equity and Real Estate. Used by three pillar COOs.",
           bullets: [
-            "**Spearheaded the development of Polaris**, a unified portfolio management platform serving Private Credit, Equity, and Real Estate, enabling fund performance tracking and liquidity forecasting for senior leadership.",
-            "Consolidated fragmented, underused strats-built tools into a strategic platform recognized by senior leadership as a **competitive differentiator**, achieving record-high user engagement across all three pillars.",
-            "Created and executed a one-year roadmap in partnership with COOs of all three pillars, supporting **$9B+ AUM growth**.",
+            "Supported **$9B+ AUM growth** with a one-year roadmap built with the COOs of all three pillars, prioritized on a T-shaped model: broad oversight, deep focus on Asset Finance.",
+            "**Consolidated four underused strats-built tools** into Polaris, a single portfolio management platform senior leadership now names as a competitive differentiator.",
+            "Won over skeptical engineering and senior strats (VPs and MDs) by embedding structure, transparency and feedback loops, and established the team's first product leadership presence.",
+            "Introduced dashboards, standups, sprints and retros from scratch, turning unpredictable delivery into a **predictable weekly cadence**.",
           ],
         },
         {
-          title: "Liquidity Risk: Unsecured Funding Lead",
-          context: "Strategic Execution, Cross-Regional Reporting, and Scalable Automation",
+          title: "Vice President, Liquidity Risk: Unsecured Funding Lead",
+          start: "Nov 2022",
+          end: "Mar 2023",
+          context: "Owned regulatory liquidity reporting across US, EMEA and APAC. Team of 5.",
           bullets: [
-            "Owned regulatory and internal liquidity risk reporting across **US, EMEA, and APAC** for FR2052a, PRA110, and MLO, driving accuracy across metrics like LCR and NSFR.",
-            "Built Python and Slang automation for monthly reconciliation and commentary, **cutting reporting cycles from ME+45 to ME+15** and eliminating hours of manual work.",
+            "**Cut reporting cycles from ME+45 to ME+15** with Python and Slang automation for monthly reconciliation and commentary, removing a standing month-end crunch.",
+            "Owned FR2052a, PRA110 and MLO reporting across three regions, driving accuracy on LCR and NSFR for global stakeholders.",
+            "**Enabled T+1 signoff against a T+2 standard** by partnering with Treasury, Controllers and Strats on issue prioritization.",
+            "Grew the team from 3 to 5 mid-project and embedded a documentation-first culture, ending the year with **zero attrition**.",
           ],
         },
         {
-          title: "Technical Product Lead, GS Accelerate",
-          context: "Delivered Capital Efficiency and Drove Product-Market Fit for CostQ",
+          title: "Vice President, Technical Product Lead for GS Accelerate",
+          start: "Aug 2021",
+          end: "Nov 2022",
+          context: "Led CostQ, the firm's capital-efficiency product, inside the internal incubator.",
           bullets: [
-            "Prototyped a Python scenario engine, later productionized in Kotlin, **cutting runtime from 45 minutes to under 20 seconds** and unlocking scalable scenario analysis.",
-            "Resolved a critical data reconciliation issue during CostQ's Credit Risk integration, **reducing capital requirements by $5B**.",
+            "**Cut scenario runtime from 45 minutes to under 20 seconds** by prototyping a Python engine, later productionized in Kotlin, unlocking analysis the business could not run at speed.",
+            "**Reduced capital requirements by $5B** by tracing and fixing a data reconciliation defect during CostQ's Credit Risk integration.",
+            "Rebuilt CostQ's strategy and roadmap around user needs and enterprise vision, which drove product-market fit and secured long-term platform funding.",
           ],
         },
       ],
@@ -63,18 +80,44 @@ export const sampleResume: TailoredResume = {
       bullets: [],
       tracks: [
         {
-          title: "Agile Product Lead",
-          context: "Drove Regulatory Compliance, Enterprise Dashboards, and High-Scale User Initiatives",
+          title: "Product Manager, Agile Product Lead",
+          start: "Aug 2019",
+          end: "Aug 2021",
+          context: "Ran two delivery teams, 25+ developers and analysts, on enterprise platform work.",
           bullets: [
-            "**Led two agile teams** (25+ developers and analysts) in end-to-end delivery of enterprise initiatives, running backlog refinement, sprint planning, and scaled scrum ceremonies.",
-            "Designed and launched a Straight Through Processing index and analytics dashboard, **improving data processing speed by 20%** through parallel processing of large datasets.",
-            "Delivered regulatory and enterprise projects including RROE (**60,000+ users**) and Federal Reserve mortgage lending reports under tight deadlines.",
+            "**Improved data processing speed 20%** with a Straight Through Processing index and analytics dashboard, parallelizing large datasets as part of a front-to-back platform overhaul.",
+            "Shipped regulatory and enterprise programs including RROE (**60,000+ users**) and Federal Reserve mortgage lending reports under fixed deadlines.",
+            "Led two agile teams through end-to-end delivery, running backlog refinement, sprint planning and scaled scrum ceremonies.",
           ],
         },
       ],
     },
   ],
   extras: [
+    {
+      // Self-initiated products belong in their own section, not buried in a job.
+      heading: "Independent Building",
+      items: [],
+      roles: [
+        {
+          role: "H1BPulse",
+          start: "2025",
+          context: "Consumer tool for tracking H-1B filing data.",
+          bullets: [
+            "**Reached 70,000 users in the first week** from a standing start, with no paid acquisition.",
+          ],
+        },
+        {
+          role: "Jugaadu",
+          start: "2025",
+          end: "Present",
+          context: "AI job-application product: resume tailoring, outreach and application tracking.",
+          bullets: [
+            "Built and shipped the full product solo on Next.js and Claude, including a resume tailoring agent that measures its own PDF output to hit a real page count.",
+          ],
+        },
+      ],
+    },
     {
       heading: "Entrepreneurial Ventures",
       items: [],
@@ -85,11 +128,10 @@ export const sampleResume: TailoredResume = {
           location: "Mumbai, IN",
           start: "Jan 2017",
           end: "Oct 2018",
-          context:
-            "Entrepreneurial venture guiding engineering students through career decisions, later pivoted into a scalable alumni engagement platform.",
+          context: "Non-profit guiding engineering students through MS and MBA career decisions.",
           bullets: [
-            "Launched a student-focused non-profit democratizing access to higher education resources, guiding students between MS and MBA paths.",
-            "Pivoted the venture into an alumni networking platform, **later acquired by the founding college**.",
+            "Built a contributor network of alumni and working professionals to supply mentorship content.",
+            "Pivoted the venture into an alumni networking platform, **acquired by the founding college**.",
           ],
         },
         {
@@ -98,10 +140,9 @@ export const sampleResume: TailoredResume = {
           location: "Mumbai, IN",
           start: "Jun 2015",
           end: "Dec 2015",
-          context:
-            "Tech-services startup empowering non-technical entrepreneurs with digital solutions that accelerated their business growth.",
+          context: "Tech-services startup building digital products for non-technical founders.",
           bullets: [
-            "Delivered end-to-end Android apps and websites in Java with Material Design and Cognalys mobile verification for early-stage founders.",
+            "Shipped Android apps and websites in Java with Material Design and Cognalys mobile verification for early-stage founders.",
           ],
         },
       ],
@@ -127,6 +168,6 @@ export const sampleResume: TailoredResume = {
     target_role: "Staff Product Manager",
     page_count: 2,
     model: "sample",
-    generated_at: new Date().toISOString(),
+    generated_at: "2026-01-01T00:00:00Z",
   },
 };

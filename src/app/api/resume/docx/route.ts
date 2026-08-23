@@ -6,7 +6,6 @@ import {
   TextRun,
   HeadingLevel,
   AlignmentType,
-  TabStopType,
   ExternalHyperlink,
   type ParagraphChild,
 } from "docx";
@@ -23,19 +22,26 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 // Word measures paragraph geometry in twips (1pt = 20) and run sizes in
-// half-points (10pt = 20). The numbers below mirror ResumeDoc.tsx exactly so the
-// PDF and the .docx are the same document in two formats.
+// half-points (10pt = 20). Sizes and margins mirror ResumeDoc.tsx.
+//
+// Role headers here are TWO LINES and use no tab stops, which is the one place
+// this file deliberately diverges from the PDF. A PDF is fixed layout, so the
+// PDF's three-column role row is safe; a .docx reflows, and right-aligned dates
+// set with a right tab stop collapse when the file is opened in Google Docs —
+// the date slams into the title and the header reads as one mashed line. Plenty
+// of recruiters open .docx in Google Docs, so the header is split into a bold
+// employer-and-title line and a grey location-and-date line beneath it. No tabs,
+// no tables, and each fact gets an obvious place.
 const PT = 20;
 const MARGIN_X = 34 * PT; // 680 — matches the PDF's 34pt side margins
-const TEXT_WIDTH = 12240 - MARGIN_X * 2; // letter width (8.5in) less both margins
-const TAB_CENTER = Math.round(TEXT_WIDTH / 2);
-const TAB_RIGHT = TEXT_WIDTH;
 
 const BODY = 20; // 10pt
 const ROLE = 22; // 11pt
 const NAME = 52; // 26pt
 const CONTACT = 17; // 8.5pt
 const SUMMARY = 21; // 10.5pt
+const META_GREY = "555555";
+const DOT = "  \u00B7  ";
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
@@ -119,11 +125,7 @@ function buildDoc(r: TailoredResume): Document {
     children.push(sectionTitle("Experience"));
     for (const e of r.experience) {
       children.push(
-        companyRow(
-          e.role,
-          [e.company, e.location].filter(Boolean).join(", "),
-          dateRange(e.start, e.end)
-        )
+        ...companyRow(e.role, e.company, dateRange(e.start, e.end), e.location)
       );
       if (e.tracks?.length) {
         for (const t of e.tracks) children.push(...trackBlock(t));
@@ -171,25 +173,18 @@ function buildDoc(r: TailoredResume): Document {
     for (const e of r.education) {
       children.push(
         new Paragraph({
-          tabStops: [{ type: TabStopType.RIGHT, position: TAB_RIGHT }],
-          children: [
-            new TextRun({ text: e.school, bold: true, size: BODY }),
-            new TextRun({ text: `\t${dateRange(e.start, e.end)}`, size: BODY }),
-          ],
+          children: [new TextRun({ text: e.school, bold: true, size: BODY })],
           spacing: { before: 120 },
         })
       );
       const degree = [e.degree, e.field].filter(Boolean).join(", ");
-      if (degree || e.gpa) {
+      const eduMeta = [degree, e.gpa ? `GPA: ${e.gpa}` : null, dateRange(e.start, e.end)]
+        .filter(Boolean)
+        .join(DOT);
+      if (eduMeta) {
         children.push(
           new Paragraph({
-            tabStops: [{ type: TabStopType.RIGHT, position: TAB_RIGHT }],
-            children: [
-              new TextRun({ text: degree, size: BODY }),
-              ...(e.gpa
-                ? [new TextRun({ text: `\tGPA: ${e.gpa}`, italics: true, size: BODY })]
-                : []),
-            ],
+            children: [new TextRun({ text: eduMeta, italics: true, size: BODY, color: META_GREY })],
             spacing: { after: 20 },
           })
         );
@@ -244,47 +239,73 @@ function buildDoc(r: TailoredResume): Document {
   });
 }
 
-// Title on the left, employer centered, dates right — one line, two tab stops.
-function companyRow(role: string, company: string, dates: string): Paragraph {
-  return new Paragraph({
-    tabStops: [
-      { type: TabStopType.CENTER, position: TAB_CENTER },
-      { type: TabStopType.RIGHT, position: TAB_RIGHT },
-    ],
-    children: [
-      new TextRun({ text: role, bold: true, size: ROLE }),
-      new TextRun({ text: `\t${company}`, bold: true, size: ROLE }),
-      new TextRun({ text: `\t${dates}`, italics: true, size: ROLE }),
-    ],
-    spacing: { before: 140 },
-  });
+// Bold employer-and-title line, then a grey location-and-date line. See the note
+// on the constants above for why this is two lines rather than a tabbed row.
+function companyRow(role: string, company: string, dates: string, location?: string): Paragraph[] {
+  const out: Paragraph[] = [
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: [company, role].filter(Boolean).join(DOT),
+          bold: true,
+          size: ROLE,
+        }),
+      ],
+      spacing: { before: 140 },
+    }),
+  ];
+  const meta = [location, dates].filter(Boolean).join(DOT);
+  if (meta) {
+    out.push(
+      new Paragraph({
+        children: [new TextRun({ text: meta, italics: true, size: BODY, color: META_GREY })],
+        spacing: { after: 20 },
+      })
+    );
+  }
+  return out;
 }
 
-function trackLine(text: string): Paragraph {
+// The scope line under a stint: what was owned, how big, who relied on it.
+function contextLine(text: string): Paragraph {
   return new Paragraph({
     alignment: AlignmentType.CENTER,
     children: richRuns(text, BODY, true),
-    spacing: { before: 60, after: 20 },
+    spacing: { before: 40, after: 20 },
   });
 }
 
 function trackBlock(t: ResumeTrack): Paragraph[] {
-  const line = [t.title, t.context].filter(Boolean).join(" | ");
   const out: Paragraph[] = [];
-  if (line) out.push(trackLine(line));
+  const dates = dateRange(t.start, t.end);
+  if (t.title || dates) {
+    // Dates ride inline in parentheses rather than on a right tab stop, for the
+    // Google Docs reason above.
+    out.push(
+      new Paragraph({
+        children: [
+          new TextRun({ text: t.title, italics: true, bold: true, size: BODY }),
+          ...(dates
+            ? [new TextRun({ text: `  (${dates})`, italics: true, size: BODY, color: META_GREY })]
+            : []),
+        ],
+        spacing: { before: 100 },
+      })
+    );
+  }
+  if (t.context) out.push(contextLine(t.context));
   for (const b of t.bullets) out.push(bullet(b));
   return out;
 }
 
 function extraRoleBlock(role: ExtraRole): Paragraph[] {
-  const out: Paragraph[] = [
-    companyRow(
-      role.role,
-      [role.org, role.location].filter(Boolean).join(", "),
-      dateRange(role.start, role.end)
-    ),
-  ];
-  if (role.context) out.push(trackLine(role.context));
+  const out: Paragraph[] = companyRow(
+    role.role,
+    role.org ?? "",
+    dateRange(role.start, role.end),
+    role.location
+  );
+  if (role.context) out.push(contextLine(role.context));
   for (const b of role.bullets) out.push(bullet(b));
   return out;
 }
