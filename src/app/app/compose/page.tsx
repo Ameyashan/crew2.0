@@ -9,6 +9,7 @@ import { track } from "@/lib/analytics/client";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { ChangeList } from "@/components/resume/ChangeList";
 import { parseInlineBold } from "@/lib/writing/inline-markup";
+import { trackHeader } from "@/lib/agents/resume-tailor/display";
 import {
   useRuns,
   useFocusedRun,
@@ -2760,20 +2761,27 @@ function ResumeModal({ p, resume, jobRole, jobCompany, atsScore, atsScoreBefore,
             {/* Several stints under one employer each keep their own framing and
                 bullets, the same as in the PDF. */}
             {(exp.tracks || []).length > 0
-              ? exp.tracks.map((t, j) => (
-                  <div key={j} style={{ marginTop: j === 0 ? 6 : 12 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
-                      <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontStyle: 'italic', fontSize: 13.5 }}>{t.title}</div>
-                      {(t.start || t.end) && (
-                        <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, color: TOKENS.muted2, whiteSpace: 'nowrap' }}>
-                          {[t.start, t.end].filter(Boolean).join(' – ')}
+              ? exp.tracks.map((t, j) => {
+                  // One stint under an employer already said its title and dates
+                  // on the line above; don't repeat them.
+                  const head = trackHeader(exp, t, exp.tracks.length === 1);
+                  return (
+                    <div key={j} style={{ marginTop: j === 0 ? 6 : 12 }}>
+                      {head.show && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+                          <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontStyle: 'italic', fontSize: 13.5 }}>{head.title}</div>
+                          {head.dates && (
+                            <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, color: TOKENS.muted2, whiteSpace: 'nowrap' }}>
+                              {head.dates}
+                            </div>
+                          )}
                         </div>
                       )}
+                      <ResumeContextLine>{t.context}</ResumeContextLine>
+                      <ResumeBullets bullets={t.bullets}/>
                     </div>
-                    <ResumeContextLine>{t.context}</ResumeContextLine>
-                    <ResumeBullets bullets={t.bullets}/>
-                  </div>
-                ))
+                  );
+                })
               : <ResumeBullets bullets={exp.bullets}/>}
           </div>
         ))}

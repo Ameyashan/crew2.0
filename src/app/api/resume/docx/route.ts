@@ -15,6 +15,7 @@ import type {
   ExtraRole,
 } from "@/lib/agents/resume-tailor/types";
 import { parseInlineBold } from "@/lib/writing/inline-markup";
+import { dateRange, trackHeader } from "@/lib/agents/resume-tailor/display";
 
 import { trackServer } from "@/lib/analytics/server";
 
@@ -76,10 +77,6 @@ function richRuns(text: string, size = BODY, italics = false): TextRun[] {
   );
 }
 
-function dateRange(start?: string, end?: string) {
-  return [start, end].filter(Boolean).join(" – ");
-}
-
 function buildDoc(r: TailoredResume): Document {
   const children: Paragraph[] = [];
 
@@ -128,7 +125,8 @@ function buildDoc(r: TailoredResume): Document {
         ...companyRow(e.role, e.company, dateRange(e.start, e.end), e.location)
       );
       if (e.tracks?.length) {
-        for (const t of e.tracks) children.push(...trackBlock(t));
+        const only = e.tracks.length === 1;
+        for (const t of e.tracks) children.push(...trackBlock(t, e, only));
       } else {
         for (const b of e.bullets) children.push(bullet(b));
       }
@@ -275,18 +273,23 @@ function contextLine(text: string): Paragraph {
   });
 }
 
-function trackBlock(t: ResumeTrack): Paragraph[] {
+function trackBlock(
+  t: ResumeTrack,
+  entry: { role?: string; start?: string; end?: string },
+  isOnlyTrack: boolean,
+): Paragraph[] {
   const out: Paragraph[] = [];
-  const dates = dateRange(t.start, t.end);
-  if (t.title || dates) {
+  // An employer with a single stint already stated the title and dates above.
+  const head = trackHeader(entry, t, isOnlyTrack);
+  if (head.show) {
     // Dates ride inline in parentheses rather than on a right tab stop, for the
     // Google Docs reason above.
     out.push(
       new Paragraph({
         children: [
-          new TextRun({ text: t.title, italics: true, bold: true, size: BODY }),
-          ...(dates
-            ? [new TextRun({ text: `  (${dates})`, italics: true, size: BODY, color: META_GREY })]
+          new TextRun({ text: head.title, italics: true, bold: true, size: BODY }),
+          ...(head.dates
+            ? [new TextRun({ text: `  (${head.dates})`, italics: true, size: BODY, color: META_GREY })]
             : []),
         ],
         spacing: { before: 100 },

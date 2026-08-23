@@ -2,6 +2,7 @@
 
 import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
 import { parseInlineBold } from "@/lib/writing/inline-markup";
+import { trackHeader } from "@/lib/agents/resume-tailor/display";
 
 export function ResumePreview({ resume }: { resume: TailoredResume }) {
   const h = resume.header;
@@ -51,20 +52,23 @@ export function ResumePreview({ resume }: { resume: TailoredResume }) {
                 {/* A multi-stint employer keeps its bullets inside tracks, not on
                     the entry — without this branch the role would render empty. */}
                 {e.tracks?.length
-                  ? e.tracks.map((t, j) => (
-                      <div key={j} className="mt-1.5">
-                        <div className="flex justify-between items-baseline gap-3">
-                          <div className="text-[12px] italic font-semibold">{t.title}</div>
-                          <div className="text-[11px] text-[#666] shrink-0">
-                            {[t.start, t.end].filter(Boolean).join(" – ")}
-                          </div>
+                  ? e.tracks.map((t, j) => {
+                      const head = trackHeader(e, t, e.tracks!.length === 1);
+                      return (
+                        <div key={j} className="mt-1.5">
+                          {head.show ? (
+                            <div className="flex justify-between items-baseline gap-3">
+                              <div className="text-[12px] italic font-semibold">{head.title}</div>
+                              <div className="text-[11px] text-[#666] shrink-0">{head.dates}</div>
+                            </div>
+                          ) : null}
+                          {t.context ? (
+                            <div className="text-[12px] italic text-[#444]"><Rich>{t.context}</Rich></div>
+                          ) : null}
+                          <Bullets items={t.bullets}/>
                         </div>
-                        {t.context ? (
-                          <div className="text-[12px] italic text-[#444]"><Rich>{t.context}</Rich></div>
-                        ) : null}
-                        <Bullets items={t.bullets}/>
-                      </div>
-                    ))
+                      );
+                    })
                   : <Bullets items={e.bullets}/>}
               </div>
             ))}

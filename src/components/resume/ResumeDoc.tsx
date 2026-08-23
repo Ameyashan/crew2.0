@@ -22,6 +22,7 @@ import type {
   ExtraRole,
 } from "@/lib/agents/resume-tailor/types";
 import { parseInlineBold } from "@/lib/writing/inline-markup";
+import { dateRange, trackHeader } from "@/lib/agents/resume-tailor/display";
 
 // Text column: 612pt letter width less 34pt margins each side.
 const styles = StyleSheet.create({
@@ -160,14 +161,24 @@ function CompanyRow({
   );
 }
 
-function TrackBlock({ track }: { track: ResumeTrack }) {
-  const dates = dateRange(track.start, track.end);
+function TrackBlock({
+  track,
+  entry,
+  isOnlyTrack,
+}: {
+  track: ResumeTrack;
+  entry: { role?: string; start?: string; end?: string };
+  isOnlyTrack: boolean;
+}) {
+  // An employer with a single stint has already stated the title and dates on the
+  // line above; repeating them here is noise.
+  const head = trackHeader(entry, track, isOnlyTrack);
   return (
     <View wrap={false}>
-      {track.title || dates ? (
+      {head.show ? (
         <View style={styles.trackRow}>
-          <Text style={styles.trackTitle}>{track.title}</Text>
-          {dates ? <Text style={styles.trackDates}>{dates}</Text> : null}
+          <Text style={styles.trackTitle}>{head.title}</Text>
+          {head.dates ? <Text style={styles.trackDates}>{head.dates}</Text> : null}
         </View>
       ) : null}
       {track.context ? (
@@ -180,10 +191,6 @@ function TrackBlock({ track }: { track: ResumeTrack }) {
       ))}
     </View>
   );
-}
-
-function dateRange(start?: string, end?: string) {
-  return [start, end].filter(Boolean).join(" – ");
 }
 
 function Contact({ resume }: { resume: TailoredResume }) {
@@ -297,13 +304,17 @@ export function ResumeDoc({ resume }: { resume: TailoredResume }) {
                       dates={dateRange(e.start, e.end)}
                     />
                     {tracks ? (
-                      <TrackBlock track={tracks[0]} />
+                      <TrackBlock track={tracks[0]} entry={e} isOnlyTrack={tracks.length === 1} />
                     ) : (
                       e.bullets.map((b, j) => <Bullet key={j}>{b}</Bullet>)
                     )}
                   </View>
                   {tracks
-                    ? tracks.slice(1).map((t, j) => <TrackBlock key={j} track={t} />)
+                    ? tracks
+                        .slice(1)
+                        .map((t, j) => (
+                          <TrackBlock key={j} track={t} entry={e} isOnlyTrack={false} />
+                        ))
                     : null}
                 </View>
               );

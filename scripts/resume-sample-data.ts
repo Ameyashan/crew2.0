@@ -32,9 +32,9 @@ export const sampleResume: TailoredResume = {
       bullets: [],
       tracks: [
         {
-          // Band plus function: "Senior Vice President" alone is a pay grade, and
-          // a reader outside finance gets no scope from it.
-          title: "Senior Vice President, Product Lead for AWM Private Markets",
+          // The band sits once on the employer line above; each stint carries the
+          // function it covered.
+          title: "Product Lead, AWM Private Markets",
           start: "Mar 2023",
           end: "Present",
           // Scope, not adjectives: what was owned, how big, who depended on it.
@@ -47,7 +47,7 @@ export const sampleResume: TailoredResume = {
           ],
         },
         {
-          title: "Vice President, Liquidity Risk: Unsecured Funding Lead",
+          title: "Risk Manager, Liquidity Risk",
           start: "Nov 2022",
           end: "Mar 2023",
           context: "Owned regulatory liquidity reporting across US, EMEA and APAC. Team of 5.",
@@ -59,7 +59,7 @@ export const sampleResume: TailoredResume = {
           ],
         },
         {
-          title: "Vice President, Technical Product Lead for GS Accelerate",
+          title: "Product Manager, GS Accelerate",
           start: "Aug 2021",
           end: "Nov 2022",
           context: "Led CostQ, the firm's capital-efficiency product, inside the internal incubator.",
@@ -80,9 +80,9 @@ export const sampleResume: TailoredResume = {
       bullets: [],
       tracks: [
         {
+          // One stint: the title adds "Agile Product Lead" to the employer line's
+          // "Product Manager", and the dates are left out so they print once.
           title: "Product Manager, Agile Product Lead",
-          start: "Aug 2019",
-          end: "Aug 2021",
           context: "Ran two delivery teams, 25+ developers and analysts, on enterprise platform work.",
           bullets: [
             "**Improved data processing speed 20%** with a Straight Through Processing index and analytics dashboard, parallelizing large datasets as part of a front-to-back platform overhaul.",
