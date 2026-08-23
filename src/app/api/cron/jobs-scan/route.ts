@@ -27,6 +27,7 @@ async function scoreUserScan(sb: SupabaseClient, uid: string) {
     jobs: candidates,
     roleMode: prefs.role_mode,
     targetRoles: prefs.target_roles,
+    visaRequired: prefs.visa_required,
   });
   return { candidates: candidates.length, ...summary };
 }
@@ -103,7 +104,10 @@ export async function GET(req: NextRequest) {
   const expected = process.env.CRON_SECRET;
   const authed = !!expected && (auth === `Bearer ${expected}` || req.headers.get("x-cron-secret") === expected);
 
-  if (authed) return runScan({});
+  // Anonymous context so the global fetch/enrich phases can reach logAgentRun
+  // (it requires a user context to exist); per-user scoring re-wraps with the
+  // real uid below.
+  if (authed) return runWithUser(null, () => runScan({}));
 
   // Dev-only manual trigger: scoped to the session user, gated behind an env
   // flag so it can never be invoked in production.

@@ -1,8 +1,9 @@
 // Visa-sponsorship inference (Module 3). A lightweight LLM pass over a job's
 // description that returns a confidence signal only — never a hard yes/no, never
-// a reason to drop a job. v1 is JD text-parse; a DOL/LCA disclosure join can
-// backfill later. Defaults to "unclear" (incl. when there's no JD text), so the
-// feed always renders a badge.
+// a reason to drop a job. This is the FALLBACK tier: companies with a current
+// USCIS track record (src/lib/jobs/h1b/) get 'sponsors_verified' upstream in
+// enrich.ts and skip this call entirely. Defaults to "unclear" (incl. when
+// there's no JD text), so the feed always renders a badge.
 
 import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "@/lib/claude";

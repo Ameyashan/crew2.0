@@ -23,6 +23,7 @@ export interface ScanPrefs {
   posted_within: PostedWithin;
   company_sizes: SizeBucket[];
   locations: string[];
+  visa_required: boolean;
   role_mode: RoleMode;
   target_roles: string[];
 }
@@ -32,6 +33,7 @@ const DEFAULT_PREFS: ScanPrefs = {
   posted_within: "any",
   company_sizes: [],
   locations: [],
+  visa_required: false,
   role_mode: null,
   target_roles: [],
 };
@@ -121,6 +123,7 @@ export async function loadScanPrefs(
         posted_within: POSTED.includes(row.posted_within) ? row.posted_within : "any",
         company_sizes: strArray(row.company_sizes).filter((s): s is SizeBucket => SIZES.includes(s as SizeBucket)),
         locations: strArray(row.locations),
+        visa_required: row.visa_required === true,
         role_mode: coerceRoleMode(row.role_mode),
         target_roles: strArray(row.target_roles),
       }
@@ -244,6 +247,7 @@ export async function runUserScan(uid: string): Promise<UserScanSummary> {
     jobs: candidates,
     roleMode: prefs.role_mode,
     targetRoles: prefs.target_roles,
+    visaRequired: prefs.visa_required,
   });
   return { candidates: candidates.length, ...summary };
 }

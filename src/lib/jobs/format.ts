@@ -1,7 +1,7 @@
 // Pure display formatters for the job feed UI (Module 6). No React — safe to
 // import into client components.
 
-import type { VisaConfidence, SizeBucket } from "@/lib/jobs/types";
+import type { VisaConfidence, VisaEvidence, SizeBucket } from "@/lib/jobs/types";
 
 // "Posted 3d ago" / "Updated 3d ago" (Greenhouse only exposes updated_at, so the
 // caller passes approx=true and we say "Updated" to stay honest).
@@ -26,10 +26,13 @@ export function relativePosted(iso: string | null, approx: boolean): string | nu
 // Feed badge: only surface a positive signal to avoid clutter. The detail view
 // renders the full "visa unclear" wording itself.
 export function visaBadge(v: VisaConfidence | null): string | null {
+  if (v === "sponsors_verified") return "sponsors visas";
   return v === "likely_sponsors" ? "likely sponsors" : null;
 }
 
 export function visaLabelFull(v: VisaConfidence | null): string {
+  if (v === "sponsors_verified") return "Sponsors visas — USCIS-verified";
+  if (v === "no_sponsorship") return "Does not sponsor visas";
   return v === "likely_sponsors" ? "Likely sponsors visas" : "Visa sponsorship unclear";
 }
 
@@ -71,16 +74,31 @@ export function fitColors(score: number): { color: string; border: string } {
 
 export type VisaKind = "sponsors" | "tbd" | "none";
 
-// Current data only carries "likely_sponsors" | "unclear" | null, but the
-// prototype specs a red "NO SPONSORSHIP" state for future data — handle it now
-// so the UI is ready when the enrichment layer starts emitting it.
+// "sponsors" covers both the USCIS-verified signal and the softer JD-parse one
+// (same green chip; the label carries the difference). "none" is Phase 3 —
+// nothing emits 'no_sponsorship' yet, but the chip is ready.
 export function visaKind(v: VisaConfidence | null): VisaKind {
-  if (v === "likely_sponsors") return "sponsors";
-  if ((v as string) === "no_sponsorship") return "none";
+  if (v === "sponsors_verified" || v === "likely_sponsors") return "sponsors";
+  if (v === "no_sponsorship") return "none";
   return "tbd"; // "unclear" | null
 }
 
-export function visaChipLabel(v: VisaConfidence | null): string {
+// "9.5K" / "214" — chip-sized count of recent-FY petitions.
+export function filedCount(n: number): string {
+  if (n >= 1000) {
+    const k = n / 1000;
+    return `${k >= 10 ? Math.round(k) : Math.round(k * 10) / 10}K`;
+  }
+  return String(n);
+}
+
+// When the enrichment attached USCIS evidence, the chip states it: the number
+// is the trust ("SPONSORS · 214 FILED FY25" beats a vibe). Without evidence the
+// three prototype labels stand.
+export function visaChipLabel(v: VisaConfidence | null, evidence?: VisaEvidence | null): string {
+  if (visaKind(v) === "sponsors" && evidence && evidence.recent_filed > 0) {
+    return `SPONSORS · ${filedCount(evidence.recent_filed)} FILED FY${String(evidence.recent_fy).slice(-2)}`;
+  }
   switch (visaKind(v)) {
     case "sponsors":
       return "SPONSORS VISA";
@@ -89,6 +107,18 @@ export function visaChipLabel(v: VisaConfidence | null): string {
     default:
       return "VISA · TBD";
   }
+}
+
+// Detail-view sentence under the chip, e.g.
+// "214 H-1B petitions decided in FY2025 · 96% approved · USCIS Employer Data Hub".
+export function visaEvidenceLine(evidence: VisaEvidence | null): string | null {
+  if (!evidence || evidence.recent_filed <= 0) return null;
+  const parts = [
+    `${evidence.recent_filed.toLocaleString("en-US")} H-1B petition${evidence.recent_filed === 1 ? "" : "s"} decided in FY${evidence.recent_fy}`,
+  ];
+  if (evidence.approval_rate != null) parts.push(`${Math.round(evidence.approval_rate * 100)}% approved`);
+  parts.push("USCIS Employer Data Hub");
+  return parts.join(" · ");
 }
 
 // text/bg pair for the visa chip, matching the prototype token palette.
