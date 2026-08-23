@@ -4,6 +4,7 @@ import { fetchAtsPosting } from "@/lib/job-fetch";
 import { logAgentRun } from "@/lib/agent-runs";
 import { getProfile } from "@/lib/profile";
 import { lintAntiAi, describeViolations, antiAiWritingGuide } from "@/lib/writing/anti-ai";
+import { sanitizeInlineBold, stripInlineBold } from "@/lib/writing/inline-markup";
 import { SYSTEM_PROMPT, SKILL_SYSTEM_SUFFIX, buildUserPrompt } from "./prompt";
 import { fitResumeToPageCount } from "./fit";
 import type {
@@ -359,6 +360,15 @@ function collectArtifacts(
   }
 }
 
+// Drop empties and normalize the model's **bold** markup: at most two emphasis
+// spans per line, no stray asterisks, never a fully-bolded bullet.
+function cleanBullets(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((b): b is string => typeof b === "string" && b.trim().length > 0)
+    .map((b) => sanitizeInlineBold(b));
+}
+
 function parseTailored(text: string, input: ResumeTailorInput): TailoredResume {
   const json = extractJson(text);
   let raw: Partial<TailoredResume> & { meta?: Partial<TailoredResume["meta"]> } = {};
@@ -385,14 +395,24 @@ function parseTailored(text: string, input: ResumeTailorInput): TailoredResume {
       phone: header.phone,
       links: header.links,
     },
-    summary: raw.summary,
+    summary: raw.summary ? sanitizeInlineBold(raw.summary) : undefined,
     experience: experience.map((e) => ({
       company: e.company ?? "",
       role: e.role ?? "",
       location: e.location,
       start: e.start ?? "",
       end: e.end ?? "",
-      bullets: Array.isArray(e.bullets) ? e.bullets.filter(Boolean) : [],
+      bullets: cleanBullets(e.bullets),
+      tracks: Array.isArray(e.tracks)
+        ? e.tracks
+            .map((t) => ({
+              title: t?.title ?? "",
+              context: t?.context ? sanitizeInlineBold(t.context) : undefined,
+              bullets: cleanBullets(t?.bullets),
+            }))
+            // A track with neither a title nor a bullet is noise on the page.
+            .filter((t) => t.title || t.bullets.length)
+        : undefined,
     })),
     education: education.map((e) => ({
       school: e.school ?? "",
@@ -400,6 +420,8 @@ function parseTailored(text: string, input: ResumeTailorInput): TailoredResume {
       field: e.field,
       start: e.start,
       end: e.end,
+      gpa: e.gpa,
+      coursework: e.coursework,
       notes: Array.isArray(e.notes) ? e.notes.filter(Boolean) : undefined,
     })),
     skills: skills?.map((s) => ({
@@ -409,11 +431,24 @@ function parseTailored(text: string, input: ResumeTailorInput): TailoredResume {
     projects: projects?.map((p) => ({
       name: p.name ?? "",
       link: p.link,
-      bullets: Array.isArray(p.bullets) ? p.bullets.filter(Boolean) : [],
+      bullets: cleanBullets(p.bullets),
     })),
     extras: extras?.map((x) => ({
       heading: x.heading ?? "",
-      items: Array.isArray(x.items) ? x.items.filter(Boolean) : [],
+      items: cleanBullets(x.items),
+      roles: Array.isArray(x.roles)
+        ? x.roles
+            .map((r) => ({
+              role: r?.role ?? "",
+              org: r?.org,
+              location: r?.location,
+              start: r?.start,
+              end: r?.end,
+              context: r?.context ? sanitizeInlineBold(r.context) : undefined,
+              bullets: cleanBullets(r?.bullets),
+            }))
+            .filter((r) => r.role || r.bullets.length)
+        : undefined,
     })),
     changes,
     meta: {
@@ -459,10 +494,15 @@ function sanitizeChanges(raw: unknown): ResumeChange[] | undefined {
     if (!c || typeof c !== "object") continue;
     const r = c as Record<string, unknown>;
     const section = typeof r.section === "string" ? r.section.trim() : "";
+    // The changelog is plain prose in the UI — never show raw ** markup there.
     const before =
-      typeof r.before === "string" && r.before.trim() ? r.before.trim() : undefined;
+      typeof r.before === "string" && r.before.trim()
+        ? stripInlineBold(r.before.trim())
+        : undefined;
     const after =
-      typeof r.after === "string" && r.after.trim() ? r.after.trim() : undefined;
+      typeof r.after === "string" && r.after.trim()
+        ? stripInlineBold(r.after.trim())
+        : undefined;
     const reason = typeof r.reason === "string" ? r.reason.trim() : "";
     // An entry with no concrete content tells the user nothing — skip it.
     if (!section && !before && !after) continue;
@@ -487,14 +527,30 @@ async function humanizeResume(resume: TailoredResume): Promise<void> {
   }
   for (const exp of resume.experience) {
     exp.bullets.forEach((b, i) => fields.push({ text: b, set: (s) => (exp.bullets[i] = s) }));
+    // Bullets under a multi-stint employer live inside tracks, not on the entry —
+    // without this they'd skip the humanize pass entirely.
+    for (const track of exp.tracks ?? []) {
+      track.bullets.forEach((b, i) =>
+        fields.push({ text: b, set: (s) => (track.bullets[i] = s) })
+      );
+    }
   }
   for (const proj of resume.projects ?? []) {
     proj.bullets.forEach((b, i) => fields.push({ text: b, set: (s) => (proj.bullets[i] = s) }));
   }
+  for (const extra of resume.extras ?? []) {
+    for (const role of extra.roles ?? []) {
+      role.bullets.forEach((b, i) =>
+        fields.push({ text: b, set: (s) => (role.bullets[i] = s) })
+      );
+    }
+  }
 
-  // Only the fragments that actually trip the linter get sent for rewrite.
+  // Only the fragments that actually trip the linter get sent for rewrite. Lint
+  // the plain text: `**` markup is formatting, not an AI tell, and feeding it to
+  // the linter would only add noise.
   const dirty = fields
-    .map((f, i) => ({ i, text: f.text, tells: lintAntiAi(f.text) }))
+    .map((f, i) => ({ i, text: f.text, tells: lintAntiAi(stripInlineBold(f.text)) }))
     .filter((x) => x.tells.length > 0)
     .slice(0, 40);
   if (!dirty.length) return;
@@ -502,6 +558,8 @@ async function humanizeResume(resume: TailoredResume): Promise<void> {
   const system = `You are a resume line editor. You will receive resume fragments (bullets, a summary, or a headline) that contain AI-sounding tells. Rewrite each to remove the tells while keeping its EXACT meaning and every fact, number, company, title, skill, and date. Never invent or inflate anything. Keep each fragment about the same length or shorter.
 
 ${antiAiWritingGuide("fragments")}
+
+Some fragments contain **bold** spans marking their highest-signal phrase. Keep those spans in your rewrite — move them if the wording moves, but never add, drop, or nest them.
 
 Output strict JSON only, one entry for EVERY fragment you were given, reusing the same "i":
 { "fields": [ { "i": number, "text": string } ] }`;
@@ -557,8 +615,15 @@ Output strict JSON only, one entry for EVERY fragment you were given, reusing th
     const target = fields[f.i];
     const next = (f.text ?? "").trim();
     // Only accept a rewrite that is non-empty AND actually cleaner than before.
-    if (target && next && lintAntiAi(next).length < lintAntiAi(target.text).length) {
-      target.set(next);
+    // Both sides are compared stripped so markup can't tip the count either way,
+    // and the accepted text is re-sanitized in case the editor over-bolded.
+    if (
+      target &&
+      next &&
+      lintAntiAi(stripInlineBold(next)).length <
+        lintAntiAi(stripInlineBold(target.text)).length
+    ) {
+      target.set(sanitizeInlineBold(next));
     }
   }
 }

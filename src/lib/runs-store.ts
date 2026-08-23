@@ -4,6 +4,7 @@
 import { useSyncExternalStore } from "react";
 import { detectKind, firstUrl } from "@/lib/kind-detect";
 import { normalizeCandidateKey } from "@/components/paper/run-view-logic";
+import { coercePageCount } from "@/lib/agents/resume-tailor/types";
 
 // Shown when a signed-out visitor exceeds the anonymous-run cap (HTTP 429 from
 // the compose/tailor routes). Nudges them to sign in rather than leaking a raw
@@ -1004,7 +1005,7 @@ export function hydrateResumeRun(gen: {
     resumeRequest: {
       jobUrl: gen.job_url || undefined,
       highlights: gen.highlights || undefined,
-      pageCount: gen.page_count === 2 ? 2 : 1,
+      pageCount: coercePageCount(gen.page_count),
     },
   };
 
@@ -1386,8 +1387,11 @@ export async function regenerateResume(id: string, notes: string) {
     ? (rawUrl.match(/^https?:\/\//) ? rawUrl : `https://${rawUrl}`)
     : undefined;
   const highlights = req?.highlights || undefined;
-  const pageCount =
-    run.parsed?.resume?.meta?.page_count === 2 ? 2 : (req?.pageCount === 2 ? 2 : 1);
+  // Regenerating keeps the length the previous draft actually was, then the
+  // length that was requested, then the default.
+  const pageCount = coercePageCount(
+    run.parsed?.resume?.meta?.page_count ?? req?.pageCount
+  );
 
   patch(id, () => ({ regenerating: true, regenError: null }));
 
@@ -2245,7 +2249,7 @@ async function streamResumeRun(run: Run, signal: AbortSignal) {
       body: JSON.stringify({
         job_url: req.jobUrl || undefined,
         highlights: req.highlights || undefined,
-        page_count: req.pageCount === 2 ? 2 : 1,
+        page_count: coercePageCount(req.pageCount),
       }),
       signal,
     });
@@ -2609,7 +2613,7 @@ function applyPersistedResume(
     resumeRequest: r.resumeRequest ?? {
       jobUrl: gen.job_url || undefined,
       highlights: gen.highlights || undefined,
-      pageCount: gen.page_count === 2 ? 2 : 1,
+      pageCount: coercePageCount(gen.page_count),
     },
     parsed: complete
       ? {

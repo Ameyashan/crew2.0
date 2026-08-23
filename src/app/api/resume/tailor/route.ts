@@ -6,6 +6,7 @@ import { assertAnonRunAllowed } from "@/lib/anon-rate-limit";
 import { supabaseAdmin } from "@/lib/supabase";
 import { runResumePipeline, type ResumePayload } from "@/lib/runs/execute-resume";
 import { makeDbSink } from "@/lib/runs/sink";
+import { coercePageCount } from "@/lib/agents/resume-tailor/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -73,8 +74,7 @@ export async function POST(req: NextRequest) {
   const job_url = (body?.job_url ?? "").toString().trim();
   const highlights = body?.highlights ? body.highlights.toString() : undefined;
   const regenerate_notes = body?.regenerate_notes ? body.regenerate_notes.toString() : undefined;
-  const pageRaw = Number(body?.page_count);
-  const page_count: 1 | 2 = pageRaw === 2 ? 2 : 1;
+  const page_count = coercePageCount(body?.page_count);
 
   if (!job_url && !highlights?.trim()) {
     return Response.json(

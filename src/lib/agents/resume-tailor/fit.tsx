@@ -9,10 +9,10 @@
 // uses, counts pages with pdf.js (via unpdf), trims one unit at a time, and
 // re-measures — so the label, the PDF, and the DOCX all agree on reality.
 //
-// Trimming honors the resume HARD RULES: it never drops a whole job or degree and
-// never leaves an experience role with zero bullets. It trims from the least
-// costly content first (extras → projects → education notes → skills →
-// oldest-role bullets → summary).
+// Trimming honors the resume HARD RULES: it never drops a whole job, degree, or
+// stint, and never leaves one with zero bullets. It trims from the least costly
+// content first (legacy extras items → projects → education notes/coursework →
+// skills → oldest venture bullets → oldest-stint bullets → summary).
 
 import { renderToBuffer } from "@react-pdf/renderer";
 import { ResumeDoc } from "@/components/resume/ResumeDoc";
@@ -37,18 +37,17 @@ async function countPdfPages(resume: TailoredResume): Promise<number> {
 // fragment (for the changelog) or null when nothing can be trimmed without
 // breaking a hard rule.
 function trimOneUnit(r: TailoredResume): DroppedUnit | null {
-  // 1) Extras (awards / misc) — the least load-bearing section.
+  // 1) Legacy plain extras items (only present on resumes saved before the
+  //    Entrepreneurial Ventures block existed) — the least load-bearing content.
   if (r.extras?.length) {
     for (let i = r.extras.length - 1; i >= 0; i--) {
       const g = r.extras[i];
       if (g.items.length) {
         const removed = g.items.pop()!;
-        if (!g.items.length) r.extras.splice(i, 1);
+        if (!g.items.length && !g.roles?.length) r.extras.splice(i, 1);
         return { section: g.heading || "Extras", removed };
       }
     }
-    const g = r.extras.pop()!;
-    return { section: g.heading || "Extras", removed: g.heading || "extra" };
   }
 
   // 2) Projects — secondary to real jobs. Trim the last project's last bullet;
@@ -66,12 +65,20 @@ function trimOneUnit(r: TailoredResume): DroppedUnit | null {
     return { section: "Projects", removed: p.name || "project" };
   }
 
-  // 3) Education notes — never the entry itself, just its supporting notes.
+  // 3) Education notes, then the coursework line — never the entry itself.
   for (let i = r.education.length - 1; i >= 0; i--) {
     const e = r.education[i];
     if (e.notes?.length) {
       const removed = e.notes.pop()!;
       return { section: `Education · ${e.school}`, removed };
+    }
+  }
+  for (let i = r.education.length - 1; i >= 0; i--) {
+    const e = r.education[i];
+    if (e.coursework) {
+      const removed = e.coursework;
+      e.coursework = undefined;
+      return { section: `Education · ${e.school}`, removed: `Coursework: ${removed}` };
     }
   }
 
@@ -86,18 +93,45 @@ function trimOneUnit(r: TailoredResume): DroppedUnit | null {
     }
   }
 
-  // 5) Experience bullets — the last resort before touching the summary. Trim the
-  //    LAST role that still has more than one bullet (reverse-chronological, so
-  //    that's the oldest); never leave a role with zero bullets, never drop a role.
+  // 5) Entrepreneurial Ventures bullets — real roles, so they outrank projects,
+  //    but they're older and less relevant than the main experience. Oldest
+  //    venture first; never leave one with zero bullets.
+  if (r.extras?.length) {
+    for (let i = r.extras.length - 1; i >= 0; i--) {
+      const g = r.extras[i];
+      for (let j = (g.roles?.length ?? 0) - 1; j >= 0; j--) {
+        const role = g.roles![j];
+        if (role.bullets.length > 1) {
+          const removed = role.bullets.pop()!;
+          return { section: `${g.heading || "Ventures"} · ${role.role}`, removed };
+        }
+      }
+    }
+  }
+
+  // 6) Experience bullets — the last resort before touching the summary. Walk
+  //    the oldest employer first (the array is reverse-chronological) and, within
+  //    an employer, the oldest stint first. Never leave a role or a track with
+  //    zero bullets, and never drop a track or a role outright.
   for (let i = r.experience.length - 1; i >= 0; i--) {
     const e = r.experience[i];
+    if (e.tracks?.length) {
+      for (let j = e.tracks.length - 1; j >= 0; j--) {
+        const t = e.tracks[j];
+        if (t.bullets.length > 1) {
+          const removed = t.bullets.pop()!;
+          return { section: `Experience · ${e.company} · ${t.title}`, removed };
+        }
+      }
+      continue;
+    }
     if (e.bullets.length > 1) {
       const removed = e.bullets.pop()!;
       return { section: `Experience · ${e.company}`, removed };
     }
   }
 
-  // 6) Summary — drop it whole only when nothing else is left to give.
+  // 7) Summary — drop it whole only when nothing else is left to give.
   if (r.summary) {
     const removed = r.summary;
     r.summary = undefined;

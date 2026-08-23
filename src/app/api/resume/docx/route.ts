@@ -7,15 +7,35 @@ import {
   HeadingLevel,
   AlignmentType,
   TabStopType,
-  TabStopPosition,
   ExternalHyperlink,
+  type ParagraphChild,
 } from "docx";
-import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
+import type {
+  TailoredResume,
+  ResumeTrack,
+  ExtraRole,
+} from "@/lib/agents/resume-tailor/types";
+import { parseInlineBold } from "@/lib/writing/inline-markup";
 
 import { trackServer } from "@/lib/analytics/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
+
+// Word measures paragraph geometry in twips (1pt = 20) and run sizes in
+// half-points (10pt = 20). The numbers below mirror ResumeDoc.tsx exactly so the
+// PDF and the .docx are the same document in two formats.
+const PT = 20;
+const MARGIN_X = 34 * PT; // 680 — matches the PDF's 34pt side margins
+const TEXT_WIDTH = 12240 - MARGIN_X * 2; // letter width (8.5in) less both margins
+const TAB_CENTER = Math.round(TEXT_WIDTH / 2);
+const TAB_RIGHT = TEXT_WIDTH;
+
+const BODY = 20; // 10pt
+const ROLE = 22; // 11pt
+const NAME = 52; // 26pt
+const CONTACT = 17; // 8.5pt
+const SUMMARY = 21; // 10.5pt
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
@@ -43,21 +63,33 @@ export async function POST(req: NextRequest) {
   });
 }
 
+// Split `**bold**` markup into Word runs. Shared by every piece of body copy.
+function richRuns(text: string, size = BODY, italics = false): TextRun[] {
+  return parseInlineBold(text).map(
+    (s) => new TextRun({ text: s.text, bold: s.bold, italics, size })
+  );
+}
+
+function dateRange(start?: string, end?: string) {
+  return [start, end].filter(Boolean).join(" – ");
+}
+
 function buildDoc(r: TailoredResume): Document {
   const children: Paragraph[] = [];
 
   children.push(
     new Paragraph({
-      alignment: AlignmentType.LEFT,
-      children: [new TextRun({ text: r.header.full_name, bold: true, size: 36 })],
-      spacing: { after: 40 },
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: r.header.full_name, bold: true, size: NAME })],
+      spacing: { after: 20 },
     })
   );
   if (r.header.headline) {
     children.push(
       new Paragraph({
-        children: [new TextRun({ text: r.header.headline, color: "444444", size: 22 })],
-        spacing: { after: 60 },
+        alignment: AlignmentType.CENTER,
+        children: richRuns(r.header.headline, SUMMARY, true),
+        spacing: { after: 20 },
       })
     );
   }
@@ -65,14 +97,21 @@ function buildDoc(r: TailoredResume): Document {
   const contact = contactRuns(r);
   if (contact.length) {
     children.push(
-      new Paragraph({ children: contact, spacing: { after: 180 } })
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: contact,
+        spacing: { after: 60 },
+      })
     );
   }
 
   if (r.summary) {
     children.push(sectionTitle("Summary"));
     children.push(
-      new Paragraph({ children: [new TextRun({ text: r.summary, size: 22 })], spacing: { after: 80 } })
+      new Paragraph({
+        children: richRuns(r.summary, SUMMARY),
+        spacing: { after: 60, line: 264, lineRule: "auto" },
+      })
     );
   }
 
@@ -80,28 +119,31 @@ function buildDoc(r: TailoredResume): Document {
     children.push(sectionTitle("Experience"));
     for (const e of r.experience) {
       children.push(
-        new Paragraph({
-          tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
-          children: [
-            new TextRun({ text: e.role, bold: true, size: 22 }),
-            new TextRun({ text: `\t${[e.start, e.end].filter(Boolean).join(" – ")}`, size: 20, color: "666666" }),
-          ],
-          spacing: { before: 80 },
-        })
+        companyRow(
+          e.role,
+          [e.company, e.location].filter(Boolean).join(", "),
+          dateRange(e.start, e.end)
+        )
       );
-      const sub = [e.company, e.location].filter(Boolean).join(", ");
-      if (sub) {
-        children.push(
-          new Paragraph({
-            children: [new TextRun({ text: sub, italics: true, color: "333333", size: 22 })],
-            spacing: { after: 40 },
-          })
-        );
+      if (e.tracks?.length) {
+        for (const t of e.tracks) children.push(...trackBlock(t));
+      } else {
+        for (const b of e.bullets) children.push(bullet(b));
       }
-      for (const b of e.bullets) children.push(bullet(b));
     }
   }
 
+  for (const x of r.extras ?? []) {
+    children.push(sectionTitle(x.heading));
+    if (x.roles?.length) {
+      for (const role of x.roles) children.push(...extraRoleBlock(role));
+    } else {
+      for (const it of x.items) children.push(bullet(it));
+    }
+  }
+
+  // Projects and Skills are no longer produced by default; saved resumes from
+  // before this template still carry them, so both stay renderable.
   if (r.projects?.length) {
     children.push(sectionTitle("Projects"));
     for (const p of r.projects) {
@@ -111,11 +153,13 @@ function buildDoc(r: TailoredResume): Document {
             p.link
               ? new ExternalHyperlink({
                   link: p.link,
-                  children: [new TextRun({ text: p.name, bold: true, size: 22, color: "0b5fff", underline: {} })],
+                  children: [
+                    new TextRun({ text: p.name, bold: true, size: ROLE, underline: {} }),
+                  ],
                 })
-              : new TextRun({ text: p.name, bold: true, size: 22 }),
+              : new TextRun({ text: p.name, bold: true, size: ROLE }),
           ],
-          spacing: { before: 80 },
+          spacing: { before: 140 },
         })
       );
       for (const b of p.bullets) children.push(bullet(b));
@@ -127,20 +171,37 @@ function buildDoc(r: TailoredResume): Document {
     for (const e of r.education) {
       children.push(
         new Paragraph({
-          tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
+          tabStops: [{ type: TabStopType.RIGHT, position: TAB_RIGHT }],
           children: [
-            new TextRun({ text: e.school, bold: true, size: 22 }),
-            new TextRun({ text: `\t${[e.start, e.end].filter(Boolean).join(" – ")}`, size: 20, color: "666666" }),
+            new TextRun({ text: e.school, bold: true, size: BODY }),
+            new TextRun({ text: `\t${dateRange(e.start, e.end)}`, size: BODY }),
           ],
-          spacing: { before: 80 },
+          spacing: { before: 120 },
         })
       );
-      const sub = [e.degree, e.field].filter(Boolean).join(", ");
-      if (sub) {
+      const degree = [e.degree, e.field].filter(Boolean).join(", ");
+      if (degree || e.gpa) {
         children.push(
           new Paragraph({
-            children: [new TextRun({ text: sub, italics: true, color: "333333", size: 22 })],
-            spacing: { after: 40 },
+            tabStops: [{ type: TabStopType.RIGHT, position: TAB_RIGHT }],
+            children: [
+              new TextRun({ text: degree, size: BODY }),
+              ...(e.gpa
+                ? [new TextRun({ text: `\tGPA: ${e.gpa}`, italics: true, size: BODY })]
+                : []),
+            ],
+            spacing: { after: 20 },
+          })
+        );
+      }
+      if (e.coursework) {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: "Coursework", bold: true, size: BODY }),
+              new TextRun({ text: `: ${e.coursework}`, size: BODY }),
+            ],
+            spacing: { after: 20 },
           })
         );
       }
@@ -154,26 +215,27 @@ function buildDoc(r: TailoredResume): Document {
       children.push(
         new Paragraph({
           children: [
-            new TextRun({ text: `${s.group}: `, bold: true, size: 22 }),
-            new TextRun({ text: s.items.join(", "), size: 22 }),
+            new TextRun({ text: `${s.group}: `, bold: true, size: BODY }),
+            new TextRun({ text: s.items.join(", "), size: BODY }),
           ],
-          spacing: { after: 40 },
+          spacing: { after: 20 },
         })
       );
     }
   }
 
-  for (const x of r.extras ?? []) {
-    children.push(sectionTitle(x.heading));
-    for (const it of x.items) children.push(bullet(it));
-  }
-
   return new Document({
+    // One place to set the typeface, so every run above inherits Times.
+    styles: {
+      default: {
+        document: { run: { font: "Times New Roman", size: BODY } },
+      },
+    },
     sections: [
       {
         properties: {
           page: {
-            margin: { top: 720, bottom: 720, left: 900, right: 900 },
+            margin: { top: 40 * PT, bottom: 36 * PT, left: MARGIN_X, right: MARGIN_X },
           },
         },
         children,
@@ -182,53 +244,106 @@ function buildDoc(r: TailoredResume): Document {
   });
 }
 
+// Title on the left, employer centered, dates right — one line, two tab stops.
+function companyRow(role: string, company: string, dates: string): Paragraph {
+  return new Paragraph({
+    tabStops: [
+      { type: TabStopType.CENTER, position: TAB_CENTER },
+      { type: TabStopType.RIGHT, position: TAB_RIGHT },
+    ],
+    children: [
+      new TextRun({ text: role, bold: true, size: ROLE }),
+      new TextRun({ text: `\t${company}`, bold: true, size: ROLE }),
+      new TextRun({ text: `\t${dates}`, italics: true, size: ROLE }),
+    ],
+    spacing: { before: 140 },
+  });
+}
+
+function trackLine(text: string): Paragraph {
+  return new Paragraph({
+    alignment: AlignmentType.CENTER,
+    children: richRuns(text, BODY, true),
+    spacing: { before: 60, after: 20 },
+  });
+}
+
+function trackBlock(t: ResumeTrack): Paragraph[] {
+  const line = [t.title, t.context].filter(Boolean).join(" | ");
+  const out: Paragraph[] = [];
+  if (line) out.push(trackLine(line));
+  for (const b of t.bullets) out.push(bullet(b));
+  return out;
+}
+
+function extraRoleBlock(role: ExtraRole): Paragraph[] {
+  const out: Paragraph[] = [
+    companyRow(
+      role.role,
+      [role.org, role.location].filter(Boolean).join(", "),
+      dateRange(role.start, role.end)
+    ),
+  ];
+  if (role.context) out.push(trackLine(role.context));
+  for (const b of role.bullets) out.push(bullet(b));
+  return out;
+}
+
 function sectionTitle(text: string): Paragraph {
   return new Paragraph({
     heading: HeadingLevel.HEADING_2,
-    spacing: { before: 200, after: 60 },
+    spacing: { before: 240, after: 60 },
     children: [
-      new TextRun({ text: text.toUpperCase(), bold: true, size: 22, characterSpacing: 30 }),
+      // HEADING_2 carries Word's built-in blue; the résumé is set in black.
+      new TextRun({ text: `${text.toUpperCase()}:`, bold: true, size: BODY, color: "000000" }),
     ],
-    border: { bottom: { color: "999999", space: 2, style: "single", size: 6 } },
+    border: { bottom: { color: "000000", space: 2, style: "single", size: 8 } },
   });
 }
 
 function bullet(text: string): Paragraph {
   return new Paragraph({
     bullet: { level: 0 },
-    children: [new TextRun({ text, size: 22 })],
-    spacing: { after: 40 },
+    children: richRuns(text),
+    // line 240 = single spacing; the tight 11pt leading of the PDF.
+    spacing: { after: 30, line: 240, lineRule: "auto" },
   });
 }
 
 function contactRuns(r: TailoredResume) {
-  const out: (TextRun | ExternalHyperlink)[] = [];
-  const push = (run: TextRun | ExternalHyperlink) => {
-    if (out.length) out.push(new TextRun({ text: "  ·  ", color: "999999", size: 20 }));
+  const out: ParagraphChild[] = [];
+  const push = (run: ParagraphChild) => {
+    if (out.length) out.push(new TextRun({ text: "  |  ", size: CONTACT }));
     out.push(run);
   };
   const h = r.header;
-  if (h.location) push(new TextRun({ text: h.location, size: 20, color: "555555" }));
+  if (h.location) push(new TextRun({ text: h.location, size: CONTACT }));
   if (h.email)
     push(
       new ExternalHyperlink({
         link: `mailto:${h.email}`,
-        children: [new TextRun({ text: h.email, size: 20, color: "555555" })],
+        children: [new TextRun({ text: h.email, size: CONTACT })],
       })
     );
-  if (h.phone) push(new TextRun({ text: h.phone, size: 20, color: "555555" }));
-  const link = (label: string, url?: string) => {
+  if (h.phone) push(new TextRun({ text: h.phone, size: CONTACT }));
+  const link = (url?: string) => {
     if (!url) return;
     push(
       new ExternalHyperlink({
         link: url,
-        children: [new TextRun({ text: label, size: 20, color: "555555", underline: {} })],
+        children: [
+          new TextRun({
+            text: url.replace(/^https?:\/\/(www\.)?/, ""),
+            size: CONTACT,
+            underline: {},
+          }),
+        ],
       })
     );
   };
-  link(h.links?.linkedin?.replace(/^https?:\/\/(www\.)?/, "") ?? "", h.links?.linkedin);
-  link(h.links?.github?.replace(/^https?:\/\/(www\.)?/, "") ?? "", h.links?.github);
-  link(h.links?.website?.replace(/^https?:\/\/(www\.)?/, "") ?? "", h.links?.website);
+  link(h.links?.linkedin);
+  link(h.links?.github);
+  link(h.links?.website);
   return out;
 }
 

@@ -15,6 +15,30 @@ export type ResumeChange = {
   reason: string; // one short clause tying the edit to the JD
 };
 
+// One stint inside a single employer. Big-company careers routinely stack
+// several distinct assignments under one company header — a product lead moves
+// from one desk to another without changing employer — and flattening them into
+// a single bullet list loses the shape of the career. Each track carries its own
+// sub-title, its own one-line framing, and its own bullets.
+export type ResumeTrack = {
+  title: string; // e.g. "Liquidity Risk: Unsecured Funding Lead"
+  context?: string; // Title Case outcome framing, rendered italic + centered
+  bullets: string[]; // may carry **bold** spans (see lib/writing/inline-markup)
+};
+
+// A dated role inside an `extras` section — what carries "Entrepreneurial
+// Ventures", which reads like a mini experience section rather than a list of
+// one-line items.
+export type ExtraRole = {
+  role: string;
+  org?: string;
+  location?: string;
+  start?: string;
+  end?: string;
+  context?: string; // italic, centered description of the venture
+  bullets: string[];
+};
+
 export type TailoredResume = {
   header: {
     full_name: string;
@@ -31,7 +55,11 @@ export type TailoredResume = {
     location?: string;
     start: string;
     end: string;
+    // Flat bullet list for a single-stint role. Ignored by every renderer when
+    // `tracks` is present; kept populated for older saved resumes and as the
+    // fallback the model uses when an employer really was one job.
     bullets: string[];
+    tracks?: ResumeTrack[];
   }[];
   education: {
     school: string;
@@ -39,11 +67,17 @@ export type TailoredResume = {
     field?: string;
     start?: string;
     end?: string;
+    // GPA and coursework get their own typeset lines (right-aligned italic and a
+    // bold-labelled run) rather than being demoted to bullets.
+    gpa?: string;
+    coursework?: string;
     notes?: string[];
   }[];
   skills?: { group: string; items: string[] }[];
   projects?: { name: string; link?: string; bullets: string[] }[];
-  extras?: { heading: string; items: string[] }[];
+  // `roles` wins over `items` when present, the same way `tracks` wins over
+  // `bullets`. Old saved resumes only ever have `items`.
+  extras?: { heading: string; items: string[]; roles?: ExtraRole[] }[];
   // The most significant edits the agent made to tailor this resume to the JD,
   // most impactful first. Omitted when the JD/brief wasn't seen.
   changes?: ResumeChange[];
@@ -103,3 +137,19 @@ export type ResumeTailorStepEvent =
   | { type: "saved"; id: string }
   | { type: "complete" }
   | { type: "error"; message: string };
+
+// The résumé length we target when the user hasn't picked one. Two pages is the
+// default because the template is dense enough that a real career (several
+// employers, multiple stints under one of them) does not fit honestly on one —
+// squeezing it to a page costs bullets that carry the strongest evidence.
+export const DEFAULT_RESUME_PAGES: 1 | 2 = 2;
+
+// Coerce anything user- or DB-supplied into a valid page count, defaulting to
+// DEFAULT_RESUME_PAGES. Callers used to spell this `=== 2 ? 2 : 1` inline, which
+// hard-coded the old 1-page default in six places.
+export function coercePageCount(v: unknown): 1 | 2 {
+  const n = Number(v);
+  if (n === 1) return 1;
+  if (n === 2) return 2;
+  return DEFAULT_RESUME_PAGES;
+}

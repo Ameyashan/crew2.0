@@ -1,6 +1,7 @@
 "use client";
 
 import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
+import { parseInlineBold } from "@/lib/writing/inline-markup";
 
 export function ResumePreview({ resume }: { resume: TailoredResume }) {
   const h = resume.header;
@@ -33,7 +34,7 @@ export function ResumePreview({ resume }: { resume: TailoredResume }) {
 
       {resume.summary ? (
         <Section title="Summary">
-          <p>{resume.summary}</p>
+          <p><Rich>{resume.summary}</Rich></p>
         </Section>
       ) : null}
 
@@ -47,9 +48,18 @@ export function ResumePreview({ resume }: { resume: TailoredResume }) {
                   <div className="text-[11px] text-[#666]">{[e.start, e.end].filter(Boolean).join(" – ")}</div>
                 </div>
                 <div className="text-[12px] text-[#333]">{[e.company, e.location].filter(Boolean).join(", ")}</div>
-                <ul className="mt-1 ml-4 list-disc space-y-0.5">
-                  {e.bullets.map((b, j) => <li key={j}>{b}</li>)}
-                </ul>
+                {/* A multi-stint employer keeps its bullets inside tracks, not on
+                    the entry — without this branch the role would render empty. */}
+                {e.tracks?.length
+                  ? e.tracks.map((t, j) => (
+                      <div key={j} className="mt-1.5">
+                        <div className="text-[12px] italic text-[#444]">
+                          <Rich>{[t.title, t.context].filter(Boolean).join(" | ")}</Rich>
+                        </div>
+                        <Bullets items={t.bullets}/>
+                      </div>
+                    ))
+                  : <Bullets items={e.bullets}/>}
               </div>
             ))}
           </div>
@@ -66,9 +76,7 @@ export function ResumePreview({ resume }: { resume: TailoredResume }) {
                     <a className="hover:underline" href={p.link} target="_blank" rel="noreferrer">{p.name}</a>
                   ) : p.name}
                 </div>
-                <ul className="mt-1 ml-4 list-disc space-y-0.5">
-                  {p.bullets.map((b, j) => <li key={j}>{b}</li>)}
-                </ul>
+                <Bullets items={p.bullets}/>
               </div>
             ))}
           </div>
@@ -85,11 +93,11 @@ export function ResumePreview({ resume }: { resume: TailoredResume }) {
                   <div className="text-[11px] text-[#666]">{[e.start, e.end].filter(Boolean).join(" – ")}</div>
                 </div>
                 <div className="text-[12px] text-[#333]">{[e.degree, e.field].filter(Boolean).join(", ")}</div>
-                {e.notes?.length ? (
-                  <ul className="mt-1 ml-4 list-disc space-y-0.5">
-                    {e.notes.map((n, j) => <li key={j}>{n}</li>)}
-                  </ul>
+                {e.gpa ? <div className="text-[12px] text-[#333] italic">GPA: {e.gpa}</div> : null}
+                {e.coursework ? (
+                  <div className="text-[12px] text-[#333]"><span className="font-semibold">Coursework</span>: {e.coursework}</div>
                 ) : null}
+                <Bullets items={e.notes}/>
               </div>
             ))}
           </div>
@@ -111,12 +119,50 @@ export function ResumePreview({ resume }: { resume: TailoredResume }) {
 
       {resume.extras?.map((x, i) => (
         <Section key={i} title={x.heading}>
-          <ul className="ml-4 list-disc space-y-0.5">
-            {x.items.map((it, j) => <li key={j}>{it}</li>)}
-          </ul>
+          {x.roles?.length ? (
+            <div className="space-y-3">
+              {x.roles.map((r, j) => (
+                <div key={j}>
+                  <div className="flex justify-between items-baseline">
+                    <div className="font-semibold">{r.role}</div>
+                    <div className="text-[11px] text-[#666]">{[r.start, r.end].filter(Boolean).join(" – ")}</div>
+                  </div>
+                  <div className="text-[12px] text-[#333]">{[r.org, r.location].filter(Boolean).join(", ")}</div>
+                  {r.context ? (
+                    <div className="text-[12px] italic text-[#444] mt-0.5"><Rich>{r.context}</Rich></div>
+                  ) : null}
+                  <Bullets items={r.bullets}/>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Bullets items={x.items}/>
+          )}
         </Section>
       ))}
     </article>
+  );
+}
+
+// Resume copy marks its highest-signal phrase with **bold**; render it as such.
+function Rich({ children }: { children: string }) {
+  return (
+    <>
+      {parseInlineBold(children).map((s, i) =>
+        s.bold ? <strong key={i}>{s.text}</strong> : <span key={i}>{s.text}</span>
+      )}
+    </>
+  );
+}
+
+function Bullets({ items }: { items?: string[] }) {
+  if (!items?.length) return null;
+  return (
+    <ul className="mt-1 ml-4 list-disc space-y-0.5">
+      {items.map((b, j) => (
+        <li key={j}><Rich>{b}</Rich></li>
+      ))}
+    </ul>
   );
 }
 

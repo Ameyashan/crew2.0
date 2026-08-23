@@ -23,6 +23,7 @@ import { sourceHiringManagers, parseJobMeta, parseJobMetaFromText, findJobOpenin
 import { fetchAtsPosting } from "@/lib/job-fetch";
 import { authWalledJobHost, pasteJdJobHost } from "@/lib/job-url";
 import type { TailoredResume } from "@/lib/agents/resume-tailor/types";
+import { coercePageCount } from "@/lib/agents/resume-tailor/types";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getProfile } from "@/lib/profile";
 import { runWithUser } from "@/lib/user-context";
@@ -127,7 +128,7 @@ export async function runPipeline(composeRunId: string, sink: RunSink): Promise<
 
     const send = (obj: unknown) => sink.emit(obj);
 
-    const resumePages: 1 | 2 = (await getProfile())?.resume_pages === 2 ? 2 : 1;
+    const resumePages = coercePageCount((await getProfile())?.resume_pages);
 
     const collectedDrafts: unknown[] = [];
     let collectedPerson: unknown = prior?.person ?? null;

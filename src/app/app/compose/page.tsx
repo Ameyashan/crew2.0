@@ -8,6 +8,7 @@ import { openGmailCompose } from "@/lib/gmail";
 import { track } from "@/lib/analytics/client";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { ChangeList } from "@/components/resume/ChangeList";
+import { parseInlineBold } from "@/lib/writing/inline-markup";
 import {
   useRuns,
   useFocusedRun,
@@ -2620,6 +2621,54 @@ function emailVerdict(enrichment) {
 // Full-size, readable view of the tailored resume. The card preview is
 // deliberately tiny (it's a thumbnail); this is the "actually read it" view.
 // Styled from TOKENS (jugaadu reskin), matching the run view's paper aesthetic.
+// Resume copy carries **bold** spans marking each line's highest-signal phrase.
+// The exports render them as real bold runs; this keeps the preview honest.
+function Rich({ children }) {
+  const spans = parseInlineBold(children || '');
+  return <>{spans.map((s, i) => (s.bold ? <strong key={i}>{s.text}</strong> : <span key={i}>{s.text}</span>))}</>;
+}
+
+function ResumeBullets({ bullets }) {
+  if (!(bullets || []).length) return null;
+  return (
+    <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+      {bullets.map((b, j) => (
+        <li key={j} style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13.5, lineHeight: 1.5, marginBottom: 3 }}>
+          <Rich>{b}</Rich>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// The italic line under a role — "<sub-role> | <outcome framing>" for a track,
+// a plain description for a venture.
+function ResumeContextLine({ children }) {
+  if (!children) return null;
+  return (
+    <div style={{
+      fontFamily: PAPER_FONTS_V2.serif, fontStyle: 'italic', fontSize: 13,
+      color: TOKENS.inkSoft, marginTop: 4,
+    }}><Rich>{children}</Rich></div>
+  );
+}
+
+// Role · employer · dates header, shared by Experience and the ventures section.
+function ResumeRoleHeader({ role, org, dates }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+      <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 15.5 }}>
+        {[role, org].filter(Boolean).join(' · ')}
+      </div>
+      {dates && (
+        <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted2, whiteSpace: 'nowrap' }}>
+          {dates}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ResumeSection({ title }) {
   return (
     <div style={{
@@ -2693,40 +2742,82 @@ function ResumeModal({ p, resume, jobRole, jobCompany, atsScore, atsScoreBefore,
           </div>
         )}
 
+        {resume.summary && <ResumeSection title="Summary"/>}
         {resume.summary && (
-          <p style={{ margin: 0, fontFamily: PAPER_FONTS_V2.sans, fontSize: 14, lineHeight: 1.55 }}>{resume.summary}</p>
+          <p style={{ margin: 0, fontFamily: PAPER_FONTS_V2.sans, fontSize: 14, lineHeight: 1.55 }}>
+            <Rich>{resume.summary}</Rich>
+          </p>
         )}
 
         {(resume.experience || []).length > 0 && <ResumeSection title="Experience"/>}
         {(resume.experience || []).map((exp, i) => (
           <div key={i} style={{ marginBottom: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
-              <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 15.5 }}>
-                {[exp.role, exp.company].filter(Boolean).join(' · ')}
-              </div>
-              {(exp.start || exp.end) && (
-                <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted2, whiteSpace: 'nowrap' }}>
-                  {[exp.start, exp.end].filter(Boolean).join(' – ')}
-                </div>
-              )}
+            <ResumeRoleHeader
+              role={exp.role}
+              org={[exp.company, exp.location].filter(Boolean).join(', ')}
+              dates={[exp.start, exp.end].filter(Boolean).join(' – ')}
+            />
+            {/* Several stints under one employer each keep their own framing and
+                bullets, the same as in the PDF. */}
+            {(exp.tracks || []).length > 0
+              ? exp.tracks.map((t, j) => (
+                  <div key={j} style={{ marginTop: j === 0 ? 0 : 10 }}>
+                    <ResumeContextLine>{[t.title, t.context].filter(Boolean).join(' | ')}</ResumeContextLine>
+                    <ResumeBullets bullets={t.bullets}/>
+                  </div>
+                ))
+              : <ResumeBullets bullets={exp.bullets}/>}
+          </div>
+        ))}
+
+        {(resume.extras || []).map((x, i) => (
+          <div key={i}>
+            <ResumeSection title={x.heading}/>
+            {(x.roles || []).length > 0
+              ? x.roles.map((r, j) => (
+                  <div key={j} style={{ marginBottom: 14 }}>
+                    <ResumeRoleHeader
+                      role={r.role}
+                      org={[r.org, r.location].filter(Boolean).join(', ')}
+                      dates={[r.start, r.end].filter(Boolean).join(' – ')}
+                    />
+                    <ResumeContextLine>{r.context}</ResumeContextLine>
+                    <ResumeBullets bullets={r.bullets}/>
+                  </div>
+                ))
+              : <ResumeBullets bullets={x.items}/>}
+          </div>
+        ))}
+
+        {/* Projects and Skills are no longer generated, but resumes saved before
+            this template still carry them. */}
+        {(resume.projects || []).length > 0 && <ResumeSection title="Projects"/>}
+        {(resume.projects || []).map((pr, i) => (
+          <div key={i} style={{ marginBottom: 10 }}>
+            <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 14.5 }}>
+              {pr.link ? (
+                <a href={pr.link} target="_blank" rel="noopener noreferrer" style={{ color: TOKENS.ink }}>{pr.name} ↗</a>
+              ) : pr.name}
             </div>
-            {exp.location && (
-              <div style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.muted2 }}>{exp.location}</div>
-            )}
-            <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-              {(exp.bullets || []).map((b, j) => (
-                <li key={j} style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13.5, lineHeight: 1.5, marginBottom: 3 }}>{b}</li>
-              ))}
-            </ul>
+            <ResumeBullets bullets={pr.bullets}/>
           </div>
         ))}
 
         {(resume.education || []).length > 0 && <ResumeSection title="Education"/>}
         {(resume.education || []).map((ed, i) => (
           <div key={i} style={{ marginBottom: 10 }}>
-            <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 14.5 }}>
-              {[[ed.degree, ed.field].filter(Boolean).join(', '), ed.school].filter(Boolean).join(' · ')}
-            </div>
+            <ResumeRoleHeader
+              role={[ed.degree, ed.field].filter(Boolean).join(', ')}
+              org={ed.school}
+              dates={[ed.start, ed.end].filter(Boolean).join(' – ')}
+            />
+            {(ed.gpa || ed.coursework) && (
+              <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, color: TOKENS.inkSoft, marginTop: 4 }}>
+                {ed.gpa ? <span>GPA: {ed.gpa}</span> : null}
+                {ed.gpa && ed.coursework ? <span>{'  ·  '}</span> : null}
+                {ed.coursework ? <span><strong>Coursework:</strong> {ed.coursework}</span> : null}
+              </div>
+            )}
             {(ed.notes || []).length > 0 && (
               <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
                 {ed.notes.map((n, j) => (
@@ -2741,22 +2832,6 @@ function ResumeModal({ p, resume, jobRole, jobCompany, atsScore, atsScoreBefore,
         {(resume.skills || []).map((s, i) => (
           <div key={i} style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13.5, lineHeight: 1.55, marginBottom: 3 }}>
             {s.group ? <strong>{s.group}: </strong> : null}{(s.items || []).join(', ')}
-          </div>
-        ))}
-
-        {(resume.projects || []).length > 0 && <ResumeSection title="Projects"/>}
-        {(resume.projects || []).map((pr, i) => (
-          <div key={i} style={{ marginBottom: 10 }}>
-            <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 14.5 }}>
-              {pr.link ? (
-                <a href={pr.link} target="_blank" rel="noopener noreferrer" style={{ color: TOKENS.ink }}>{pr.name} ↗</a>
-              ) : pr.name}
-            </div>
-            <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
-              {(pr.bullets || []).map((b, j) => (
-                <li key={j} style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13.5, lineHeight: 1.5 }}>{b}</li>
-              ))}
-            </ul>
           </div>
         ))}
 

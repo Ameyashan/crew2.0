@@ -10,6 +10,7 @@ import {
   deriveConnectedRows,
 } from "@/components/paper/phase5-logic";
 import { useIsMobile } from "@/lib/use-is-mobile";
+import { coercePageCount } from "@/lib/agents/resume-tailor/types";
 
 // White soft-shadow card surface.
 function Card({ children, style }) {
@@ -63,9 +64,9 @@ function SettingsV3({ profile, saveProfile, reloadProfile }) {
   const isMobile = useIsMobile();
   const [savingPages, setSavingPages] = useState(false);
   const [editing, setEditing] = useState(null); // resume | linkedin | writing | goals
-  // Résumé length preference: 1 or 2 pages. Unset defaults to 1 (matches the
-  // apply flow's default in /api/compose/apply).
-  const resumePages = profile?.resume_pages === 2 ? 2 : 1;
+  // Résumé length preference: 1 or 2 pages. Unset defaults to DEFAULT_RESUME_PAGES,
+  // the same fallback the apply flow uses.
+  const resumePages = coercePageCount(profile?.resume_pages);
 
   async function pickResumePages(n) {
     if (n !== 1 && n !== 2) return;
