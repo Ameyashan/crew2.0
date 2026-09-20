@@ -54,13 +54,20 @@ async function readCsv(
     }
     return { csv: null }; // {} → match/apply only
   }
-  const buf = Buffer.from(await req.arrayBuffer());
+  let buf = Buffer.from(await req.arrayBuffer());
   if (!buf.length) return { csv: null };
   const encoding = req.headers.get("content-encoding") ?? "";
-  const text = encoding.includes("gzip") || (buf[0] === 0x1f && buf[1] === 0x8b)
-    ? gunzipSync(buf).toString("utf8")
-    : buf.toString("utf8");
-  return { csv: text };
+  if (encoding.includes("gzip") || (buf[0] === 0x1f && buf[1] === 0x8b)) buf = gunzipSync(buf);
+  return { csv: decodeH1bExport(buf) };
+}
+
+// USCIS's newer "Employer Information" exports ship as UTF-16 with a BOM; the
+// classic files are plain UTF-8/ASCII. Sniff the BOM so operators can post the
+// file exactly as downloaded.
+function decodeH1bExport(buf: Buffer): string {
+  if (buf[0] === 0xff && buf[1] === 0xfe) return buf.toString("utf16le");
+  if (buf[0] === 0xfe && buf[1] === 0xff) return Buffer.from(buf.subarray(2)).swap16().toString("utf16le");
+  return buf.toString("utf8");
 }
 
 export async function POST(req: NextRequest) {

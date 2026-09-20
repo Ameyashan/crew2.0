@@ -1,13 +1,24 @@
-// USCIS H-1B Employer Data Hub CSV parsing (pure — no deps, node --test safe).
+// USCIS H-1B Employer Data Hub CSV/TSV parsing (pure — no deps, node --test
+// safe).
 //
-// The hub publishes one CSV per fiscal year (uscis.gov → Reports and studies →
-// H-1B Employer Data Hub → Files), e.g. h1b_datahubexport-2024.csv. Columns as
-// published: Fiscal Year, Employer, Initial Approval, Initial Denial,
-// Continuing Approval, Continuing Denial, NAICS, Tax ID, State, City, ZIP.
+// The hub publishes one export per fiscal year (uscis.gov → Reports and
+// studies → H-1B Employer Data Hub → Files), in two generations both handled
+// here:
+//   * classic CSV (h1b_datahubexport-YYYY.csv): Fiscal Year, Employer,
+//     Initial Approval/Denial, Continuing Approval/Denial, NAICS, Tax ID,
+//     State, City, ZIP.
+//   * "Employer Information" export: tab-separated (often UTF-16 on disk —
+//     decode before calling; see decodeH1bExport in the admin route), with the
+//     counts split by petition type: New Employment, Continuation, Change with
+//     Same Employer, New Concurrent, Change of Employer, Amended — each
+//     Approval/Denial. Those roll up exactly the way USCIS's classic files
+//     did: Initial = New Employment + New Concurrent; Continuing = the rest.
 // Header wording has drifted across years ("Employer (Petitioner) Name",
-// pluralized counts), so headers are matched loosely. Employer names contain
-// commas ("AMAZON.COM SERVICES, LLC") and are quoted; counts occasionally carry
-// thousands separators. Rows without an employer or fiscal year are skipped.
+// pluralized counts, trailing spaces), so headers are matched loosely and
+// several columns may sum into one count field. Employer names contain commas
+// ("AMAZON.COM SERVICES, LLC") and are quoted in the CSV generation; counts
+// occasionally carry thousands separators. Rows without an employer or fiscal
+// year are skipped.
 
 export interface H1bCsvRow {
   employer_name: string;
@@ -23,7 +34,8 @@ export interface H1bCsvRow {
 }
 
 // RFC-4180-ish line splitter: quoted fields, doubled quotes, CRLF tolerant.
-export function splitCsvLine(line: string): string[] {
+// `delim` supports both hub generations (comma CSV, tab TSV).
+export function splitCsvLine(line: string, delim: string = ","): string[] {
   const out: string[] = [];
   let cur = "";
   let inQuotes = false;
@@ -42,7 +54,7 @@ export function splitCsvLine(line: string): string[] {
       }
     } else if (ch === '"') {
       inQuotes = true;
-    } else if (ch === ",") {
+    } else if (ch === delim) {
       out.push(cur);
       cur = "";
     } else {
@@ -60,12 +72,17 @@ function headerKey(h: string): string {
 }
 
 type Field = keyof H1bCsvRow;
+type CountField = "initial_approvals" | "initial_denials" | "continuing_approvals" | "continuing_denials";
 
+// Several source columns can SUM into one count field (the "Employer
+// Information" export splits counts by petition type); text fields keep the
+// first non-empty value.
 const HEADER_MAP: Record<string, Field> = {
   fiscalyear: "fiscal_year",
   employer: "employer_name",
   employerpetitionername: "employer_name",
   petitionername: "employer_name",
+  // classic export
   initialapproval: "initial_approvals",
   initialapprovals: "initial_approvals",
   initialdenial: "initial_denials",
@@ -74,6 +91,21 @@ const HEADER_MAP: Record<string, Field> = {
   continuingapprovals: "continuing_approvals",
   continuingdenial: "continuing_denials",
   continuingdenials: "continuing_denials",
+  // "Employer Information" export — USCIS's own classic aggregation:
+  // Initial = New Employment + New Concurrent; Continuing = the rest.
+  newemploymentapproval: "initial_approvals",
+  newconcurrentapproval: "initial_approvals",
+  newemploymentdenial: "initial_denials",
+  newconcurrentdenial: "initial_denials",
+  continuationapproval: "continuing_approvals",
+  changewithsameemployerapproval: "continuing_approvals",
+  changeofemployerapproval: "continuing_approvals",
+  amendedapproval: "continuing_approvals",
+  continuationdenial: "continuing_denials",
+  changewithsameemployerdenial: "continuing_denials",
+  changeofemployerdenial: "continuing_denials",
+  amendeddenial: "continuing_denials",
+  // location / industry
   state: "state",
   petitionerstate: "state",
   city: "city",
@@ -85,6 +117,13 @@ const HEADER_MAP: Record<string, Field> = {
   naicscode: "naics",
   industrynaicscode: "naics",
 };
+
+const COUNT_FIELDS = new Set<Field>([
+  "initial_approvals",
+  "initial_denials",
+  "continuing_approvals",
+  "continuing_denials",
+]);
 
 function toCount(v: string | undefined): number {
   const n = parseInt((v ?? "").replace(/[",\s]/g, ""), 10);
@@ -98,14 +137,19 @@ export interface ParseResult {
 }
 
 export function parseH1bCsv(text: string): ParseResult {
-  const lines = text.split(/\r\n|\n|\r/).filter((l) => l.trim().length > 0);
+  // Strip a BOM if the decode left one, then split lines.
+  const lines = text
+    .replace(/^﻿/, "")
+    .split(/\r\n|\n|\r/)
+    .filter((l) => l.trim().length > 0);
   if (!lines.length) return { rows: [], skipped: 0, fiscalYears: [] };
 
-  const header = splitCsvLine(lines[0]).map(headerKey);
+  const delim = lines[0].includes("\t") ? "\t" : ",";
+  const header = splitCsvLine(lines[0], delim).map(headerKey);
   const cols: Array<Field | null> = header.map((h) => HEADER_MAP[h] ?? null);
   if (!cols.includes("employer_name") || !cols.includes("fiscal_year")) {
     throw new Error(
-      `unrecognized H-1B CSV header — expected Employer + Fiscal Year columns, got: ${splitCsvLine(lines[0]).join(" | ")}`,
+      `unrecognized H-1B CSV header — expected Employer + Fiscal Year columns, got: ${splitCsvLine(lines[0], delim).join(" | ")}`,
     );
   }
 
@@ -114,14 +158,26 @@ export function parseH1bCsv(text: string): ParseResult {
   const fys = new Set<number>();
 
   for (let i = 1; i < lines.length; i++) {
-    const cells = splitCsvLine(lines[i]);
-    const raw: Partial<Record<Field, string>> = {};
+    const cells = splitCsvLine(lines[i], delim);
+    const text2: Partial<Record<Field, string>> = {};
+    const counts: Record<CountField, number> = {
+      initial_approvals: 0,
+      initial_denials: 0,
+      continuing_approvals: 0,
+      continuing_denials: 0,
+    };
     for (let c = 0; c < cols.length; c++) {
       const field = cols[c];
-      if (field) raw[field] = (cells[c] ?? "").trim();
+      if (!field) continue;
+      const cell = (cells[c] ?? "").trim();
+      if (COUNT_FIELDS.has(field)) {
+        counts[field as CountField] += toCount(cell);
+      } else if (!text2[field] && cell) {
+        text2[field] = cell;
+      }
     }
-    const employer = (raw.employer_name ?? "").trim();
-    const fy = parseInt((raw.fiscal_year ?? "").replace(/\D/g, ""), 10);
+    const employer = (text2.employer_name ?? "").trim();
+    const fy = parseInt((text2.fiscal_year ?? "").replace(/\D/g, ""), 10);
     if (!employer || !Number.isFinite(fy) || fy < 2000 || fy > 2100) {
       skipped++;
       continue;
@@ -130,14 +186,11 @@ export function parseH1bCsv(text: string): ParseResult {
     rows.push({
       employer_name: employer,
       fiscal_year: fy,
-      initial_approvals: toCount(raw.initial_approvals as string),
-      initial_denials: toCount(raw.initial_denials as string),
-      continuing_approvals: toCount(raw.continuing_approvals as string),
-      continuing_denials: toCount(raw.continuing_denials as string),
-      state: raw.state || null,
-      city: raw.city || null,
-      zip: raw.zip || null,
-      naics: raw.naics || null,
+      ...counts,
+      state: text2.state || null,
+      city: text2.city || null,
+      zip: text2.zip || null,
+      naics: text2.naics || null,
     });
   }
 

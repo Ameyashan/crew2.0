@@ -45,6 +45,52 @@ test("parseH1bCsv tolerates header wording drift", () => {
   assert.equal(rows[0].city, "SAN FRANCISCO");
 });
 
+test("parseH1bCsv reads the newer tab-separated Employer Information export", () => {
+  // Real shape: leading "Line by line" row number, trailing spaces in headers,
+  // counts split by petition type, BOM at the start.
+  const header = [
+    "Line by line",
+    "Fiscal Year   ",
+    "Employer (Petitioner) Name",
+    "Tax ID",
+    "Industry (NAICS) Code",
+    "Petitioner City",
+    "Petitioner State",
+    "Petitioner Zip Code",
+    "New Employment Approval",
+    "New Employment Denial",
+    "Continuation Approval",
+    "Continuation Denial",
+    "Change with Same Employer Approval",
+    "Change with Same Employer Denial",
+    "New Concurrent Approval",
+    "New Concurrent Denial",
+    "Change of Employer Approval",
+    "Change of Employer Denial",
+    "Amended Approval",
+    "Amended Denial",
+  ].join("\t");
+  const tsv = [
+    "﻿" + header,
+    ["3,129", "2026", "ANTHROPIC PBC", "6045", "54 - Professional", "SAN FRANCISCO", "CA", "94104", "48", "0", "3", "1", "0", "0", "2", "0", "84", "1", "8", "0"].join("\t"),
+    ["1", "2026", "", "", "", "", "", "", "0", "0", "0", "0", "1", "0", "0", "0", "0", "0", "0", "0"].join("\t"), // suppressed employer -> skipped
+  ].join("\r\n");
+
+  const { rows, skipped, fiscalYears } = parseH1bCsv(tsv);
+  assert.equal(rows.length, 1);
+  assert.equal(skipped, 1);
+  assert.deepEqual(fiscalYears, [2026]);
+  const r = rows[0];
+  assert.equal(r.employer_name, "ANTHROPIC PBC");
+  // Initial = New Employment + New Concurrent; Continuing = the other four.
+  assert.equal(r.initial_approvals, 48 + 2);
+  assert.equal(r.initial_denials, 0);
+  assert.equal(r.continuing_approvals, 3 + 0 + 84 + 8);
+  assert.equal(r.continuing_denials, 1 + 0 + 1 + 0);
+  assert.equal(r.city, "SAN FRANCISCO");
+  assert.equal(r.naics, "54 - Professional");
+});
+
 test("parseH1bCsv rejects a CSV without the key columns", () => {
   assert.throws(() => parseH1bCsv("foo,bar\n1,2"), /unrecognized H-1B CSV header/);
 });
