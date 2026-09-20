@@ -13,6 +13,7 @@ import {
   deskRunTitle,
   deskRunChips,
   deskEarlierRuns,
+  dropLinkedResumeRuns,
   fmtWhen,
   ALLOWED_IMAGE_TYPES,
   MAX_IMAGE_BYTES,
@@ -214,6 +215,43 @@ test("deskEarlierRuns merges both sources, sorts newest-first, caps at limit", (
 test("deskEarlierRuns tolerates empty / missing inputs", () => {
   assert.deepEqual(deskEarlierRuns([], [], 4), []);
   assert.deepEqual(deskEarlierRuns(undefined, undefined, 4), []);
+});
+
+test("deskEarlierRuns drops a résumé generation owned by a job run (one row per application)", () => {
+  // A job run's tailored résumé is a child resume_generations row; listing both
+  // showed the one application twice ("ready" + "ATS n").
+  const compose = [
+    { id: "c1", created_at: "2026-07-01T10:00:00Z", kind: "job", outcome: "complete", resume_generation_id: "r1", output: { parsed: { target_role: "PM, Statsig" } } },
+  ];
+  const resume = [
+    { id: "r1", created_at: "2026-07-01T10:01:00Z", target_role: "PM, Statsig", ats_score: 62 },
+    { id: "r2", created_at: "2026-07-02T10:00:00Z", target_role: "PM, Infra", ats_score: 78 },
+  ];
+  const rows = deskEarlierRuns(compose, resume, 4);
+  assert.deepEqual(rows.map((r) => r.id), ["r2", "c1"]);
+  // The standalone tailor keeps its resume row; the job shows only its package row.
+  assert.deepEqual(rows.map((r) => r.agent), ["resume", "compose"]);
+});
+
+test("dropLinkedResumeRuns keeps standalone tailors and tolerates missing inputs", () => {
+  const compose = [
+    { resume_generation_id: "r1" },
+    { resume_generation_id: null },
+    {},
+  ];
+  const resume = [{ id: "r1" }, { id: "r2" }];
+  assert.deepEqual(dropLinkedResumeRuns(compose, resume), [{ id: "r2" }]);
+  assert.deepEqual(dropLinkedResumeRuns(undefined, resume), resume);
+  assert.deepEqual(dropLinkedResumeRuns(compose, undefined), []);
+});
+
+test("deskEarlierRuns excludes live-run ids but the rest of the feed stays", () => {
+  const compose = [
+    { id: "c1", created_at: "2026-07-01T10:00:00Z", kind: "person", outcome: "complete", person: { name: "Sara" } },
+    { id: "c2", created_at: "2026-07-02T10:00:00Z", kind: "person", outcome: "in_flight", person: { name: "Ravi" } },
+  ];
+  const rows = deskEarlierRuns(compose, [], 4, new Set(["c2"]));
+  assert.deepEqual(rows.map((r) => r.id), ["c1"]);
 });
 
 test("fmtWhen renders deterministic relative times against an injected now", () => {

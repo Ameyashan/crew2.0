@@ -146,6 +146,12 @@ export type Run = {
   resumeGenerationId?: string | null;
   tailor?: { chars: number; bullets: number } | null;
   resumeRequest?: { jobUrl?: string; highlights?: string; pageCount?: 1 | 2 } | null;
+  // True for runs rebuilt from a persisted history row (hydrateRun /
+  // hydrateResumeRun) rather than started live in this session. The Desk keeps
+  // hydrated runs' history rows visible in "Earlier runs" — they were opened
+  // FROM that list, and once unfocused they're surfaced nowhere else, so hiding
+  // the row would strand them until a full reload.
+  hydrated?: boolean;
   // Per-agent non-fatal errors (e.g. the résumé branch failed but the rest of
   // the crew finished). Keyed like `progress` (resume | person | email | outreach).
   stepErrors?: Record<string, string>;
@@ -691,6 +697,9 @@ function relaunchResumeRun(id: string) {
     error: null,
     reconnecting: false,
     resumeGenerationId: null,
+    // A re-tailored hydrated run is live again — it opens a fresh server row,
+    // so it's back to being surfaced as a live run, not a history reopen.
+    hydrated: false,
   }));
   const fresh = runs.find((r) => r.id === id);
   if (!fresh) return;
@@ -833,6 +842,9 @@ function relaunchRun(id: string, picked?: unknown) {
     repicked: false,
     // Drop the stale id so the fresh stream registers its own.
     composeRunId: null,
+    // A re-run hydrated run is live again — it opens a fresh server row, so
+    // it's back to being surfaced as a live run, not a history reopen.
+    hydrated: false,
   }));
   launch(id, picked);
 }
@@ -866,6 +878,7 @@ export function switchRunToJob(id: string) {
     picking: null,
     repicked: false,
     composeRunId: null,
+    hydrated: false,
   }));
   launch(id);
 }
@@ -938,6 +951,7 @@ export function hydrateRun(persisted: PersistedComposeRun): string {
     createdAt: new Date(persisted.created_at).getTime(),
     screenshot: persisted.screenshot ?? null,
     composeRunId: persisted.id,
+    hydrated: true,
   };
 
   runs = [run, ...runs];
@@ -1001,6 +1015,7 @@ export function hydrateResumeRun(gen: {
     error: complete ? null : (gen.error || "Resume tailoring failed."),
     createdAt: gen.created_at ? new Date(gen.created_at).getTime() : Date.now(),
     resumeGenerationId: gen.id,
+    hydrated: true,
     resumeRequest: {
       jobUrl: gen.job_url || undefined,
       highlights: gen.highlights || undefined,
