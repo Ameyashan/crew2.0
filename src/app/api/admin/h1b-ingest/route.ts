@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { runWithUser } from "@/lib/user-context";
 import { ingestH1bCsv, type IngestResult } from "@/lib/jobs/h1b/ingest";
 import { matchCompaniesToH1b, applyTrackRecordToJobs } from "@/lib/jobs/h1b/match";
+import { rescanVisaNegatives } from "@/lib/jobs/enrich";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -23,11 +24,28 @@ export const maxDuration = 300;
 //     datacenter IPs; fall back to posting the CSV body if this 403s).
 //   * JSON {} / empty body — skip ingestion, just re-match + re-apply (useful
 //     after the catalog has grown).
+//   * JSON {"rescan_negatives": true, "limit"?: n} — no ingest/match at all:
+//     re-read already-enriched jobs' JDs for an explicit "no sponsorship"
+//     statement (keyword-screened; LLM only on mentions) and flip them to
+//     'no_sponsorship'. Bounded per call — repeat until `screened` hits 0.
 
-async function readCsv(req: NextRequest): Promise<{ csv: string | null; error?: string }> {
+interface AdminBody {
+  url?: unknown;
+  csv?: unknown;
+  rescan_negatives?: unknown;
+  limit?: unknown;
+}
+
+async function readCsv(
+  req: NextRequest,
+): Promise<{ csv: string | null; rescan?: { limit?: number }; error?: string }> {
   const ctype = req.headers.get("content-type") ?? "";
   if (ctype.includes("application/json")) {
-    const body = (await req.json().catch(() => ({}))) as { url?: unknown; csv?: unknown };
+    const body = (await req.json().catch(() => ({}))) as AdminBody;
+    if (body.rescan_negatives === true) {
+      const limit = typeof body.limit === "number" && body.limit > 0 ? Math.floor(body.limit) : undefined;
+      return { csv: null, rescan: { limit } };
+    }
     if (typeof body.csv === "string" && body.csv.trim()) return { csv: body.csv };
     if (typeof body.url === "string" && body.url.trim()) {
       const res = await fetch(body.url, { headers: { Accept: "text/csv,*/*" } });
@@ -55,8 +73,13 @@ export async function POST(req: NextRequest) {
   // context to exist, and an operator run has no user to bill.
   return runWithUser(null, async () => {
     try {
-      const { csv, error } = await readCsv(req);
+      const { csv, rescan, error } = await readCsv(req);
       if (error) return Response.json({ ok: false, error }, { status: 502 });
+
+      if (rescan) {
+        const rescanned = await rescanVisaNegatives({ limit: rescan.limit });
+        return Response.json({ ok: true, rescanned });
+      }
 
       let ingested: IngestResult | null = null;
       if (csv) ingested = await ingestH1bCsv(csv);

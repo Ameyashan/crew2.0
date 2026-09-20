@@ -15,7 +15,7 @@ import { fetchAllListings } from "@/lib/jobs/orchestrator";
 import { enrichJobs } from "@/lib/jobs/enrich";
 import { scoreJobsForUser } from "@/lib/jobs/score";
 import type { Job } from "@/lib/db/schema";
-import type { PostedWithin, SizeBucket, RoleMode } from "@/lib/jobs/types";
+import type { PostedWithin, SizeBucket, RoleMode, VisaConfidence } from "@/lib/jobs/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface ScanPrefs {
@@ -105,6 +105,17 @@ export function matchesSize(job: { company_size: SizeBucket | null }, sizes: Siz
   return sizes.includes(job.company_size);
 }
 
+// A user who needs sponsorship never sees a job whose JD explicitly rules it
+// out — that's the whole point of the signal (killing wasted applications).
+// Everyone else still sees it, with the red NO SPONSORSHIP chip. Only the
+// explicit 'no_sponsorship' verdict hides; 'unclear'/null always pass.
+export function matchesVisaNeed(
+  job: { visa_confidence: VisaConfidence | null },
+  visaRequired: boolean,
+): boolean {
+  return !(visaRequired && job.visa_confidence === "no_sponsorship");
+}
+
 // Followed company_ids for a user (catalog ids, already resolved — no name
 // lookup needed). Separate helper so the feed route and scan can both reuse it.
 export async function loadFollowedCompanyIds(sb: SupabaseClient, uid: string): Promise<string[]> {
@@ -185,7 +196,12 @@ export async function selectCandidateJobs(
 
   const { data: jobsData } = await q;
   const jobs = (jobsData ?? []) as Job[];
-  const matching = jobs.filter((j) => matchesLocations(j, prefs.locations) && matchesSize(j, prefs.company_sizes));
+  const matching = jobs.filter(
+    (j) =>
+      matchesLocations(j, prefs.locations) &&
+      matchesSize(j, prefs.company_sizes) &&
+      matchesVisaNeed(j, prefs.visa_required),
+  );
 
   const perCompany = new Map<string, number>();
   const picked: Job[] = [];

@@ -68,14 +68,24 @@ Re-runs are safe: ingestion deletes and re-inserts each fiscal year found in
 the file, so posting a corrected or refreshed export converges instead of
 duplicating.
 
-Two other body shapes the route accepts:
-- `-H "content-type: application/json" -d '{"url":"https://…csv"}'` — the
-  server fetches the CSV itself. Worth one try; if Vercel's IPs are also
-  Akamai-blocked it returns 502 and you fall back to the body upload.
-- `-d '{}'` (JSON, empty) — skip ingestion, just re-match the catalog +
-  re-apply evidence. Run this occasionally after the self-growing catalog
-  has added companies, so newcomers pick up their track records between
-  quarterly ingests.
+Three other body shapes the route accepts (all JSON,
+`-H "content-type: application/json"`):
+- `-d '{"url":"https://…csv"}'` — the server fetches the CSV itself. Worth
+  one try; if Vercel's IPs are also Akamai-blocked it returns 502 and you
+  fall back to the body upload.
+- `-d '{}'` — skip ingestion, just re-match the catalog + re-apply evidence.
+  Run this occasionally after the self-growing catalog has added companies,
+  so newcomers pick up their track records between quarterly ingests.
+- `-d '{"rescan_negatives": true}'` — the negative-signal backfill: re-reads
+  already-enriched jobs' JDs for an explicit "we do not sponsor" statement
+  and flips those to the red `NO SPONSORSHIP` chip (hidden from users who
+  set "I need sponsorship"). JDs are keyword-screened in code, so the LLM
+  only reads postings that mention visas at all. Each call is bounded
+  (~400 LLM reads); the response reports
+  `{"rescanned": {"scanned": …, "screened": …, "flipped": …}}` — repeat the
+  call until `screened` is 0. New jobs get this check automatically during
+  daily enrichment; the rescan is only needed once for the pre-existing
+  corpus (or after tightening the prompt).
 
 ## Step 3 — read the response
 
@@ -127,6 +137,7 @@ update jobs set visa_confidence=null, visa_evidence=null, enriched_at=null where
 | `502 fetch … failed` on `{"url": …}` | USCIS blocking server IPs — expected; upload the body instead. |
 | `unrecognized H-1B CSV header` | Wrong file (e.g. the DOL LCA disclosure xlsx). Use the Employer Data Hub CSVs. |
 | Chips didn't change | Check `applied.jobs_updated`; if 0, the matched companies have no filings within the 2-FY recency window. |
+| A red chip looks wrong | The JD parse flags explicit statements only, but spot-check the posting text; to revert one job: `update jobs set visa_confidence=null, visa_evidence=null, enriched_at=null where id='…'` (nightly enrichment re-evaluates it). |
 
 ## Cadence
 

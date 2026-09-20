@@ -1,8 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { withUser } from "@/lib/auth";
-import { loadFollowedCompanyIds, loadScanPrefs, matchesLocations } from "@/lib/jobs/scan";
+import { loadFollowedCompanyIds, loadScanPrefs, matchesLocations, matchesVisaNeed } from "@/lib/jobs/scan";
 import { jobLocation } from "@/lib/jobs/serialize";
-import type { FollowedCompanyDTO, FollowingItem } from "@/lib/jobs/types";
+import type { FollowedCompanyDTO, FollowingItem, VisaConfidence } from "@/lib/jobs/types";
 
 export const runtime = "nodejs";
 
@@ -35,6 +35,7 @@ interface MatchJoinRow {
     posted_date_approx: boolean;
     first_seen_at: string;
     url: string;
+    visa_confidence: VisaConfidence | null;
   } | null;
 }
 
@@ -59,7 +60,7 @@ export async function GET() {
       sb
         .from("job_matches")
         .select(
-          "score, jobs!inner(id, company_id, title, company, location_raw, city, region, country, remote_type, posted_date, posted_date_approx, first_seen_at, url)",
+          "score, jobs!inner(id, company_id, title, company, location_raw, city, region, country, remote_type, posted_date, posted_date_approx, first_seen_at, url, visa_confidence)",
         )
         .eq("user_id", userId)
         .neq("status", "dismissed")
@@ -84,6 +85,9 @@ export async function GET() {
       // the feed/scan use. (Company size is a company-level attribute the user
       // already opted into by following, so it isn't re-applied here.)
       .filter((j) => matchesLocations(j, prefs.locations))
+      // Same rule as the ranked feed: a visa_required user never sees a
+      // posting whose JD explicitly rules out sponsorship.
+      .filter((j) => matchesVisaNeed(j, prefs.visa_required))
       .sort((a, b) => new Date(b.first_seen_at).getTime() - new Date(a.first_seen_at).getTime())
       .slice(0, RECENT_LIMIT)
       .map((j) => ({

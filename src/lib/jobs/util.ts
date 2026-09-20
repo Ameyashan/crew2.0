@@ -113,6 +113,19 @@ export function jdText(
   return "";
 }
 
+// Does a JD even talk about visas/sponsorship? Pre-screen for the visa
+// inference pass: any explicit sponsorship statement (positive or negative)
+// necessarily contains one of these terms, so skipping the LLM when none
+// appear loses no recall and saves the large majority of calls. Word-ish
+// boundaries keep short acronyms (OPT/CPT/EAD) from matching inside words
+// ("optimize", "accepted", "leadership").
+const VISA_MENTION_RE =
+  /visa|sponsor|work.{0,3}authori[sz]|h[\s-]?1b|immigration|green.{0,3}card|(?<![a-z])(opt|cpt|ead)(?![a-z])/i;
+
+export function mentionsVisa(jd: string): boolean {
+  return VISA_MENTION_RE.test(jd || "");
+}
+
 // Run `fn` over `items` with a bounded concurrency pool. Keeps public ATS calls
 // polite and preserves per-item error isolation (fn is expected to catch its own
 // errors and return a result object).

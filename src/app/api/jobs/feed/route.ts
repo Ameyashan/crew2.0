@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { withUser } from "@/lib/auth";
 import { feedItemFromJoin, type FeedJoinRow } from "@/lib/jobs/serialize";
-import { loadScanPrefs, matchesLocations, matchesSize, postedThreshold } from "@/lib/jobs/scan";
+import { loadScanPrefs, matchesLocations, matchesSize, matchesVisaNeed, postedThreshold } from "@/lib/jobs/scan";
 import { diversifyByCompany } from "@/lib/jobs/format";
 import type { FeedItem } from "@/lib/jobs/types";
 
@@ -61,6 +61,8 @@ export async function GET(req: NextRequest) {
       if (!j) return false;
       if (!matchesLocations(j, prefs.locations)) return false;
       if (!matchesSize(j, prefs.company_sizes)) return false;
+      // "I need sponsorship" hides explicit-no postings outright.
+      if (!matchesVisaNeed(j, prefs.visa_required)) return false;
       // Same null-passes rule as scan-time selection: an unknown posted date
       // never hides a job.
       if (threshold && j.posted_date && j.posted_date < threshold) return false;
