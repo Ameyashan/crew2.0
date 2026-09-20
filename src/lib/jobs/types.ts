@@ -10,11 +10,13 @@ import type {
   RemoteType,
   SizeBucket,
   VisaConfidence,
+  VisaEvidence,
+  H1bStats,
   PostedWithin,
   MatchStatus,
 } from "@/lib/db/schema";
 
-export type { Ats, RemoteType, SizeBucket, VisaConfidence, PostedWithin, MatchStatus };
+export type { Ats, RemoteType, SizeBucket, VisaConfidence, VisaEvidence, H1bStats, PostedWithin, MatchStatus };
 
 // ── Fetch layer (M1) ─────────────────────────────────────────────────────────
 
@@ -89,6 +91,7 @@ export interface FeedItem {
   score: number;
   reasons: string | null;
   visa_confidence: VisaConfidence | null;
+  visa_evidence: VisaEvidence | null;
   company_size: SizeBucket | null;
   status: MatchStatus;
   is_new: boolean; // first_seen since the user's last visit / status === 'new'

@@ -150,7 +150,34 @@ export interface DailyDigest {
 export type Ats = "greenhouse" | "lever" | "ashby";
 export type RemoteType = "remote" | "hybrid" | "onsite" | "unknown";
 export type SizeBucket = "large" | "medium" | "startup";
-export type VisaConfidence = "likely_sponsors" | "unclear";
+// 'sponsors_verified' is backed by USCIS filing data (0021); 'no_sponsorship' is
+// the reserved Phase-3 negative signal — the CHECK allows it, nothing emits it.
+export type VisaConfidence = "sponsors_verified" | "likely_sponsors" | "unclear" | "no_sponsorship";
+
+// Per-fiscal-year decision counts aggregated from h1b_employer_records.
+export interface H1bFyCounts {
+  initial_approvals: number;
+  initial_denials: number;
+  continuing_approvals: number;
+  continuing_denials: number;
+}
+
+// companies.h1b_stats — the rollup the matcher precomputes across a company's
+// matched USCIS employer names.
+export interface H1bStats {
+  by_fy: Record<string, H1bFyCounts>;
+  last_filed_fy: number | null; // most recent FY with any decision
+  recent_filed: number; // total decisions in last_filed_fy
+  approval_rate: number | null; // approvals / all decisions over recent FYs; null on tiny samples
+}
+
+// jobs.visa_evidence — the small snapshot denormalized onto a job when its
+// company has a verified track record (what the feed chip renders).
+export interface VisaEvidence {
+  recent_filed: number;
+  recent_fy: number;
+  approval_rate: number | null;
+}
 export type CompanySource = "seed" | "llm_resolved";
 export type PostedWithin = "24h" | "1wk" | "1mo" | "any";
 export type MatchStatus = "new" | "seen" | "dismissed" | "outreach_started";
@@ -168,6 +195,10 @@ export interface Company {
   verified_at: string | null;
   active: boolean;
   created_at: string;
+  // H-1B track record (0021): matched USCIS legal names + precomputed rollup.
+  h1b_employer_names: string[];
+  h1b_stats: H1bStats | null;
+  h1b_matched_at: string | null;
 }
 
 export interface Job {
@@ -189,6 +220,7 @@ export interface Job {
   source: string;
   raw_json: Record<string, unknown>;
   visa_confidence: VisaConfidence | null;
+  visa_evidence: VisaEvidence | null;
   company_size: SizeBucket | null;
   enriched_at: string | null;
   first_seen_at: string;

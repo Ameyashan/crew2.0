@@ -164,7 +164,7 @@ function JobCard({
         whiteSpace: "nowrap",
       }}
     >
-      {visaChipLabel(item.visa_confidence)}
+      {visaChipLabel(item.visa_confidence, item.visa_evidence)}
     </span>
   );
 

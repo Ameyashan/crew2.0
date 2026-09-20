@@ -12,6 +12,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { currentUserId } from "@/lib/user-context";
 import { getProfile, senderContextFromProfile, type UserProfile } from "@/lib/profile";
 import { jdText } from "@/lib/jobs/util";
+import { visaScoreBoost } from "@/lib/jobs/h1b/normalize";
 import type { Job } from "@/lib/db/schema";
 import type { ScoreResult, RoleMode } from "@/lib/jobs/types";
 
@@ -161,10 +162,12 @@ export async function scoreJobsForUser({
   jobs,
   roleMode = null,
   targetRoles = [],
+  visaRequired = false,
 }: {
   jobs: Job[];
   roleMode?: RoleMode;
   targetRoles?: string[];
+  visaRequired?: boolean;
 }): Promise<ScoreSummary> {
   const userId = currentUserId();
   if (!jobs.length) return { scored: 0, skipped: 0 };
@@ -186,6 +189,13 @@ export async function scoreJobsForUser({
   const senderContext = senderContextFromProfile(profile);
   const targetRoleLine = resolveTargetRoleLine(roleMode, targetRoles, profile);
 
+  // Deterministic tie-breaker when the user needs sponsorship: a small bump
+  // toward employers with a positive visa signal (USCIS-verified > JD-parsed).
+  // Applied post-LLM so fit stays the primary axis; see visaScoreBoost().
+  const visaByJobId = new Map(todo.map((j) => [j.id, j.visa_confidence]));
+  const adjust = (jobId: string, score: number): number =>
+    visaRequired ? Math.min(100, score + visaScoreBoost(visaByJobId.get(jobId) ?? null)) : score;
+
   let scored = 0;
   for (let i = 0; i < todo.length; i += BATCH) {
     const batch = todo.slice(i, i + BATCH);
@@ -195,7 +205,7 @@ export async function scoreJobsForUser({
     const rows = results.map((r) => ({
       user_id: userId,
       job_id: r.job_id,
-      score: r.score,
+      score: adjust(r.job_id, r.score),
       reasons: r.reasons || null,
       status: "new",
       scored_at: nowIso,

@@ -14,6 +14,7 @@ import {
   fitColors,
   visaChipLabel,
   visaChipColors,
+  visaEvidenceLine,
   whyBullets,
   sourceHost,
 } from "@/lib/jobs/format";
@@ -144,6 +145,7 @@ export default function JobDetailPage() {
           const comp = compDisplay(job.compensation);
           const fit = fitColors(job.score);
           const visaColors = visaChipColors(job.visa_confidence);
+          const visaEvidence = visaEvidenceLine(job.visa_evidence);
           const bullets = whyBullets(job.reasons);
 
           // The two actions, rendered near the top (header) so they're usable
@@ -353,7 +355,7 @@ export default function JobDetailPage() {
                         padding: "5px 8px",
                       }}
                     >
-                      {visaChipLabel(job.visa_confidence)}
+                      {visaChipLabel(job.visa_confidence, job.visa_evidence)}
                     </span>
                     <div style={{ marginLeft: "auto", flex: "none" }}>
                       <FollowButton
@@ -396,6 +398,20 @@ export default function JobDetailPage() {
                       {sourceHost(job.url)} ↗
                     </a>
                   </div>
+                  {visaEvidence && (
+                    <div
+                      style={{
+                        fontFamily: PAPER_FONTS_V2.mono,
+                        fontWeight: 500,
+                        fontSize: 10.5,
+                        lineHeight: 1.5,
+                        color: "#3d7a4f",
+                        marginTop: 6,
+                      }}
+                    >
+                      {visaEvidence}
+                    </div>
+                  )}
                 </div>
                 <div
                   style={{

@@ -2,7 +2,15 @@
 
 import { jdText } from "@/lib/jobs/util";
 import type { Job, JobMatch } from "@/lib/db/schema";
-import type { FeedItem, JobDetail, MatchStatus, RemoteType, SizeBucket, VisaConfidence } from "@/lib/jobs/types";
+import type {
+  FeedItem,
+  JobDetail,
+  MatchStatus,
+  RemoteType,
+  SizeBucket,
+  VisaConfidence,
+  VisaEvidence,
+} from "@/lib/jobs/types";
 
 // The shape of a job_matches row with its job embedded (PostgREST !inner join).
 export interface FeedJoinRow {
@@ -25,6 +33,7 @@ export interface FeedJoinRow {
     posted_date_approx: boolean;
     url: string;
     visa_confidence: VisaConfidence | null;
+    visa_evidence: VisaEvidence | null;
     company_size: SizeBucket | null;
   } | null;
 }
@@ -58,6 +67,7 @@ export function feedItemFromJoin(row: FeedJoinRow): FeedItem | null {
     score: row.score,
     reasons: row.reasons,
     visa_confidence: j.visa_confidence,
+    visa_evidence: j.visa_evidence,
     company_size: j.company_size,
     status: row.status,
     is_new: row.status === "new",
@@ -80,6 +90,7 @@ export function jobDetail(job: Job, match: JobMatch | null): JobDetail {
     score: match?.score ?? 0,
     reasons: match?.reasons ?? null,
     visa_confidence: job.visa_confidence,
+    visa_evidence: job.visa_evidence,
     company_size: job.company_size,
     status: match?.status ?? "new",
     is_new: match?.status === "new",

@@ -1,12 +1,19 @@
 // Visa-sponsorship inference (Module 3). A lightweight LLM pass over a job's
-// description that returns a confidence signal only — never a hard yes/no, never
-// a reason to drop a job. v1 is JD text-parse; a DOL/LCA disclosure join can
-// backfill later. Defaults to "unclear" (incl. when there's no JD text), so the
-// feed always renders a badge.
+// description. Two signals, both from EXPLICIT text only:
+//   'likely_sponsors' — the JD offers sponsorship.
+//   'no_sponsorship'  — the JD explicitly rules it out. This one is a hard,
+//                       job-level fact: enrich.ts lets it override even a
+//                       USCIS-verified company track record (a verified company
+//                       can still post individual reqs it won't sponsor), and
+//                       the feed hides such jobs from visa_required users.
+// Everything else is 'unclear' (incl. no JD text). The mentionsVisa() keyword
+// screen skips the LLM entirely for the majority of JDs that never touch the
+// topic — an explicit statement necessarily contains one of those keywords.
 
 import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "@/lib/claude";
 import { logAgentRun } from "@/lib/agent-runs";
+import { mentionsVisa } from "@/lib/jobs/util";
 import type { VisaConfidence } from "@/lib/jobs/types";
 
 const MODEL = "claude-sonnet-4-6";
@@ -20,19 +27,21 @@ function client() {
   return _client;
 }
 
-const SYSTEM = `You read a job description and judge whether it indicates the employer offers VISA SPONSORSHIP.
+const SYSTEM = `You read a job description and judge what it says about VISA SPONSORSHIP.
 
 Return:
 - "likely_sponsors" ONLY when the text explicitly offers visa sponsorship, work authorization support, or relocation+visa assistance (e.g. "we sponsor visas", "visa sponsorship available", "we support H-1B").
-- "unclear" in every other case — including when the posting says nothing about it, or when it says they do NOT sponsor (v1 has no negative bucket; treat as unclear).
+- "no_sponsorship" ONLY when the text explicitly rules sponsorship out (e.g. "we are unable to sponsor", "will not sponsor visas now or in the future", "must be authorized to work in the US without sponsorship", "OPT/CPT candidates are not eligible"). A requirement to merely BE authorized to work, without ruling out sponsorship, is NOT enough.
+- "unclear" in every other case — the posting says nothing definitive either way.
 
-Do not guess from company size or prestige; judge only from the text. Output strict JSON only, no prose:
-{ "confidence": "likely_sponsors" | "unclear" }`;
+Do not guess from company size or prestige; judge only from the text. When in doubt between "no_sponsorship" and "unclear", choose "unclear" — a wrong "no" hides a job from someone who needs it. Output strict JSON only, no prose:
+{ "confidence": "likely_sponsors" | "no_sponsorship" | "unclear" }`;
 
-// Returns 'unclear' without an LLM call when there's no JD text (saves cost).
+// Returns 'unclear' without an LLM call when there's no JD text or the JD never
+// mentions visas/sponsorship at all (saves the large majority of calls).
 export async function inferVisa(jdText: string): Promise<VisaConfidence> {
   const text = (jdText || "").trim();
-  if (!text) return "unclear";
+  if (!text || !mentionsVisa(text)) return "unclear";
 
   const started = Date.now();
   let out = "";
@@ -72,7 +81,10 @@ export async function inferVisa(jdText: string): Promise<VisaConfidence> {
   if (outcome === "error") return "unclear";
   try {
     const parsed = JSON.parse(extractJson(out)) as { confidence?: unknown };
-    return parsed.confidence === "likely_sponsors" ? "likely_sponsors" : "unclear";
+    if (parsed.confidence === "likely_sponsors" || parsed.confidence === "no_sponsorship") {
+      return parsed.confidence;
+    }
+    return "unclear";
   } catch {
     return "unclear";
   }

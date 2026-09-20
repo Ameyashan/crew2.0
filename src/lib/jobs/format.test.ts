@@ -11,6 +11,8 @@ import {
   visaKind,
   visaChipLabel,
   visaChipColors,
+  filedCount,
+  visaEvidenceLine,
   postedAgo,
   compDisplay,
   goalPhrase,
@@ -64,21 +66,56 @@ test("fitColors returns the exact prototype hex pairs per tier", () => {
   assert.deepEqual(fitColors(40), { color: "#8b8171", border: "#ddd5c4" });
 });
 
-// ── Visa chip (three states, red reserved for future data) ───────────────────
+// ── Visa chip (three states; verified + JD-parse share the green) ────────────
 test("visaKind collapses the data model into three prototype states", () => {
+  assert.equal(visaKind("sponsors_verified"), "sponsors");
   assert.equal(visaKind("likely_sponsors"), "sponsors");
   assert.equal(visaKind("unclear"), "tbd");
   assert.equal(visaKind(null), "tbd");
-  // future enrichment value — typed loosely on purpose
-  assert.equal(visaKind("no_sponsorship" as unknown as VisaConfidence), "none");
+  assert.equal(visaKind("no_sponsorship"), "none");
 });
 
 test("visaChipLabel + visaChipColors match the prototype", () => {
   assert.equal(visaChipLabel("likely_sponsors"), "SPONSORS VISA");
+  assert.equal(visaChipLabel("sponsors_verified"), "SPONSORS VISA");
   assert.equal(visaChipLabel("unclear"), "VISA · TBD");
   assert.equal(visaChipLabel(null), "VISA · TBD");
   assert.deepEqual(visaChipColors("likely_sponsors"), { color: "#3d7a4f", bg: "#e9f1e9" });
   assert.deepEqual(visaChipColors(null), { color: "#8a6d2f", bg: "#f4ecda" });
+});
+
+test("visaChipLabel carries the USCIS evidence when present", () => {
+  const evidence = { recent_filed: 214, recent_fy: 2025, approval_rate: 0.96 };
+  assert.equal(visaChipLabel("sponsors_verified", evidence), "SPONSORS · 214 FILED FY25");
+  assert.equal(
+    visaChipLabel("sponsors_verified", { recent_filed: 9483, recent_fy: 2025, approval_rate: null }),
+    "SPONSORS · 9.5K FILED FY25",
+  );
+  // Evidence never upgrades a non-positive chip, and zero counts fall back.
+  assert.equal(visaChipLabel("unclear", evidence), "VISA · TBD");
+  assert.equal(visaChipLabel("sponsors_verified", { recent_filed: 0, recent_fy: 2025, approval_rate: null }), "SPONSORS VISA");
+  assert.equal(visaChipLabel("sponsors_verified", null), "SPONSORS VISA");
+});
+
+test("filedCount compacts chip numbers", () => {
+  assert.equal(filedCount(214), "214");
+  assert.equal(filedCount(999), "999");
+  assert.equal(filedCount(1499), "1.5K");
+  assert.equal(filedCount(9483), "9.5K");
+  assert.equal(filedCount(12400), "12K");
+});
+
+test("visaEvidenceLine spells out the track record for the detail view", () => {
+  assert.equal(
+    visaEvidenceLine({ recent_filed: 214, recent_fy: 2025, approval_rate: 0.957 }),
+    "214 H-1B petitions decided in FY2025 · 96% approved · USCIS Employer Data Hub",
+  );
+  assert.equal(
+    visaEvidenceLine({ recent_filed: 1, recent_fy: 2024, approval_rate: null }),
+    "1 H-1B petition decided in FY2024 · USCIS Employer Data Hub",
+  );
+  assert.equal(visaEvidenceLine(null), null);
+  assert.equal(visaEvidenceLine({ recent_filed: 0, recent_fy: 2024, approval_rate: null }), null);
 });
 
 // ── postedAgo (bare relative, honest ~ for approx) ───────────────────────────
@@ -157,10 +194,12 @@ test("NO_FILTERS lets everything through", () => {
   assert.equal(jobPassesFilters(job(), NO_FILTERS), true);
 });
 
-test("sponsorsVisa filter keeps only likely_sponsors", () => {
+test("sponsorsVisa filter keeps verified + likely sponsors", () => {
   const f: FeedFilters = { ...NO_FILTERS, sponsorsVisa: true };
+  assert.equal(jobPassesFilters(job({ visa_confidence: "sponsors_verified" }), f), true);
   assert.equal(jobPassesFilters(job({ visa_confidence: "likely_sponsors" }), f), true);
   assert.equal(jobPassesFilters(job({ visa_confidence: "unclear" }), f), false);
+  assert.equal(jobPassesFilters(job({ visa_confidence: "no_sponsorship" }), f), false);
   assert.equal(jobPassesFilters(job({ visa_confidence: null }), f), false);
 });
 
