@@ -162,6 +162,9 @@ export type ComposeRunRow = {
   kind?: string;
   outcome?: string | null;
   input?: string | null;
+  // The id of the resume_generations row a job run created (if any). Used to
+  // drop that generation from the merged list — see dropLinkedResumeRuns.
+  resume_generation_id?: string | null;
   person?: { name?: string | null } | null;
   // The tailored résumé joined by the history list (compose_runs → resume_generations).
   // Gives a job row its real role/company without shipping the full `output` blob.
@@ -229,9 +232,29 @@ export function deskRunChips(agent: "compose" | "resume", row: RunRow): EarlierC
   return [{ label: RUN_STATUS_LABEL["needs-you"], tone: "error" }];
 }
 
+// A job compose run tailors its résumé through a child resume_generations row
+// (compose_runs.resume_generation_id). /api/resume/history returns ALL
+// generations, so merging the two feeds naively lists every job application
+// twice — once as the full package ("ready") and once as its child résumé
+// ("ATS n"), and the child opens as a resume-only view missing the rest of the
+// package. Drop generations a compose run owns; the standalone tailors remain.
+// Shared by the Desk (deskEarlierRuns) and the history page's feed.
+export function dropLinkedResumeRuns<T extends { id: string }>(
+  composeRuns: ReadonlyArray<{ resume_generation_id?: string | null }> | null | undefined,
+  resumeRuns: ReadonlyArray<T> | null | undefined,
+): T[] {
+  const linked = new Set<string>();
+  for (const r of composeRuns || []) {
+    if (r?.resume_generation_id) linked.add(r.resume_generation_id);
+  }
+  return (resumeRuns || []).filter((r) => !linked.has(r.id));
+}
+
 // `excludeIds` holds the server row ids of runs that are currently LIVE in the
 // store (surfaced as the top-bar chip / focused card). Their history rows are
 // filtered out so a single run never appears twice — once live and once here.
+// (Runs merely reopened from history — hydrated — must NOT be in this set: once
+// unfocused they're surfaced nowhere, so excluding them makes rows vanish.)
 export function deskEarlierRuns(
   composeRuns: ComposeRunRow[] | null | undefined,
   resumeRuns: ResumeRunRow[] | null | undefined,
@@ -240,6 +263,7 @@ export function deskEarlierRuns(
 ): EarlierRow[] {
   const skip = (id: string) => !!excludeIds && excludeIds.has(id);
   const rows: EarlierRow[] = [];
+  const standaloneResumeRuns = dropLinkedResumeRuns(composeRuns, resumeRuns);
   for (const r of composeRuns || []) {
     if (skip(r.id)) continue;
     rows.push({
@@ -251,7 +275,7 @@ export function deskEarlierRuns(
       created_at: r.created_at,
     });
   }
-  for (const r of resumeRuns || []) {
+  for (const r of standaloneResumeRuns) {
     if (skip(r.id)) continue;
     rows.push({
       key: `r:${r.id}`,

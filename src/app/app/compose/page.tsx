@@ -217,9 +217,18 @@ function ComposeV3({ p, go }) {
   // A run that's currently LIVE in the store (running, or reconnecting after a
   // background+reload) is surfaced as the top-bar chip / focused card — so
   // exclude its history row from "Earlier runs", otherwise the one run shows
-  // twice. Keyed by the server row id each live run carries.
+  // twice. Keyed by the server row id each live run carries. Two kinds of run
+  // in the store must NOT be excluded, or their rows vanish from the Desk with
+  // no other way back to them until a full reload:
+  //  - hydrated runs (reopened FROM "Earlier runs" / History; they stay in the
+  //    store after "Back to the Desk" so re-clicking refocuses them), and
+  //  - finished live runs (once done and unfocused, the top-bar chip is gone;
+  //    the history row is their only surface).
   const liveRunIds = new Set(
-    runs.flatMap((r) => [r.composeRunId, r.resumeGenerationId]).filter(Boolean),
+    runs
+      .filter((r) => !r.hydrated && r.stage !== 'done')
+      .flatMap((r) => [r.composeRunId, r.resumeGenerationId])
+      .filter(Boolean),
   );
   const earlier = deskEarlierRuns(composeRuns, resumeRuns, 4, liveRunIds);
   // Prototype shows the Story nudge for signed-in accounts only.

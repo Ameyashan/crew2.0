@@ -15,6 +15,7 @@ import {
   runDownloadTiles,
   relativeWhen,
 } from "@/components/paper/phase5-logic";
+import { dropLinkedResumeRuns } from "@/components/paper/desk-logic";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { hydrateRun } from "@/lib/runs-store";
 
@@ -117,7 +118,10 @@ function HistoryV3() {
     for (const r of composeRuns) {
       items.push({ key: `c:${r.id}`, agent: "compose", created_at: r.created_at, row: r });
     }
-    for (const r of resumeRuns) {
+    // A job run's tailored résumé is a child resume_generations row — its
+    // compose run already represents it, so listing the generation too would
+    // show the one application twice (same dedupe the Desk applies).
+    for (const r of dropLinkedResumeRuns(composeRuns, resumeRuns)) {
       items.push({ key: `r:${r.id}`, agent: "resume", created_at: r.created_at, row: r });
     }
     items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
