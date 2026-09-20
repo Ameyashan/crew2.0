@@ -10,6 +10,7 @@
 // MUST run it inside runWithUser()/withUser().
 
 import { supabaseAdmin } from "@/lib/supabase";
+import { roleTitleTerms } from "@/lib/jobs/roles";
 import { ensureCatalogCoverage } from "@/lib/jobs/catalog";
 import { fetchAllListings } from "@/lib/jobs/orchestrator";
 import { enrichJobs } from "@/lib/jobs/enrich";
@@ -55,6 +56,16 @@ export function extractPins(cs: unknown): string[] {
     return strArray((cs as Record<string, unknown>).target_companies);
   }
   return [];
+}
+
+// The profile's current role, used as the title signal when the user hasn't
+// asked for a different role (mirrors the scorer's resolveTargetRoleLine).
+export function extractCurrentRole(cs: unknown): string | null {
+  if (cs && typeof cs === "object" && typeof (cs as Record<string, unknown>).current_role === "string") {
+    const v = ((cs as Record<string, unknown>).current_role as string).trim();
+    return v || null;
+  }
+  return null;
 }
 
 export function postedThreshold(posted: PostedWithin): string | null {
@@ -126,7 +137,7 @@ export async function loadFollowedCompanyIds(sb: SupabaseClient, uid: string): P
 export async function loadScanPrefs(
   sb: SupabaseClient,
   uid: string,
-): Promise<{ prefs: ScanPrefs; pins: string[]; follows: string[] }> {
+): Promise<{ prefs: ScanPrefs; pins: string[]; follows: string[]; currentRole: string | null }> {
   const { data: row } = await sb.from("job_preferences").select("*").eq("user_id", uid).maybeSingle();
   const prefs: ScanPrefs = row
     ? {
@@ -141,7 +152,12 @@ export async function loadScanPrefs(
     : { ...DEFAULT_PREFS };
   const { data: prof } = await sb.from("user_profile").select("context_structured").eq("user_id", uid).maybeSingle();
   const follows = await loadFollowedCompanyIds(sb, uid);
-  return { prefs, pins: extractPins(prof?.context_structured), follows };
+  return {
+    prefs,
+    pins: extractPins(prof?.context_structured),
+    follows,
+    currentRole: extractCurrentRole(prof?.context_structured),
+  };
 }
 
 // The catalog companies that match a user's interests (sector overlap), pins
@@ -173,6 +189,9 @@ export async function resolveCompanyIds(
 // enter one scan so the candidate set — and therefore the feed — stays varied.
 const MAX_CANDIDATES_PER_COMPANY = 10;
 const MAX_CANDIDATES = 80;
+// How many title-matching jobs the role-priority query may pull. Separate from
+// the recency window's 300 because these rows skip the recency competition.
+const ROLE_PRIORITY_LIMIT = 100;
 
 export async function selectCandidateJobs(
   sb: SupabaseClient,
@@ -180,6 +199,7 @@ export async function selectCandidateJobs(
   pins: string[],
   companyIds?: string[],
   follows: string[] = [],
+  currentRole: string | null = null,
 ): Promise<Job[]> {
   const ids = companyIds ?? (await resolveCompanyIds(sb, prefs, pins, follows));
   if (!ids.length) return [];
@@ -194,8 +214,37 @@ export async function selectCandidateJobs(
     .limit(300);
   if (threshold) q = q.or(`posted_date.gte.${threshold},posted_date.is.null`);
 
-  const { data: jobsData } = await q;
-  const jobs = (jobsData ?? []) as Job[];
+  // Recency alone starves a role-specific user: a big catalog's newest 300
+  // jobs can hold zero listings in their target family, so those never even
+  // reach the scorer and the feed's fit bar hides everything else. Pull
+  // title-matching jobs in a separate query and put them FIRST, so they can't
+  // be squeezed out by the recency pool or the overall candidate cap.
+  const roleTerms = roleTitleTerms(prefs.role_mode, prefs.target_roles, currentRole);
+  const priorityQ = roleTerms.length
+    ? sb
+        .from("jobs")
+        .select("*")
+        .in("company_id", ids)
+        .eq("is_active", true)
+        .or(roleTerms.map((t) => `title.ilike.%${t}%`).join(","))
+        .order("posted_date", { ascending: false, nullsFirst: false })
+        .limit(ROLE_PRIORITY_LIMIT)
+    : null;
+
+  const [{ data: jobsData }, priorityRes] = await Promise.all([q, priorityQ ?? Promise.resolve({ data: null })]);
+  // The priority query can't stack a second .or() for the posted window, so
+  // apply the same null-passes threshold here instead.
+  const priority = ((priorityRes.data ?? []) as Job[]).filter(
+    (j) => !(threshold && j.posted_date && j.posted_date < threshold),
+  );
+
+  const seen = new Set<string>();
+  const jobs: Job[] = [];
+  for (const j of [...priority, ...((jobsData ?? []) as Job[])]) {
+    if (seen.has(j.id)) continue;
+    seen.add(j.id);
+    jobs.push(j);
+  }
   const matching = jobs.filter(
     (j) =>
       matchesLocations(j, prefs.locations) &&
@@ -228,7 +277,7 @@ export interface UserScanSummary {
 // score whatever the catalog already holds. MUST run inside a user context.
 export async function runUserScan(uid: string): Promise<UserScanSummary> {
   const sb = supabaseAdmin();
-  const { prefs, pins, follows } = await loadScanPrefs(sb, uid);
+  const { prefs, pins, follows, currentRole } = await loadScanPrefs(sb, uid);
   if (!prefs.interests.length && !pins.length && !follows.length) {
     return { candidates: 0, scored: 0, skipped: 0, reason: "no_preferences" };
   }
@@ -256,7 +305,7 @@ export async function runUserScan(uid: string): Promise<UserScanSummary> {
     console.error("[jobs/refresh] enrich failed", e);
   }
 
-  const candidates = await selectCandidateJobs(sb, prefs, pins, companyIds, follows);
+  const candidates = await selectCandidateJobs(sb, prefs, pins, companyIds, follows, currentRole);
   if (!candidates.length) return { candidates: 0, scored: 0, skipped: 0 };
 
   const summary = await scoreJobsForUser({

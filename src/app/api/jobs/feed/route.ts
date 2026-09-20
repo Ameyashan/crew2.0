@@ -16,9 +16,11 @@ const MAX_LIMIT = 100;
 const CANDIDATE_WINDOW = 300;
 // Hide clearly-weak matches (wrong role family / level) so a Business Analyst
 // doesn't see Product roles just because they're at a company they follow. If
-// the whole feed is below the cutoff, we fall back to showing the closest
-// matches (flagged, so the UI can say so) rather than a falsely-empty list.
+// fewer than MIN_STRONG matches clear the cutoff, we fall back to also showing
+// the closest below-bar matches (flagged, so the UI can say so) rather than a
+// one-card or falsely-empty feed.
 const MIN_SCORE = 50;
+const MIN_STRONG = 3;
 // Max jobs from a single company before the rest of that company's postings are
 // pushed to the tail of the feed — keeps one prolific board from walling it.
 const PER_COMPANY_CAP = 4;
@@ -71,10 +73,11 @@ export async function GET(req: NextRequest) {
 
     const items = rows.map(feedItemFromJoin).filter((x): x is FeedItem => x !== null);
 
-    // Prefer matches that clear the fit bar; only when NONE do, show the
-    // closest ones and tell the UI we did.
+    // Prefer matches that clear the fit bar; when too few do, include the
+    // closest below-bar ones (items are score-ordered, so strong stay on top)
+    // and tell the UI we did.
     const strong = items.filter((x) => x.score >= MIN_SCORE);
-    const fallback = strong.length === 0 && items.length > 0;
+    const fallback = strong.length < MIN_STRONG && items.length > strong.length;
     const ranked = diversifyByCompany(fallback ? items : strong, PER_COMPANY_CAP);
 
     const jobs = ranked.slice(offset, offset + limit);

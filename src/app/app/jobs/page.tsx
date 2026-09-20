@@ -747,8 +747,8 @@ export default function JobsFeedPage() {
             marginBottom: 16,
           }}
         >
-          Nothing clears your fit bar right now, so these are the closest matches we have. Try Refresh, or broaden
-          your preferences to bring in stronger fits.
+          Few roles clear your fit bar right now, so we&apos;re also showing the closest matches below. Try Refresh,
+          or broaden your preferences to bring in stronger fits.
         </div>
       )}
 
