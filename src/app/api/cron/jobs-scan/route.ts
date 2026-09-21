@@ -19,9 +19,9 @@ export const maxDuration = 300;
 // with the on-demand per-user refresh (see src/lib/jobs/scan.ts).
 
 async function scoreUserScan(sb: SupabaseClient, uid: string) {
-  const { prefs, pins, follows } = await loadScanPrefs(sb, uid);
+  const { prefs, pins, follows, currentRole } = await loadScanPrefs(sb, uid);
   if (!prefs.interests.length && !pins.length && !follows.length) return { candidates: 0, scored: 0, skipped: 0 };
-  const candidates = await selectCandidateJobs(sb, prefs, pins, undefined, follows);
+  const candidates = await selectCandidateJobs(sb, prefs, pins, undefined, follows, currentRole);
   if (!candidates.length) return { candidates: 0, scored: 0, skipped: 0 };
   const summary = await scoreJobsForUser({
     jobs: candidates,

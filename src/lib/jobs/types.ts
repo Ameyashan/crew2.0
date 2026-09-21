@@ -144,6 +144,8 @@ export interface PreferencesDTO {
   // `target_roles` holds the desired titles when role_mode === "different".
   role_mode: RoleMode;
   target_roles: string[];
+  // Opt-out for the daily new-matches email (cron/jobs-email). Defaults true.
+  daily_email?: boolean;
   // Read-only echo of the profile's current_role, so the preferences UI can
   // show what "like my current title" resolves to (and prompt for a resume when
   // it's empty). Not persisted on the preferences row.
