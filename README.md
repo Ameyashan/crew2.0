@@ -22,6 +22,8 @@ Built per the prompts in `../crew_prompts.md`. Single-user, no auth, no payments
    SUPABASE_SERVICE_ROLE_KEY=...   # or use the anon publishable key, since RLS is off
    CRON_SECRET=anything-long
    RESUME_SKILL_ID=skill_...       # optional — custom resume-writer Agent Skill (see "Resume darzi skill")
+   RESEND_API_KEY=re_...           # optional — enables the daily jobs email (cron/jobs-email)
+   EMAIL_FROM="Jugaadu <jobs@your-verified-domain>"  # optional — defaults to Resend's onboarding sender (test only)
    ```
 2. `npm run dev`
 3. Open <http://localhost:3000>.
@@ -43,6 +45,7 @@ The Supabase migration in `supabase/migrations/0001_init.sql` has already been a
 - `POST /api/review` — `{ interaction_id, outcome: 'replied' | 'no_reply' }`. `no_reply` schedules a 5-day followup and pre-drafts it.
 - `POST /api/followup/[id]/sent` — mark a followup sent.
 - `GET  /api/cron/daily-digest` — snapshots pending followups/reviews. Wired in `vercel.json` to `0 12 * * *` (≈ 8 AM ET). Test locally: `curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/daily-digest`.
+- `GET  /api/cron/jobs-email` — emails each user their new strong job matches (scored since their last email) via Resend. Wired in `vercel.json` to `45 11 * * *`, after the `0 11 * * *` jobs-scan. Requires `RESEND_API_KEY`; users opt out per-account on the jobs preferences page (`daily_email`). Test locally: `curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/jobs-email`.
 
 ## Voice
 

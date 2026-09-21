@@ -119,6 +119,7 @@ const DEFAULTS: PreferencesDTO = {
   visa_required: false,
   role_mode: null,
   target_roles: [],
+  daily_email: true,
   current_role: null,
 };
 
@@ -367,6 +368,23 @@ export default function JobsPreferencesPage() {
                 active={prefs.visa_required === o.v}
                 onClick={() => {
                   setPrefs({ ...prefs, visa_required: o.v });
+                  setSaved(false);
+                }}
+              />
+            ))}
+          </Group>
+
+          <Group eyebrow="Daily email" color={TOKENS.amber} hint="A morning digest of your new matches, sent after the daily scan. Only sends when there's something new.">
+            {[
+              { v: true, label: "Send it" },
+              { v: false, label: "No email" },
+            ].map((o) => (
+              <Chip
+                key={o.label}
+                label={o.label}
+                active={(prefs.daily_email !== false) === o.v}
+                onClick={() => {
+                  setPrefs({ ...prefs, daily_email: o.v });
                   setSaved(false);
                 }}
               />

@@ -23,6 +23,7 @@ const DEFAULTS: PreferencesDTO = {
   visa_required: false,
   role_mode: null,
   target_roles: [],
+  daily_email: true,
 };
 
 function strArray(v: unknown): string[] {
@@ -55,6 +56,7 @@ export async function GET() {
           visa_required: !!data.visa_required,
           role_mode: coerceRoleMode(data.role_mode),
           target_roles: strArray(data.target_roles),
+          daily_email: data.daily_email !== false,
           current_role,
           pins,
         }
@@ -77,6 +79,8 @@ export async function PUT(req: NextRequest) {
     // payload can't bloat the scorer prompt.
     const target_roles =
       role_mode === "different" ? strArray(body.target_roles).map((r) => r.trim()).slice(0, 6) : [];
+    // Anything but an explicit false means keep the daily email on.
+    const daily_email = body.daily_email !== false;
 
     const sb = supabaseAdmin();
 
@@ -110,6 +114,7 @@ export async function PUT(req: NextRequest) {
         visa_required,
         role_mode,
         target_roles,
+        daily_email,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" },
@@ -145,6 +150,7 @@ export async function PUT(req: NextRequest) {
       visa_required,
       role_mode,
       target_roles,
+      daily_email,
       current_role,
       pins,
     };
