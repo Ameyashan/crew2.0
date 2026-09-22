@@ -65,8 +65,9 @@ export async function GET(req: NextRequest) {
       if (!matchesSize(j, prefs.company_sizes)) return false;
       // "I need sponsorship" hides explicit-no postings outright.
       if (!matchesVisaNeed(j, prefs.visa_required)) return false;
-      // Same null-passes rule as scan-time selection: an unknown posted date
-      // never hides a job.
+      // posted_within is enforced only here and in the email digest — scan-time
+      // selection ignores it so a tight setting can't starve the pipeline. An
+      // unknown posted date never hides a job.
       if (threshold && j.posted_date && j.posted_date < threshold) return false;
       return true;
     });
