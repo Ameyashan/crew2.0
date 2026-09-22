@@ -204,15 +204,18 @@ export async function selectCandidateJobs(
   const ids = companyIds ?? (await resolveCompanyIds(sb, prefs, pins, follows));
   if (!ids.length) return [];
 
-  const threshold = postedThreshold(prefs.posted_within);
-  let q = sb
+  // posted_within is deliberately NOT applied here. It's a display filter,
+  // enforced at read time (feed + email digest). Filtering the candidate pool
+  // by it would empty the pipeline for users with a tight setting ("24h" in a
+  // catalog of mostly older listings scores nothing, forever), and scores
+  // persist — so a job scored today is still ready if they loosen the filter.
+  const q = sb
     .from("jobs")
     .select("*")
     .in("company_id", ids)
     .eq("is_active", true)
     .order("posted_date", { ascending: false, nullsFirst: false })
     .limit(300);
-  if (threshold) q = q.or(`posted_date.gte.${threshold},posted_date.is.null`);
 
   // Recency alone starves a role-specific user: a big catalog's newest 300
   // jobs can hold zero listings in their target family, so those never even
@@ -232,11 +235,7 @@ export async function selectCandidateJobs(
     : null;
 
   const [{ data: jobsData }, priorityRes] = await Promise.all([q, priorityQ ?? Promise.resolve({ data: null })]);
-  // The priority query can't stack a second .or() for the posted window, so
-  // apply the same null-passes threshold here instead.
-  const priority = ((priorityRes.data ?? []) as Job[]).filter(
-    (j) => !(threshold && j.posted_date && j.posted_date < threshold),
-  );
+  const priority = (priorityRes.data ?? []) as Job[];
 
   const seen = new Set<string>();
   const jobs: Job[] = [];

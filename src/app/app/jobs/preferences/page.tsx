@@ -331,7 +331,11 @@ export default function JobsPreferencesPage() {
             )}
           </Group>
 
-          <Group eyebrow="Posted within" color={TOKENS.gold}>
+          <Group
+            eyebrow="Posted within"
+            color={TOKENS.gold}
+            hint="Filters what your feed and daily email show — we keep matching older roles in the background, so loosening this brings them back instantly."
+          >
             {POSTED_OPTIONS.map((o) => (
               <Chip
                 key={o.id}
