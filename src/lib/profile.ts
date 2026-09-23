@@ -15,6 +15,13 @@ export interface UserProfile {
   context_prompt: string | null;
   context_structured: Record<string, unknown> | null;
   onboarded_at: string | null;
+  email: string | null;
+  phone: string | null;
+  location: string | null;
+  work_authorization: string | null;
+  needs_sponsorship: boolean | null;
+  github_url: string | null;
+  portfolio_url: string | null;
   updated_at: string;
 }
 
@@ -43,6 +50,13 @@ export interface ProfilePatch {
   context_prompt?: string | null;
   context_structured?: Record<string, unknown> | null;
   onboarded_at?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  location?: string | null;
+  work_authorization?: string | null;
+  needs_sponsorship?: boolean | null;
+  github_url?: string | null;
+  portfolio_url?: string | null;
 }
 
 export async function upsertProfile(patch: ProfilePatch) {

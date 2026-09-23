@@ -23,6 +23,9 @@ export const PRODUCT_EVENTS = {
     latency_ms?: number;
   },
   resume_export: {} as { format: "pdf" | "docx" },
+  // A confirmed real submission on the ATS (extension arm-then-confirm, or a
+  // manual "mark submitted" from the popup).
+  application_submitted: {} as { surface: string },
   // Outreach send funnel. draft_opened_channel = the user was handed off to
   // Gmail/LinkedIn/X to actually send (the real send-intent moment).
   // message_sent = they confirmed they sent it (writes an interactions row).

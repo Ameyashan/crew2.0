@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Jugaadu — Application Autofill",
+  "version": "0.1.0",
+  "description": "Fills job applications on Greenhouse, Ashby, and Lever with the resume and answers your Jugaadu crew tailored for that job. You review and submit.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3+IUIvy8Z8CXEVTv3bLpDY/taXKN6Q9Va7WAteCG7Fj/1jfBD0gCCBB7rwbW9DyIlWoKo1fHBjS5aebaIvcFnYg38SYhCmGTi7jUU6nQEfu/8qCzkrsr5gVGIoj4Or/WJECIpWRAljJ8+tQgb/8390H1PQEObXxzaA1hRLC/YojBmzoRd1VYHFUTGSfWvwzpUMIlxq8L/3KLXpLo7J8xnGB27JroABCjEX/yNP+c/UvzH9oua87EU3JuBsF3R44xcbZm7vCIlYtd2Pd6bangcXgflYQrfpWfjBXx5PYDp/UQUn45BIEsxWyWJqW7qneKnTFy9ZRYjxozjChwYbCIEwIDAQAB",
+  "permissions": ["storage"],
+  "host_permissions": ["https://jugaadu.app/*", "http://localhost:3000/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Jugaadu" },
+  "externally_connectable": {
+    "matches": ["https://jugaadu.app/*", "http://localhost:3000/*"]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://boards.greenhouse.io/*",
+        "https://job-boards.greenhouse.io/*",
+        "https://jobs.ashbyhq.com/*",
+        "https://jobs.lever.co/*"
+      ],
+      "js": ["content.js"],
+      "css": ["panel.css"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}
