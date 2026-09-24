@@ -199,17 +199,17 @@
   },
   "aig": {
    "name": "AIG",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:56.591Z"
+   "ats": "workday",
+   "slug": "aig/wd1/aig",
+   "jobs": 505,
+   "checked_at": "2026-09-24T22:21:11.064Z"
   },
   "air products and chemicals": {
    "name": "Air Products & Chemicals",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:43.789Z"
+   "ats": "workday",
+   "slug": "airproducts/wd5/AP0001",
+   "jobs": 404,
+   "checked_at": "2026-09-24T22:21:20.776Z"
   },
   "airbnb": {
    "name": "Airbnb",
@@ -283,10 +283,10 @@
   },
   "alcoa": {
    "name": "Alcoa",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:38.192Z"
+   "ats": "workday",
+   "slug": "alcoa/wd5/Careers",
+   "jobs": 110,
+   "checked_at": "2026-09-24T22:21:19.550Z"
   },
   "aledade": {
    "name": "Aledade",
@@ -437,10 +437,10 @@
   },
   "andersons": {
    "name": "Andersons",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:48.754Z"
+   "ats": "workday",
+   "slug": "andersonsinc/wd1/TheAndersonsCareers",
+   "jobs": 100,
+   "checked_at": "2026-09-24T22:21:21.434Z"
   },
   "anduril": {
    "name": "Anduril",
@@ -507,10 +507,10 @@
   },
   "applied intuition": {
    "name": "Applied Intuition",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:31.823Z"
+   "ats": "ashby",
+   "slug": "applied",
+   "jobs": 306,
+   "checked_at": "2026-09-24T22:21:09.891Z"
   },
   "applied materials": {
    "name": "Applied Materials",
@@ -521,10 +521,10 @@
   },
   "applyboard": {
    "name": "ApplyBoard",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:39.089Z"
+   "ats": "workday",
+   "slug": "applyboard/wd3/ApplyBoardNH",
+   "jobs": 63,
+   "checked_at": "2026-09-24T22:21:19.881Z"
   },
   "appsflyer": {
    "name": "AppsFlyer",
@@ -563,10 +563,10 @@
   },
   "arctic wolf networks": {
    "name": "Arctic Wolf Networks",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:19.073Z"
+   "ats": "workday",
+   "slug": "arcticwolf/wd1/External",
+   "jobs": 110,
+   "checked_at": "2026-09-24T22:21:13.953Z"
   },
   "arista networks": {
    "name": "Arista Networks",
@@ -668,10 +668,10 @@
   },
   "at and t": {
    "name": "AT&T",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:22.621Z"
+   "ats": "workday",
+   "slug": "att/wd1/ATTGeneral",
+   "jobs": 1256,
+   "checked_at": "2026-09-24T22:21:06.085Z"
   },
   "atlassian": {
    "name": "Atlassian Us",
@@ -731,10 +731,10 @@
   },
   "autodesk": {
    "name": "Autodesk",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:50.548Z"
+   "ats": "workday",
+   "slug": "autodesk/wd1/Ext",
+   "jobs": 379,
+   "checked_at": "2026-09-24T22:21:10.004Z"
   },
   "autoliv": {
    "name": "Autoliv",
@@ -885,10 +885,10 @@
   },
   "bank of america": {
    "name": "Bank of America",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:20.557Z"
+   "ats": "workday",
+   "slug": "ghr/wd1/Lateral-US",
+   "jobs": 1962,
+   "checked_at": "2026-09-24T22:21:04.768Z"
   },
   "bank of new york bny": {
    "name": "Bank of New York (BNY)",
@@ -927,10 +927,10 @@
   },
   "baxter": {
    "name": "Baxter International",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:48.291Z"
+   "ats": "workday",
+   "slug": "baxter/wd1/baxter",
+   "jobs": 497,
+   "checked_at": "2026-09-24T22:21:20.880Z"
   },
   "baylor college of medicine": {
    "name": "Baylor College of Medicine",
@@ -955,10 +955,10 @@
   },
   "becton dickinson": {
    "name": "Becton Dickinson",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:31.402Z"
+   "ats": "workday",
+   "slug": "bdx/wd1/EXTERNAL_CAREER_SITE_USA",
+   "jobs": 611,
+   "checked_at": "2026-09-24T22:21:13.226Z"
   },
   "benchling": {
    "name": "Benchling",
@@ -1060,10 +1060,10 @@
   },
   "bitsight technologies": {
    "name": "BitSight Technologies",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:57:16.121Z"
+   "ats": "workday",
+   "slug": "bitsight/wd1/Bitsight",
+   "jobs": 13,
+   "checked_at": "2026-09-24T22:21:24.711Z"
   },
   "bj s wholesale club": {
    "name": "BJ’s Wholesale Club",
@@ -1102,10 +1102,10 @@
   },
   "blackstone": {
    "name": "Blackstone",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:31.904Z"
+   "ats": "workday",
+   "slug": "blackstone/wd1/Blackstone_Careers",
+   "jobs": 177,
+   "checked_at": "2026-09-24T22:21:17.847Z"
   },
   "block": {
    "name": "Block",
@@ -1144,10 +1144,10 @@
   },
   "boeing": {
    "name": "Boeing",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:35.315Z"
+   "ats": "workday",
+   "slug": "boeing/wd1/EXTERNAL_CAREERS",
+   "jobs": 789,
+   "checked_at": "2026-09-24T22:21:06.532Z"
   },
   "bolt": {
    "name": "Bolt",
@@ -1172,10 +1172,10 @@
   },
   "borgwarner": {
    "name": "BorgWarner",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:34.045Z"
+   "ats": "workday",
+   "slug": "borgwarner/wd5/BorgWarner_Careers",
+   "jobs": 325,
+   "checked_at": "2026-09-24T22:21:18.555Z"
   },
   "boring": {
    "name": "The Boring Company",
@@ -1221,10 +1221,10 @@
   },
   "brigham and womens hospital": {
    "name": "Brigham and Womens Hospital",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:34.194Z"
+   "ats": "workday",
+   "slug": "massgeneralbrigham/wd1/MGBExternal",
+   "jobs": 2000,
+   "checked_at": "2026-09-24T22:21:18.483Z"
   },
   "brightspring health services": {
    "name": "BrightSpring Health Services",
@@ -1249,10 +1249,10 @@
   },
   "broadcom": {
    "name": "Broadcom",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:37.722Z"
+   "ats": "workday",
+   "slug": "broadcom/wd1/External_Career",
+   "jobs": 374,
+   "checked_at": "2026-09-24T22:21:07.025Z"
   },
   "brookhaven national laboratory": {
    "name": "Brookhaven National Laboratory",
@@ -1312,10 +1312,10 @@
   },
   "c h robinson worldwide": {
    "name": "C.H. Robinson Worldwide",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:25.743Z"
+   "ats": "workday",
+   "slug": "chrobinson/wd5/chrobinson",
+   "jobs": 148,
+   "checked_at": "2026-09-24T22:21:16.485Z"
   },
   "c6 bank": {
    "name": "C6 Bank",
@@ -1354,10 +1354,10 @@
   },
   "campbell s": {
    "name": "Campbell’s",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:52.089Z"
+   "ats": "workday",
+   "slug": "campbellsoup/wd5/ExternalCareers_GlobalSite",
+   "jobs": 307,
+   "checked_at": "2026-09-24T22:21:21.675Z"
   },
   "canva": {
    "name": "Canva",
@@ -1648,10 +1648,10 @@
   },
   "chewy": {
    "name": "Chewy",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:30.655Z"
+   "ats": "workday",
+   "slug": "chewy/wd5/External",
+   "jobs": 263,
+   "checked_at": "2026-09-24T22:21:12.347Z"
   },
   "children s hospital": {
    "name": "Children's Hospital",
@@ -1683,10 +1683,10 @@
   },
   "chipotle mexican grill": {
    "name": "Chipotle Mexican Grill",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:48.388Z"
+   "ats": "workday",
+   "slug": "chipotle/wd5/ChipotleCareers",
+   "jobs": 251,
+   "checked_at": "2026-09-24T22:21:21.044Z"
   },
   "chobani": {
    "name": "Chobani",
@@ -1704,17 +1704,17 @@
   },
   "cigna": {
    "name": "Cigna Group",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:23.327Z"
+   "ats": "workday",
+   "slug": "cigna/wd5/cignacareers",
+   "jobs": 547,
+   "checked_at": "2026-09-24T22:21:05.207Z"
   },
   "cincinnati children s hospital medical center": {
    "name": "Cincinnati Children's Hospital Medical Center",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:38.152Z"
+   "ats": "workday",
+   "slug": "cincinnatichildrens/wd5/careersatcincinnatichildrens",
+   "jobs": 507,
+   "checked_at": "2026-09-24T22:21:19.332Z"
   },
   "cincinnati financial": {
    "name": "Cincinnati Financial",
@@ -1739,10 +1739,10 @@
   },
   "cisco systems": {
    "name": "Cisco Systems",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:21.133Z"
+   "ats": "workday",
+   "slug": "cisco/wd5/Cisco_Careers",
+   "jobs": 1377,
+   "checked_at": "2026-09-24T22:21:04.459Z"
   },
   "citadel": {
    "name": "Citadel",
@@ -1760,10 +1760,10 @@
   },
   "citigroup": {
    "name": "Citigroup",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:20.690Z"
+   "ats": "workday",
+   "slug": "citi/wd5/2",
+   "jobs": 2000,
+   "checked_at": "2026-09-24T22:21:06.706Z"
   },
   "citiustech": {
    "name": "CitiusTech",
@@ -1865,10 +1865,10 @@
   },
   "coca cola": {
    "name": "Coca-Cola",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:41.105Z"
+   "ats": "workday",
+   "slug": "coke/wd1/coca-cola-careers",
+   "jobs": 237,
+   "checked_at": "2026-09-24T22:21:08.314Z"
   },
   "cockroach labs": {
    "name": "Cockroach Labs",
@@ -1900,10 +1900,10 @@
   },
   "cohesity": {
    "name": "Cohesity",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:31.684Z"
+   "ats": "workday",
+   "slug": "cohesity/wd5/Cohesity_Careers",
+   "jobs": 201,
+   "checked_at": "2026-09-24T22:21:17.285Z"
   },
   "coinbase": {
    "name": "Coinbase",
@@ -2012,10 +2012,10 @@
   },
   "concentrix": {
    "name": "Concentrix",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:31.152Z"
+   "ats": "workday",
+   "slug": "cnx/wd1/external_global",
+   "jobs": 1624,
+   "checked_at": "2026-09-24T22:21:15.731Z"
   },
   "conocophillips": {
    "name": "ConocoPhillips",
@@ -2075,17 +2075,17 @@
   },
   "core and main": {
    "name": "Core & Main",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:57:16.538Z"
+   "ats": "workday",
+   "slug": "coreandmain/wd1/coreandmain",
+   "jobs": 256,
+   "checked_at": "2026-09-24T22:21:24.696Z"
   },
   "corebridge financial": {
    "name": "Corebridge Financial",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:12.234Z"
+   "ats": "workday",
+   "slug": "corebridgefinancial/wd1/corebridgefinancial",
+   "jobs": 171,
+   "checked_at": "2026-09-24T22:21:14.128Z"
   },
   "corgi": {
    "name": "Corgi",
@@ -2159,10 +2159,10 @@
   },
   "cox automotive": {
    "name": "Cox Automotive",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:57:09.424Z"
+   "ats": "workday",
+   "slug": "cox/wd1/Cox_External_Career_Site_1",
+   "jobs": 754,
+   "checked_at": "2026-09-24T22:21:24.715Z"
   },
   "cra": {
    "name": "Cra International",
@@ -2250,10 +2250,10 @@
   },
   "cvs health": {
    "name": "CVS Health",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:20.246Z"
+   "ats": "workday",
+   "slug": "cvshealth/wd1/CVS_Health_Careers",
+   "jobs": 19968,
+   "checked_at": "2026-09-24T22:21:04.626Z"
   },
   "cyera": {
    "name": "Cyera",
@@ -2306,10 +2306,10 @@
   },
   "danaher": {
    "name": "Danaher",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:59.829Z"
+   "ats": "workday",
+   "slug": "danaher/wd1/DanaherJobs",
+   "jobs": 1351,
+   "checked_at": "2026-09-24T22:21:11.662Z"
   },
   "dapper labs": {
    "name": "Dapper Labs",
@@ -2467,10 +2467,10 @@
   },
   "diamondback energy": {
    "name": "Diamondback Energy",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:31.382Z"
+   "ats": "workday",
+   "slug": "diamondbackenergy/wd12/DBE",
+   "jobs": 47,
+   "checked_at": "2026-09-24T22:21:17.268Z"
   },
   "dick s sporting goods": {
    "name": "Dick’s Sporting Goods",
@@ -2551,10 +2551,10 @@
   },
   "dollar tree": {
    "name": "Dollar Tree",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:59.330Z"
+   "ats": "workday",
+   "slug": "dollartree/wd5/dollartreeus",
+   "jobs": 23650,
+   "checked_at": "2026-09-24T22:21:11.061Z"
   },
   "dominion energy": {
    "name": "Dominion Energy",
@@ -2572,17 +2572,17 @@
   },
   "dover": {
    "name": "Dover",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:57:06.576Z"
+   "ats": "workday",
+   "slug": "dover/wd103/dover",
+   "jobs": 583,
+   "checked_at": "2026-09-24T22:21:24.651Z"
   },
   "dow": {
    "name": "Dow",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:45.244Z"
+   "ats": "workday",
+   "slug": "dow/wd1/ExternalCareers",
+   "jobs": 157,
+   "checked_at": "2026-09-24T22:21:09.129Z"
   },
   "dpr construction a general partnership": {
    "name": "Dpr Construction A General Partnership",
@@ -2698,10 +2698,10 @@
   },
   "ecolab": {
    "name": "Ecolab",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:25.859Z"
+   "ats": "workday",
+   "slug": "ecolab/wd1/Ecolab_External",
+   "jobs": 1008,
+   "checked_at": "2026-09-24T22:21:16.112Z"
   },
   "edison": {
    "name": "Edison International",
@@ -2733,10 +2733,10 @@
   },
   "elevance health": {
    "name": "Elevance Health",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:20.699Z"
+   "ats": "workday",
+   "slug": "elevancehealth/wd1/ANT",
+   "jobs": 324,
+   "checked_at": "2026-09-24T22:21:04.392Z"
   },
   "elevenlabs": {
    "name": "ElevenLabs",
@@ -2747,10 +2747,10 @@
   },
   "eli lilly": {
    "name": "Eli Lilly",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:24.589Z"
+   "ats": "workday",
+   "slug": "lilly/wd115/LLY",
+   "jobs": 704,
+   "checked_at": "2026-09-24T22:21:06.977Z"
   },
   "eliassen": {
    "name": "Eliassen Group",
@@ -2964,10 +2964,10 @@
   },
   "expedia": {
    "name": "Expedia Group",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:30.777Z"
+   "ats": "workday",
+   "slug": "expedia/wd108/search",
+   "jobs": 167,
+   "checked_at": "2026-09-24T22:21:06.583Z"
   },
   "expeditors intl of washington": {
    "name": "Expeditors Intl. of Washington",
@@ -3048,10 +3048,10 @@
   },
   "fannie mae": {
    "name": "Fannie Mae",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:34.477Z"
+   "ats": "workday",
+   "slug": "fanniemae/wd1/FanniemaeCareers",
+   "jobs": 50,
+   "checked_at": "2026-09-24T22:21:05.165Z"
   },
   "farmers business network": {
    "name": "Farmers Business Network",
@@ -3090,10 +3090,10 @@
   },
   "ferguson enterprises": {
    "name": "Ferguson Enterprises",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:51.177Z"
+   "ats": "workday",
+   "slug": "ferguson/wd1/Ferguson_Experienced",
+   "jobs": 479,
+   "checked_at": "2026-09-24T22:21:10.236Z"
   },
   "fetch": {
    "name": "Fetch",
@@ -3286,10 +3286,10 @@
   },
   "freddie mac": {
    "name": "Freddie Mac",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:44.552Z"
+   "ats": "workday",
+   "slug": "freddiemac/wd5/External",
+   "jobs": 100,
+   "checked_at": "2026-09-24T22:21:05.054Z"
   },
   "freenome": {
    "name": "Freenome",
@@ -3349,10 +3349,10 @@
   },
   "ge aerospace": {
    "name": "GE Aerospace",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:44.728Z"
+   "ats": "workday",
+   "slug": "geaerospace/wd5/GE_ExternalSite",
+   "jobs": 505,
+   "checked_at": "2026-09-24T22:21:07.589Z"
   },
   "ge healthcare technologies": {
    "name": "GE HealthCare Technologies",
@@ -3363,10 +3363,10 @@
   },
   "ge vernova": {
    "name": "GE Vernova",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:46.212Z"
+   "ats": "workday",
+   "slug": "gevernova/wd5/Vernova_ExternalSite",
+   "jobs": 2271,
+   "checked_at": "2026-09-24T22:21:08.784Z"
   },
   "geico": {
    "name": "GEICO",
@@ -3377,10 +3377,10 @@
   },
   "genentech": {
    "name": "Genentech",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:03.406Z"
+   "ats": "workday",
+   "slug": "roche/wd3/roche-ext",
+   "jobs": 1212,
+   "checked_at": "2026-09-24T22:21:12.453Z"
   },
   "general dynamics": {
    "name": "General Dynamics",
@@ -3391,10 +3391,10 @@
   },
   "general mills": {
    "name": "General Mills",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:07.276Z"
+   "ats": "workday",
+   "slug": "genmills/wd1/GMI_External_Careers",
+   "jobs": 335,
+   "checked_at": "2026-09-24T22:21:13.514Z"
   },
   "general motors": {
    "name": "General Motors",
@@ -3433,10 +3433,10 @@
   },
   "gilead sciences": {
    "name": "Gilead Sciences",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:29.178Z"
+   "ats": "workday",
+   "slug": "gilead/wd1/gileadcareers",
+   "jobs": 511,
+   "checked_at": "2026-09-24T22:21:10.274Z"
   },
   "glean": {
    "name": "Glean",
@@ -3524,10 +3524,10 @@
   },
   "gong": {
    "name": "Gong",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:46.752Z"
+   "ats": "greenhouse",
+   "slug": "gongio",
+   "jobs": 93,
+   "checked_at": "2026-09-24T22:21:08.693Z"
   },
   "goodleap": {
    "name": "GoodLeap",
@@ -3741,10 +3741,10 @@
   },
   "health care service": {
    "name": "Health Care Service",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:55.954Z"
+   "ats": "workday",
+   "slug": "hcsc/wd1/Hcsc_External",
+   "jobs": 167,
+   "checked_at": "2026-09-24T22:21:10.366Z"
   },
   "helion energy": {
    "name": "Helion Energy",
@@ -4217,10 +4217,10 @@
   },
   "intel": {
    "name": "Intel",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:22.833Z"
+   "ats": "workday",
+   "slug": "intel/wd1/External",
+   "jobs": 620,
+   "checked_at": "2026-09-24T22:21:06.282Z"
   },
   "intellectt": {
    "name": "Intellectt",
@@ -4301,10 +4301,10 @@
   },
   "ironclad": {
    "name": "Ironclad",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:39.649Z"
+   "ats": "ashby",
+   "slug": "ironcladhq",
+   "jobs": 34,
+   "checked_at": "2026-09-24T22:21:19.409Z"
   },
   "isar aerospace": {
    "name": "Isar Aerospace",
@@ -4630,10 +4630,10 @@
   },
   "laboratory corporation of america": {
    "name": "Laboratory Corporation of America Holdings",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:28.250Z"
+   "ats": "workday",
+   "slug": "labcorp/wd1/External",
+   "jobs": 1832,
+   "checked_at": "2026-09-24T22:21:16.256Z"
   },
   "labs": {
    "name": "Labs",
@@ -4735,10 +4735,10 @@
   },
   "lennar": {
    "name": "Lennar",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:47.675Z"
+   "ats": "workday",
+   "slug": "lennar/wd1/Lennar_Jobs",
+   "jobs": 314,
+   "checked_at": "2026-09-24T22:21:09.406Z"
   },
   "lenskart": {
    "name": "Lenskart",
@@ -4812,10 +4812,10 @@
   },
   "lkq": {
    "name": "LKQ",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:35.576Z"
+   "ats": "workday",
+   "slug": "lkqcorp/wd5/ExternalCareerSite-LKQ",
+   "jobs": 631,
+   "checked_at": "2026-09-24T22:21:18.834Z"
   },
   "lockheed martin": {
    "name": "Lockheed Martin",
@@ -4840,10 +4840,10 @@
   },
   "louisiana state university and a and m college": {
    "name": "Louisiana State University and A and M College",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:39.897Z"
+   "ats": "workday",
+   "slug": "lsu/wd1/LSU",
+   "jobs": 274,
+   "checked_at": "2026-09-24T22:21:19.789Z"
   },
   "lovable": {
    "name": "Lovable",
@@ -4861,10 +4861,10 @@
   },
   "lpl financial": {
    "name": "LPL Financial Holdings",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:32.398Z"
+   "ats": "workday",
+   "slug": "lplfinancial/wd1/External",
+   "jobs": 328,
+   "checked_at": "2026-09-24T22:21:15.147Z"
   },
   "ltimindtree": {
    "name": "LTIMindtree",
@@ -4924,10 +4924,10 @@
   },
   "m and t bank": {
    "name": "M&T Bank",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:37.240Z"
+   "ats": "workday",
+   "slug": "mtb/wd5/MTB",
+   "jobs": 815,
+   "checked_at": "2026-09-24T22:21:19.494Z"
   },
   "macy s": {
    "name": "Macy’s",
@@ -5022,10 +5022,10 @@
   },
   "massachusetts general hospital": {
    "name": "Massachusetts General Hospital",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:58.038Z"
+   "ats": "workday",
+   "slug": "massgeneralbrigham/wd1/MGBExternal",
+   "jobs": 2000,
+   "checked_at": "2026-09-24T22:21:11.525Z"
   },
   "massachusetts institute of technology": {
    "name": "Massachusetts Institute of Technology",
@@ -5099,10 +5099,10 @@
   },
   "mckesson": {
    "name": "McKesson",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:19.808Z"
+   "ats": "workday",
+   "slug": "mckesson/wd3/External_Careers",
+   "jobs": 577,
+   "checked_at": "2026-09-24T22:21:05.162Z"
   },
   "mckinsey and": {
    "name": "McKinsey & Company",
@@ -5120,10 +5120,10 @@
   },
   "medline": {
    "name": "Medline",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:31.508Z"
+   "ats": "workday",
+   "slug": "medline/wd5/Medline",
+   "jobs": 621,
+   "checked_at": "2026-09-24T22:21:10.356Z"
   },
   "medlinker": {
    "name": "Medlinker",
@@ -5141,10 +5141,10 @@
   },
   "medtronic": {
    "name": "Medtronic",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:55.935Z"
+   "ats": "workday",
+   "slug": "medtronic/wd1/MedtronicCareers",
+   "jobs": 1196,
+   "checked_at": "2026-09-24T22:21:12.615Z"
   },
   "megvii": {
    "name": "MEGVII",
@@ -5253,10 +5253,10 @@
   },
   "micron technology": {
    "name": "Micron Technology",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:30.274Z"
+   "ats": "workday",
+   "slug": "micron/wd1/External",
+   "jobs": 3073,
+   "checked_at": "2026-09-24T22:21:06.576Z"
   },
   "microsoft": {
    "name": "Microsoft",
@@ -5372,10 +5372,10 @@
   },
   "mondelez": {
    "name": "Mondelez International",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:46.085Z"
+   "ats": "workday",
+   "slug": "mdlz/wd3/External",
+   "jobs": 1324,
+   "checked_at": "2026-09-24T22:21:10.062Z"
   },
   "mongodb": {
    "name": "MongoDB",
@@ -5750,10 +5750,10 @@
   },
   "northrop grumman": {
    "name": "Northrop Grumman",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:44.641Z"
+   "ats": "workday",
+   "slug": "ngc/wd1/Northrop_Grumman_External_Site",
+   "jobs": 3853,
+   "checked_at": "2026-09-24T22:21:08.294Z"
   },
   "northwell health": {
    "name": "Northwell Health",
@@ -5764,10 +5764,10 @@
   },
   "northwestern mutual": {
    "name": "Northwestern Mutual",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:27.049Z"
+   "ats": "workday",
+   "slug": "northwesternmutual/wd5/CORPORATE-CAREERS",
+   "jobs": 84,
+   "checked_at": "2026-09-24T22:21:08.379Z"
   },
   "northwestern university": {
    "name": "Northwestern University",
@@ -5827,10 +5827,10 @@
   },
   "nutrabolt": {
    "name": "Nutrabolt",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:53.883Z"
+   "ats": "workday",
+   "slug": "nutrabolt/wd108/Nutrabolt_Careers",
+   "jobs": 26,
+   "checked_at": "2026-09-24T22:21:21.957Z"
   },
   "nuvemshop": {
    "name": "Nuvemshop",
@@ -5876,10 +5876,10 @@
   },
   "oaknorth bank": {
    "name": "OakNorth Bank",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:03.166Z"
+   "ats": "ashby",
+   "slug": "oaknorth",
+   "jobs": 16,
+   "checked_at": "2026-09-24T22:21:11.593Z"
   },
   "occidental petroleum": {
    "name": "Occidental Petroleum",
@@ -5911,10 +5911,10 @@
   },
   "ohio state university": {
    "name": "The Ohio State University",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:07.048Z"
+   "ats": "workday",
+   "slug": "osu/wd1/OSUCareers",
+   "jobs": 1012,
+   "checked_at": "2026-09-24T22:21:14.013Z"
   },
   "okta": {
    "name": "Okta",
@@ -5932,10 +5932,10 @@
   },
   "old republic": {
    "name": "Old Republic International",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:57.104Z"
+   "ats": "workday",
+   "slug": "oldrepublic/wd1/oldrepublictitle",
+   "jobs": 20,
+   "checked_at": "2026-09-24T22:21:22.605Z"
   },
   "omnicom": {
    "name": "Omnicom Group",
@@ -6023,10 +6023,10 @@
   },
   "oscar health": {
    "name": "Oscar Health",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:45.618Z"
+   "ats": "greenhouse",
+   "slug": "oscar",
+   "jobs": 276,
+   "checked_at": "2026-09-24T22:21:19.965Z"
   },
   "oshkosh": {
    "name": "Oshkosh",
@@ -6037,10 +6037,10 @@
   },
   "otis worldwide": {
    "name": "Otis Worldwide",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:35.434Z"
+   "ats": "workday",
+   "slug": "otis/wd504/REC_Ext_Gateway",
+   "jobs": 1397,
+   "checked_at": "2026-09-24T22:21:18.964Z"
   },
   "otto bock healthcare": {
    "name": "Otto Bock HealthCare",
@@ -6184,10 +6184,10 @@
   },
   "pbf energy": {
    "name": "PBF Energy",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:52.917Z"
+   "ats": "workday",
+   "slug": "pbfenergy/wd1/PBF",
+   "jobs": 41,
+   "checked_at": "2026-09-24T22:21:09.777Z"
   },
   "pendo": {
    "name": "Pendo",
@@ -6226,10 +6226,10 @@
   },
   "peregrine": {
    "name": "Peregrine",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:50.701Z"
+   "ats": "greenhouse",
+   "slug": "peregrinetechnologies",
+   "jobs": 93,
+   "checked_at": "2026-09-24T22:21:09.250Z"
   },
   "perficient": {
    "name": "Perficient",
@@ -6331,10 +6331,10 @@
   },
   "pimco": {
    "name": "PIMCO",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:49.408Z"
+   "ats": "workday",
+   "slug": "pimco/wd1/pimco-careers",
+   "jobs": 196,
+   "checked_at": "2026-09-24T22:21:21.721Z"
   },
   "pine labs": {
    "name": "Pine Labs",
@@ -6471,10 +6471,10 @@
   },
   "primoris services": {
    "name": "Primoris Services",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:57:21.992Z"
+   "ats": "workday",
+   "slug": "prim/wd108/Primoris",
+   "jobs": 732,
+   "checked_at": "2026-09-24T22:21:24.991Z"
   },
   "principal financial": {
    "name": "Principal Financial",
@@ -6513,10 +6513,10 @@
   },
   "prologis": {
    "name": "Prologis",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:59.278Z"
+   "ats": "workday",
+   "slug": "prologis/wd5/Prologis_External_Careers",
+   "jobs": 66,
+   "checked_at": "2026-09-24T22:21:23.006Z"
   },
   "proxima fusion": {
    "name": "Proxima Fusion",
@@ -6786,10 +6786,10 @@
   },
   "reinsurance group of america": {
    "name": "Reinsurance Group of America",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:02.030Z"
+   "ats": "workday",
+   "slug": "rgare/wd1/Careers",
+   "jobs": 86,
+   "checked_at": "2026-09-24T22:21:11.454Z"
   },
   "relativity": {
    "name": "Relativity",
@@ -6828,10 +6828,10 @@
   },
   "remote": {
    "name": "Remote",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:42.140Z"
+   "ats": "greenhouse",
+   "slug": "remotecom",
+   "jobs": 175,
+   "checked_at": "2026-09-24T22:21:19.699Z"
   },
   "replit": {
    "name": "Replit",
@@ -6842,10 +6842,10 @@
   },
   "republic services": {
    "name": "Republic Services",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:24.008Z"
+   "ats": "workday",
+   "slug": "republic/wd5/republic",
+   "jobs": 1755,
+   "checked_at": "2026-09-24T22:21:15.799Z"
   },
   "research foundation for the state university of new york": {
    "name": "Research Foundation for the State University of New York",
@@ -6940,17 +6940,17 @@
   },
   "rocket companies": {
    "name": "Rocket Companies",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:41.640Z"
+   "ats": "workday",
+   "slug": "rocket/wd5/Rocket_Careers",
+   "jobs": 59,
+   "checked_at": "2026-09-24T22:21:07.944Z"
   },
   "rockwell automation": {
    "name": "Rockwell Automation",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:57:02.480Z"
+   "ats": "workday",
+   "slug": "rockwellautomation/wd1/External_Rockwell_Automation",
+   "jobs": 412,
+   "checked_at": "2026-09-24T22:21:24.014Z"
   },
   "rokt": {
    "name": "Rokt",
@@ -7003,10 +7003,10 @@
   },
   "s and p global": {
    "name": "S&P Global",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:29.185Z"
+   "ats": "workday",
+   "slug": "spgi/wd5/SPGI_Careers",
+   "jobs": 284,
+   "checked_at": "2026-09-24T22:21:17.415Z"
   },
   "safe superintelligence": {
    "name": "Safe Superintelligence",
@@ -7052,10 +7052,10 @@
   },
   "samsung": {
    "name": "Samsung",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:02.262Z"
+   "ats": "workday",
+   "slug": "sec/wd3/Samsung_Careers",
+   "jobs": 751,
+   "checked_at": "2026-09-24T22:21:13.096Z"
   },
   "sandboxaq": {
    "name": "SandboxAQ",
@@ -7381,10 +7381,10 @@
   },
   "sony interactive entertainment": {
    "name": "Sony Interactive Entertainment",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:32.468Z"
+   "ats": "workday",
+   "slug": "sonyglobal/wd1/SonyGlobalCareers",
+   "jobs": 108,
+   "checked_at": "2026-09-24T22:21:17.585Z"
   },
   "sorare": {
    "name": "Sorare",
@@ -7402,10 +7402,10 @@
   },
   "sourcegraph": {
    "name": "Sourcegraph",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:58.208Z"
+   "ats": "greenhouse",
+   "slug": "sourcegraph91",
+   "jobs": 7,
+   "checked_at": "2026-09-24T22:21:22.247Z"
   },
   "southern": {
    "name": "Southern",
@@ -7696,10 +7696,10 @@
   },
   "t mobile": {
    "name": "T-Mobile",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:40.291Z"
+   "ats": "workday",
+   "slug": "tmobile/wd1/External",
+   "jobs": 2000,
+   "checked_at": "2026-09-24T22:21:08.413Z"
   },
   "tabby": {
    "name": "Tabby",
@@ -7717,10 +7717,10 @@
   },
   "talkdesk": {
    "name": "Talkdesk",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:38.652Z"
+   "ats": "greenhouse",
+   "slug": "talkdesk2",
+   "jobs": 38,
+   "checked_at": "2026-09-24T22:21:06.856Z"
   },
   "tanium": {
    "name": "Tanium",
@@ -7913,10 +7913,10 @@
   },
   "thrivent financial": {
    "name": "Thrivent Financial",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:48.002Z"
+   "ats": "workday",
+   "slug": "thrivent/wd5/External",
+   "jobs": 336,
+   "checked_at": "2026-09-24T22:21:21.245Z"
   },
   "thumbtack": {
    "name": "Thumbtack",
@@ -7955,10 +7955,10 @@
   },
   "tjx": {
    "name": "TJX",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:38.383Z"
+   "ats": "workday",
+   "slug": "tjx/wd1/TJX_EXTERNAL",
+   "jobs": 11629,
+   "checked_at": "2026-09-24T22:21:07.182Z"
   },
   "together ai": {
    "name": "Together AI",
@@ -8032,10 +8032,10 @@
   },
   "travelers": {
    "name": "Travelers",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:40.467Z"
+   "ats": "workday",
+   "slug": "travelers/wd5/External",
+   "jobs": 359,
+   "checked_at": "2026-09-24T22:21:07.955Z"
   },
   "traveloka": {
    "name": "Traveloka",
@@ -8116,10 +8116,10 @@
   },
   "tyson foods": {
    "name": "Tyson Foods",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:42.825Z"
+   "ats": "workday",
+   "slug": "tysonfoods/wd5/TSN",
+   "jobs": 721,
+   "checked_at": "2026-09-24T22:21:07.992Z"
   },
   "u s bancorp": {
    "name": "U.S. Bancorp",
@@ -8340,10 +8340,10 @@
   },
   "university of kansas medical center": {
    "name": "University of Kansas Medical Center",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:50.986Z"
+   "ats": "workday",
+   "slug": "kumc/wd5/kumc-jobs",
+   "jobs": 158,
+   "checked_at": "2026-09-24T22:21:21.968Z"
   },
   "university of kentucky": {
    "name": "University of Kentucky",
@@ -8410,10 +8410,10 @@
   },
   "university of rochester": {
    "name": "University of Rochester",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:34.754Z"
+   "ats": "workday",
+   "slug": "rochester/wd5/UR_Staff",
+   "jobs": 1381,
+   "checked_at": "2026-09-24T22:21:18.726Z"
   },
   "university of south florida": {
    "name": "University of South Florida",
@@ -8487,10 +8487,10 @@
   },
   "upmc medical education": {
    "name": "Upmc Medical Education",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:57:04.568Z"
+   "ats": "workday",
+   "slug": "gohealthuc/wd12/External",
+   "jobs": 440,
+   "checked_at": "2026-09-24T22:21:24.594Z"
   },
   "ups": {
    "name": "UPS",
@@ -8522,10 +8522,10 @@
   },
   "usaa": {
    "name": "USAA",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:40.275Z"
+   "ats": "workday",
+   "slug": "usaa/wd1/USAAJOBSWD",
+   "jobs": 228,
+   "checked_at": "2026-09-24T22:21:07.440Z"
   },
   "ust": {
    "name": "UST",
@@ -8648,10 +8648,10 @@
   },
   "vertex pharmaceuticals": {
    "name": "Vertex Pharmaceuticals",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:32.140Z"
+   "ats": "workday",
+   "slug": "vrtx/wd501/vertex_careers",
+   "jobs": 297,
+   "checked_at": "2026-09-24T22:21:16.589Z"
   },
   "vertiv": {
    "name": "Vertiv Holdings",
@@ -8711,10 +8711,10 @@
   },
   "visa": {
    "name": "Visa",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:22.514Z"
+   "ats": "workday",
+   "slug": "visa/wd5/Visa",
+   "jobs": 797,
+   "checked_at": "2026-09-24T22:21:06.170Z"
   },
   "vista global": {
    "name": "Vista Global",
@@ -8725,10 +8725,10 @@
   },
   "vistra": {
    "name": "Vistra",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:19.548Z"
+   "ats": "workday",
+   "slug": "vst/wd5/vistra_careers",
+   "jobs": 173,
+   "checked_at": "2026-09-24T22:21:14.682Z"
   },
   "voodoo": {
    "name": "Voodoo",
@@ -8795,10 +8795,10 @@
   },
   "warner bros discovery": {
    "name": "Warner Bros. Discovery",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:51.281Z"
+   "ats": "workday",
+   "slug": "warnerbros/wd5/global",
+   "jobs": 316,
+   "checked_at": "2026-09-24T22:21:09.481Z"
   },
   "washington university in st louis": {
    "name": "Washington University In St Louis",
@@ -9019,10 +9019,10 @@
   },
   "world kinect": {
    "name": "World Kinect",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:47.041Z"
+   "ats": "workday",
+   "slug": "wfscorp/wd5/wfscareers",
+   "jobs": 39,
+   "checked_at": "2026-09-24T22:21:08.994Z"
   },
   "wsp": {
    "name": "WSP",
@@ -9089,17 +9089,17 @@
   },
   "yahoo": {
    "name": "Yahoo",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:01.667Z"
+   "ats": "workday",
+   "slug": "ouryahoo/wd5/careers",
+   "jobs": 108,
+   "checked_at": "2026-09-24T22:21:11.991Z"
   },
   "yale university": {
    "name": "Yale University",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:55:55.717Z"
+   "ats": "workday",
+   "slug": "yale/wd1/External_Career_Site",
+   "jobs": 264,
+   "checked_at": "2026-09-24T22:21:10.258Z"
   },
   "yash technologies": {
    "name": "Yash Technologies",
@@ -9243,10 +9243,10 @@
   },
   "zoetis": {
    "name": "Zoetis",
-   "ats": null,
-   "slug": null,
-   "jobs": 0,
-   "checked_at": "2026-09-24T21:56:55.902Z"
+   "ats": "workday",
+   "slug": "zoetis/wd5/zoetis",
+   "jobs": 119,
+   "checked_at": "2026-09-24T22:21:22.107Z"
   },
   "zongmu technology": {
    "name": "ZongMu Technology",
