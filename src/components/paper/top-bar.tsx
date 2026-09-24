@@ -40,11 +40,10 @@ export function TopBar() {
     const pool = live.length ? live : attention;
     return pool[0]?.id ?? null; // runs are newest-first
   }, [runs]);
-  // Hide the chip while the run it points to is already taking over the Desk
-  // (prototype hides "crew running" on the run screen). Still shows on every
-  // other route so it's the way back.
+  // The Desk's runs rail lists every live run, so the chip would only repeat
+  // it there. Everywhere else it's the way back.
   const focusedRunId = useFocusedRun();
-  const onRunScreen = !!focusedRunId && isNavActive(pathname, "/app/compose");
+  const onDesk = isNavActive(pathname, "/app/compose");
 
   // Session state drives the signed-in/out variant. Reads the LOCAL session
   // (getSession) and stays live via onAuthStateChange — NOT getUser(), whose
@@ -276,7 +275,7 @@ export function TopBar() {
 
         {/* Live-runs chip: green while working, amber when something needs eyes.
             Reopens the run full-screen on the Desk (matches the prototype). */}
-        {!isSignedOut && chip && !onRunScreen && (
+        {!isSignedOut && chip && !onDesk && (
           <button
             onClick={() => {
               if (chip.target === "/app/compose" && chipRunId) setFocusedRun(chipRunId);

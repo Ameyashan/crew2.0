@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
 import { TOKENS, RADII } from "@/components/paper/tokens";
 import { useIsMobile } from "@/lib/use-is-mobile";
-import { startRun } from "@/lib/runs-store";
+import { startRun, setFocusedRun } from "@/lib/runs-store";
 import { CompanyLogo } from "@/components/paper/CompanyLogo";
 import { FollowButton } from "@/components/paper/FollowButton";
 import {
@@ -61,7 +61,10 @@ export default function JobDetailPage() {
       const res = await fetch(`/api/jobs/${job.job_id}/outreach`, { method: "POST" });
       const j = await res.json().catch(() => ({}));
       const jobUrl = (j?.job_url as string) || job.url;
-      startRun(jobUrl, { kind: "job" });
+      // Land on the new run, not a blank Desk. Earlier runs keep going and stay
+      // in the Desk's runs rail.
+      const runId = startRun(jobUrl, { kind: "job" });
+      if (runId) setFocusedRun(runId);
       router.push("/app/compose");
     } catch (e) {
       setError(String((e as Error)?.message || e));

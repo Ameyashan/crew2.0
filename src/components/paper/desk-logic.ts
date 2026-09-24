@@ -6,7 +6,8 @@
 // Nothing here reaches into the DOM or localStorage directly: the component owns
 // the side effects (reading storage, fetching), these functions own the rules.
 
-import { RUN_STATUS_LABEL } from "./run-status.ts";
+import { RUN_STATUS_LABEL, runStatusState, type RunStatusState } from "./run-status.ts";
+import { liveRunTitle, type LiveRunTitleInput } from "./run-view-logic.ts";
 
 // ── Composer suggestion pills ────────────────────────────────────────────────
 // The three pills under the composer. Each just seeds the paste box with a
@@ -148,6 +149,8 @@ export type EarlierChip = { label: string; tone: "done" | "progress" | "attentio
 export type EarlierRow = {
   key: string;
   agent: "compose" | "resume";
+  // compose_runs.kind ("job" | "person") for compose rows.
+  kind?: string;
   id: string;
   title: string;
   chips: EarlierChip[];
@@ -269,6 +272,7 @@ export function deskEarlierRuns(
     rows.push({
       key: `c:${r.id}`,
       agent: "compose",
+      kind: r.kind,
       id: r.id,
       title: deskRunTitle("compose", r),
       chips: deskRunChips("compose", r),
@@ -305,4 +309,155 @@ export function fmtWhen(iso: string | null | undefined, now: number = Date.now()
   if (d === 1) return "1d ago";
   if (d < 30) return `${d}d ago`;
   return new Date(iso).toLocaleDateString();
+}
+
+// ── Runs rail (Desk sidebar) ─────────────────────────────────────────────────
+// The Desk's left column: every run the crew is on right now, the ones that
+// need a decision, then history — so two jobs running side by side are both one
+// click away instead of hiding behind a single "crew running" chip.
+//
+// Live rows come from the module run store; history rows from the same payload
+// "Earlier runs" always used (deskEarlierRuns). A store run and its history row
+// share a server id (composeRunId / resumeGenerationId), which is how a run is
+// kept from showing twice.
+
+// Agents per kind, in the order the crew runs them (the run store's progress
+// keys). Résumé-tailor runs report a single "tailor" key.
+const RAIL_AGENT_KEYS: Record<string, string[]> = {
+  person: ["person", "email", "outreach"],
+  job: ["resume", "person", "email", "outreach", "application"],
+  resume: ["tailor"],
+};
+
+export type RailLiveRun = LiveRunTitleInput & {
+  id: string;
+  stage: string;
+  createdAt?: number | null;
+  hydrated?: boolean;
+  reconnecting?: boolean;
+  composeRunId?: string | null;
+  resumeGenerationId?: string | null;
+  progress?: Record<string, number> | null;
+  activity?: Record<string, string> | null;
+  selectedAgents?: string[] | null;
+  stepErrors?: Record<string, string> | null;
+};
+
+export type RailRow = {
+  key: string;
+  source: "live" | "history";
+  // live rows: the store id to focus. history rows: the EarlierRow to open.
+  localId?: string;
+  row?: EarlierRow;
+  // Server id(s) this row stands for — lets the page mark a reopened history
+  // run as selected.
+  serverId?: string | null;
+  title: string;
+  status: RunStatusState;
+  caption?: string | null;
+  stepsDone?: number;
+  stepsTotal?: number;
+  createdAt: string;
+};
+
+export type RailSections = { running: RailRow[]; attention: RailRow[]; earlier: RailRow[] };
+
+function liveSteps(run: RailLiveRun): { done: number; total: number; caption: string | null } {
+  const all = RAIL_AGENT_KEYS[run.kind] || RAIL_AGENT_KEYS.person;
+  const picked = Array.isArray(run.selectedAgents) && run.selectedAgents.length ? run.selectedAgents : null;
+  const keys = picked ? all.filter((k) => picked.includes(k)) : all;
+  const progress = run.progress || {};
+  let done = 0;
+  let caption: string | null = null;
+  for (const k of keys) {
+    if ((progress[k] ?? 0) >= 100 || run.stepErrors?.[k]) {
+      done++;
+      continue;
+    }
+    // The first unfinished agent is the one working — its live caption is the
+    // most useful single line to show.
+    if (caption == null) caption = run.activity?.[k] || null;
+  }
+  if (run.stage === "parsing") caption = caption || "Reading your request…";
+  return { done, total: keys.length, caption };
+}
+
+function liveRow(run: RailLiveRun): RailRow {
+  const steps = liveSteps(run);
+  return {
+    key: `l:${run.id}`,
+    source: "live",
+    localId: run.id,
+    serverId: run.composeRunId || run.resumeGenerationId || null,
+    title: liveRunTitle(run),
+    status: runStatusState({ stage: run.stage, reconnecting: run.reconnecting }),
+    caption: steps.caption,
+    stepsDone: steps.done,
+    stepsTotal: steps.total,
+    createdAt: new Date(run.createdAt || Date.now()).toISOString(),
+  };
+}
+
+// History titles get the same verb prefix live runs carry (runViewTitle), so
+// the rail reads as one list: "Apply — …", "Reach — …", "Résumé — …".
+function historyRailTitle(row: EarlierRow): string {
+  if (row.agent === "resume") return `Résumé — ${row.title}`;
+  return `${row.kind === "job" ? "Apply" : "Reach"} — ${row.title}`;
+}
+
+function historyRow(row: EarlierRow): RailRow {
+  const chip = row.chips[0];
+  const status: RunStatusState =
+    chip?.tone === "done" ? "ready" : chip?.tone === "progress" ? "running" : "needs-you";
+  return {
+    key: `h:${row.key}`,
+    source: "history",
+    row,
+    serverId: row.id,
+    title: historyRailTitle(row),
+    status,
+    caption: chip && chip.tone === "done" && chip.label !== RUN_STATUS_LABEL.ready ? chip.label : null,
+    createdAt: row.created_at,
+  };
+}
+
+export function deskRailSections(input: {
+  liveRuns: RailLiveRun[] | null | undefined;
+  composeRuns: ComposeRunRow[] | null | undefined;
+  resumeRuns: ResumeRunRow[] | null | undefined;
+  limit?: number;
+}): RailSections {
+  const limit = input.limit ?? 15;
+  // Runs started in this session (not reopened from history). Newest first,
+  // matching the store's order.
+  const own = (input.liveRuns || [])
+    .filter((r) => !r.hydrated)
+    .slice()
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const running = own.filter((r) => r.stage === "parsing" || r.stage === "working").map(liveRow);
+  const attention = own.filter((r) => r.stage === "error").map(liveRow);
+
+  // Every server id a live row already stands for — its history row is hidden
+  // so one run never shows twice.
+  const liveIds = new Set<string>();
+  for (const r of own) {
+    if (r.stage === "done") continue;
+    if (r.composeRunId) liveIds.add(r.composeRunId);
+    if (r.resumeGenerationId) liveIds.add(r.resumeGenerationId);
+  }
+  const history = deskEarlierRuns(input.composeRuns, input.resumeRuns, limit, liveIds);
+  const historyIds = new Set(history.map((h) => h.id));
+
+  // A run that just finished can beat the history refetch; keep it visible at
+  // the top of Earlier until its saved row arrives.
+  const justDone = own
+    .filter((r) => r.stage === "done")
+    .filter((r) => {
+      const sid = r.composeRunId || r.resumeGenerationId;
+      return !sid || !historyIds.has(sid);
+    })
+    .map(liveRow);
+
+  const earlier = [...justDone, ...history.map(historyRow)].slice(0, Math.max(0, limit));
+  return { running, attention, earlier };
 }
