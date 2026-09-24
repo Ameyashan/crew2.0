@@ -1,14 +1,17 @@
 // Content-script orchestrator: fetch the per-job package, fill on request,
 // arm on submit, confirm on the ATS success signal. The human always clicks
 // Submit — this never submits a form.
-import { sendBg, type PackageResponse } from "../shared/messages";
+import { sendBg, type PackageAnswer, type PackageResponse } from "../shared/messages";
 import { pickAdapter } from "./adapters";
 import {
+  answerFor,
   attachFile,
   base64ToFile,
   fillSelects,
   fillTextControls,
   fillYesNoToggles,
+  markFilled,
+  setNativeValue,
   type FillReport,
 } from "./fill";
 import { removePanel, showPanel } from "./panel";
@@ -129,42 +132,140 @@ async function doFill(): Promise<void> {
     return;
   }
 
-  const report: FillReport = { filled: 0, answersFilled: 0, resumeAttached: false, needsYou: [] };
+  const report: FillReport = {
+    filled: 0,
+    answersFilled: 0,
+    resumeAttached: false,
+    needsYou: [],
+    unanswered: [],
+  };
   fillTextControls(form, pkg.profile, pkg.answers, report);
   fillSelects(form, pkg.profile, report);
   fillYesNoToggles(form, pkg.profile, report);
 
-  if (pkg.resume) {
-    const input = adapter.findResumeInput(form);
-    if (input) {
-      try {
-        const r = await sendBg<{ ok: boolean; b64: string; filename: string }>({
-          type: "getResumePdf",
-          generationId: pkg.resume.generation_id,
-        });
-        if (r.ok) report.resumeAttached = attachFile(input, base64ToFile(r.b64, r.filename));
-      } catch {
-        // leave resumeAttached false; the summary tells the user
-      }
-    }
-  }
-
   armSubmitWatch(form);
+
+  const n = report.unanswered.length;
+  showPanel({
+    title: "Filling…",
+    bodyHtmlSafeLines: [
+      n
+        ? `Drafting ${n} answer${n === 1 ? "" : "s"} from your background — this takes a few seconds.`
+        : "Attaching your tailored resume…",
+    ],
+  });
+
+  const [resume, drafted] = await Promise.all([
+    attachResume(form),
+    draftMissingAnswers(report),
+  ]);
+  report.resumeAttached = resume.attached;
 
   const lines = [
     `Filled ${report.filled} field${report.filled === 1 ? "" : "s"}` +
       (report.answersFilled ? `, pasted ${report.answersFilled} answer${report.answersFilled === 1 ? "" : "s"}` : "") +
       (report.resumeAttached ? ", attached your tailored resume" : "") +
       ".",
-    report.resumeAttached || !pkg.resume ? "" : "Couldn't attach the resume — upload it manually.",
+    drafted.failed ? `Couldn't draft ${drafted.failed} answer${drafted.failed === 1 ? "" : "s"} — fill ${drafted.failed === 1 ? "it" : "them"} in yourself.` : "",
+    report.resumeAttached || !pkg.resume
+      ? ""
+      : resume.file
+        ? "The resume upload didn't go through — download it and upload it yourself."
+        : "Couldn't attach the resume — upload it manually.",
+    report.answersFilled ? "Drafted answers are a starting point — read them over." : "",
     "Review everything, then click Submit yourself.",
   ].filter(Boolean);
 
+  const file = resume.file;
   showPanel({
     title: "Filled by Jugaadu",
     bodyHtmlSafeLines: lines,
-    listItems: report.needsYou.length ? ["Still needs you:", ...report.needsYou] : undefined,
+    listItems: report.needsYou.length
+      ? ["Still needs you:", ...new Set(report.needsYou)]
+      : undefined,
+    actions:
+      !report.resumeAttached && file
+        ? [{ label: "Download resume", onClick: () => downloadFile(file) }]
+        : undefined,
   });
+}
+
+// Attach the tailored PDF. For ATSes that upload on attach (Ashby), confirm the
+// upload landed and retry once — a failed upload otherwise leaves only the
+// ATS's own toast, and the summary would claim success.
+async function attachResume(
+  form: HTMLElement
+): Promise<{ attached: boolean; file: File | null }> {
+  if (!pkg?.resume || !adapter) return { attached: false, file: null };
+  const input = adapter.findResumeInput(form);
+  if (!input) return { attached: false, file: null };
+  let file: File;
+  try {
+    const r = await sendBg<{ ok: boolean; b64: string; filename: string }>({
+      type: "getResumePdf",
+      generationId: pkg.resume.generation_id,
+    });
+    if (!r.ok) return { attached: false, file: null };
+    file = base64ToFile(r.b64, r.filename);
+  } catch {
+    return { attached: false, file: null };
+  }
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt) await new Promise((res) => setTimeout(res, 1500));
+    if (!attachFile(input, file)) return { attached: false, file };
+    if (!adapter.uploadOutcome) return { attached: true, file };
+    const outcome = await adapter.uploadOutcome(input, file.name);
+    if (outcome !== "failed") return { attached: true, file };
+  }
+  return { attached: false, file };
+}
+
+// Essay boxes the crew hasn't answered yet (answers are drafted on demand in
+// the Desk, so a fresh run has none): draft them now from the user's profile
+// and stories, then paste into whichever boxes are still empty.
+async function draftMissingAnswers(report: FillReport): Promise<{ failed: number }> {
+  const pending = report.unanswered.slice(0, 8);
+  if (!pending.length || !pkg) return { failed: 0 };
+  let answers: PackageAnswer[] = [];
+  try {
+    const r = await sendBg<{ ok: boolean; answers?: PackageAnswer[] }>({
+      type: "draftAnswers",
+      applicationId: pkg.application_id,
+      questions: pending.map((p) => p.question),
+      job: pkg.job,
+    });
+    if (r.ok && r.answers) answers = r.answers;
+  } catch {
+    // counted as failed below
+  }
+  let failed = 0;
+  for (const { el, question } of pending) {
+    const body =
+      answers.find((a) => a.question === question.trim())?.body ?? answerFor(question, answers);
+    if (!body) {
+      failed++;
+      continue;
+    }
+    if (el.value.trim()) continue; // the user started typing while we drafted
+    setNativeValue(el, body);
+    markFilled(el);
+    report.answersFilled++;
+    // Keep the package in step so a second "Fill" reuses these.
+    pkg.answers.push({ question, body });
+  }
+  return { failed };
+}
+
+function downloadFile(file: File): void {
+  const url = URL.createObjectURL(file);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = file.name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 // Arm on submit intent, confirm on the ATS success signal — a click alone is

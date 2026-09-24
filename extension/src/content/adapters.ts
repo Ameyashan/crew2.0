@@ -12,7 +12,12 @@ export interface Adapter {
   findResumeInput(form: HTMLElement): HTMLInputElement | null;
   // For postings whose form lives on a sibling page (Lever /apply).
   applicationHref(): string | null;
+  // For ATSes that upload the file themselves as soon as it's attached: did
+  // that upload go through? Absent means attaching is all there is to it.
+  uploadOutcome?(input: HTMLInputElement, filename: string): Promise<UploadOutcome>;
 }
+
+export type UploadOutcome = "ok" | "failed" | "unknown";
 
 // The <form> that actually carries the application: the one with the most
 // fillable controls (and at least a handful, so cookie banners and search boxes
@@ -86,6 +91,38 @@ const ashby: Adapter = {
   findResumeInput: (form) =>
     form.querySelector<HTMLInputElement>('input[type="file"]#_systemfield_resume') ??
     form.querySelector<HTMLInputElement>('.ashby-application-form-container input[type="file"]'),
+  // Ashby uploads on attach and reports failure only as a toast
+  // ("<name> failed to upload"). While uploading, the file row hides its delete
+  // button; it comes back once the upload settles either way, so success is
+  // "uploading was seen, then settled, and no failure toast".
+  uploadOutcome: (input, filename) =>
+    new Promise<UploadOutcome>((resolve) => {
+      const field = input.closest(".ashby-application-form-field-entry") ?? input.parentElement;
+      const failed = () => (document.body?.innerText ?? "").includes(`${filename} failed to upload`);
+      const hasItem = () => Boolean(field?.querySelector(".ashby-application-form-input-file-item"));
+      const settled = () =>
+        Boolean(field?.querySelector(".ashby-application-form-input-file-item-delete"));
+      let sawUploading = false;
+      let settleTimer: ReturnType<typeof setTimeout> | undefined;
+      const done = (r: UploadOutcome) => {
+        obs.disconnect();
+        clearTimeout(timeout);
+        clearTimeout(settleTimer);
+        resolve(r);
+      };
+      const check = () => {
+        if (failed()) return done("failed");
+        if (hasItem() && !settled()) sawUploading = true;
+        // The toast can land a beat after the row settles.
+        if (sawUploading && settled() && !settleTimer) {
+          settleTimer = setTimeout(() => done(failed() ? "failed" : "ok"), 1000);
+        }
+      };
+      const obs = new MutationObserver(check);
+      obs.observe(document.body, { childList: true, subtree: true, characterData: true });
+      const timeout = setTimeout(() => done(failed() ? "failed" : "unknown"), 30_000);
+      check();
+    }),
   applicationHref: () => {
     if (/\/application\/?$/.test(location.pathname)) return null;
     // Posting page: the SPA's Application tab.

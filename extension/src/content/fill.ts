@@ -82,7 +82,7 @@ export function profileRules(p: PackageProfile): Rule[] {
   return [
     { re: /first\s*name|given\s*name/i, value: first || null },
     { re: /last\s*name|family\s*name|surname/i, value: last || null },
-    { re: /full\s*name|your\s*name|^name\b/i, value: full || null },
+    { re: /full\s*name|legal\s*name|your\s*name|^name\b/i, value: full || null },
     { re: /e-?mail/i, value: p.email },
     { re: /phone|mobile/i, value: p.phone },
     { re: /location|city|where\s+are\s+you\s+based/i, value: p.location },
@@ -97,6 +97,28 @@ export interface FillReport {
   answersFilled: number;
   resumeAttached: boolean;
   needsYou: string[];
+  // Essay boxes with no drafted answer — the caller drafts these on demand.
+  unanswered: { el: HTMLTextAreaElement; question: string }[];
+}
+
+const CONTROL_SEL = 'input:not([type="hidden"]), textarea, select';
+
+// The full prompt around a control: label plus any helper text (Ashby puts
+// "Please share anything else…" in a description under a bare "Additional
+// Information" label). Climbs to the widest ancestor that still holds only this
+// one control, so a neighbouring question's text never leaks in.
+export function questionText(el: Element, label: string): string {
+  let box: Element | null = null;
+  for (let a = el.parentElement, i = 0; a && i < 5; a = a.parentElement, i++) {
+    if (a.querySelectorAll(CONTROL_SEL).length !== 1) break;
+    box = a;
+  }
+  // innerText keeps the break between label and description; textContent
+  // would glue them ("InformationPlease").
+  const raw = box instanceof HTMLElement ? box.innerText || box.textContent : "";
+  const text = (raw ?? "").replace(/\s+/g, " ").trim().slice(0, 600);
+  if (!text) return label;
+  return text.toLowerCase().includes(label.toLowerCase()) ? text : `${label} — ${text}`;
 }
 
 function normalizeQuestion(s: string): string {
@@ -139,7 +161,8 @@ export function fillTextControls(
     if (NEVER_TOUCH_RE.test(label)) continue;
 
     if (el instanceof HTMLTextAreaElement) {
-      const body = answerFor(label, answers);
+      const question = questionText(el, label);
+      const body = answerFor(label, answers) ?? answerFor(question, answers);
       if (body) {
         setNativeValue(el, body);
         markFilled(el);
@@ -153,6 +176,14 @@ export function fillTextControls(
       setNativeValue(el, rule.value);
       markFilled(el);
       report.filled++;
+    } else if (
+      el instanceof HTMLTextAreaElement &&
+      label &&
+      el.offsetParent !== null &&
+      // Greenhouse's "paste your resume" box is not an essay prompt.
+      !/resume|résumé|\bcv\b/i.test(label)
+    ) {
+      report.unanswered.push({ el, question: questionText(el, label) });
     } else if (el.required && label) {
       report.needsYou.push(label.slice(0, 80));
     }
@@ -162,17 +193,24 @@ export function fillTextControls(
 // Real <select> elements only (custom comboboxes are per-adapter or skipped).
 // v1 answers only the explicit sponsorship question — "authorized to work" is
 // NOT the inverse of needing sponsorship (think F-1 OPT), so it stays manual.
+const SPONSORSHIP_UNSET =
+  "Visa sponsorship question — set your sponsorship answer in Jugaadu settings to autofill it";
+
 export function fillSelects(
   root: ParentNode,
   profile: PackageProfile,
   report: FillReport
 ): void {
-  if (typeof profile.needs_sponsorship !== "boolean") return;
+  const known = typeof profile.needs_sponsorship === "boolean";
   const want = profile.needs_sponsorship ? /^yes\b/i : /^no\b/i;
   for (const sel of root.querySelectorAll<HTMLSelectElement>("select")) {
     if (sel.disabled || sel.value) continue;
     const label = labelFor(sel);
     if (NEVER_TOUCH_RE.test(label) || !/sponsor/i.test(label)) continue;
+    if (!known) {
+      report.needsYou.push(SPONSORSHIP_UNSET);
+      continue;
+    }
     const opt = [...sel.options].find((o) => want.test(o.textContent?.trim() ?? ""));
     if (!opt) continue;
     sel.value = opt.value;
@@ -184,31 +222,43 @@ export function fillSelects(
 }
 
 // Ashby-style Yes/No button toggles, sponsorship question only (same
-// conservatism as fillSelects). Pairs of adjacent Yes/No buttons are grouped by
-// their nearest shared container and matched against that container's text.
+// conservatism as fillSelects). The buttons sit in their own container with the
+// question label outside it, so climb from the pair to the widest ancestor that
+// still holds just these two buttons — that is the question's box — and match
+// its text.
 export function fillYesNoToggles(
   root: ParentNode,
   profile: PackageProfile,
   report: FillReport
 ): void {
-  if (typeof profile.needs_sponsorship !== "boolean") return;
+  const known = typeof profile.needs_sponsorship === "boolean";
   const want = profile.needs_sponsorship ? /^yes$/i : /^no$/i;
   const isYesNo = (b: Element) => /^(yes|no)$/i.test(b.textContent?.trim() ?? "");
+  const yesNoIn = (el: Element) => [...el.querySelectorAll("button")].filter(isYesNo);
   const seen = new Set<Element>();
   for (const btn of root.querySelectorAll("button")) {
     if (!isYesNo(btn)) continue;
-    const group = btn.closest("fieldset, [role='group'], div");
-    if (!group || seen.has(group)) continue;
-    seen.add(group);
-    const pair = [...group.querySelectorAll("button")].filter(isYesNo);
+    const pairBox = btn.parentElement;
+    if (!pairBox || seen.has(pairBox)) continue;
+    seen.add(pairBox);
+    const pair = yesNoIn(pairBox);
     if (pair.length !== 2) continue;
-    const label = (group.textContent ?? "").slice(0, 300);
+    let questionBox: Element = pairBox;
+    for (let a = pairBox.parentElement, i = 0; a && i < 5; a = a.parentElement, i++) {
+      if (yesNoIn(a).length !== 2) break;
+      questionBox = a;
+    }
+    const label = (questionBox.textContent ?? "").slice(0, 400);
     if (NEVER_TOUCH_RE.test(label) || !/sponsor/i.test(label)) continue;
     const alreadyPicked = pair.some(
       (b) =>
         b.getAttribute("aria-pressed") === "true" || b.getAttribute("aria-checked") === "true"
     );
     if (alreadyPicked) continue;
+    if (!known) {
+      report.needsYou.push(SPONSORSHIP_UNSET);
+      continue;
+    }
     const target = pair.find((b) => want.test(b.textContent?.trim() ?? ""));
     if (target instanceof HTMLElement) {
       target.click();
