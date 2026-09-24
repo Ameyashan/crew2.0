@@ -8,6 +8,7 @@ import {
   matchesLocations,
   matchesSize,
   matchesStaffingPref,
+  explicitCompanies,
   matchesVisaNeed,
   postedThreshold,
 } from "@/lib/jobs/scan";
@@ -149,7 +150,7 @@ export async function GET(req: NextRequest) {
         Number.isFinite(lastSent) ? Math.max(lastSent, floor) : Date.now() - 86_400_000,
       ).toISOString();
 
-      const [{ data: matchData, error: mErr }, { prefs, follows }] = await Promise.all([
+      const [{ data: matchData, error: mErr }, { prefs, follows, pins }] = await Promise.all([
         sb
           .from("job_matches")
           .select(SELECT)
@@ -166,14 +167,14 @@ export async function GET(req: NextRequest) {
 
       // Same preference re-check the feed applies at read time.
       const threshold = postedThreshold(prefs.posted_within);
-      const followed = new Set(follows);
+      const explicit = explicitCompanies(follows, pins);
       const rows = ((matchData ?? []) as unknown as FeedJoinRow[]).filter((row) => {
         const j = row.jobs;
         if (!j) return false;
         if (!matchesLocations(j, prefs.locations)) return false;
         if (!matchesSize(j, prefs.company_sizes)) return false;
         if (!matchesVisaNeed(j, prefs.visa_required)) return false;
-        if (!matchesStaffingPref(j, prefs.include_staffing, followed)) return false;
+        if (!matchesStaffingPref(j, prefs.include_staffing, explicit)) return false;
         if (threshold && j.posted_date && j.posted_date < threshold) return false;
         return true;
       });

@@ -199,7 +199,9 @@ export async function fetchWorkdayBoardPaged(slug: string, companyName?: string)
   for (const p of postings) {
     const path = str(p.externalPath);
     if (!path || !str(p.title)) continue;
-    const id = `${s.tenant}:${path}`;
+    // Tenant AND site: one tenant can publish several sites (two catalog rows),
+    // and external_job_id is unique per ATS.
+    const id = `${s.tenant}/${s.site}:${path}`;
     if (seen.has(id)) continue;
     seen.add(id);
     const loc = workdayLocation(listingLocation(p));

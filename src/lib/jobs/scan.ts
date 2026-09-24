@@ -15,6 +15,7 @@ import { ensureCatalogCoverage } from "@/lib/jobs/catalog";
 import { fetchAllListings } from "@/lib/jobs/orchestrator";
 import { enrichJobs } from "@/lib/jobs/enrich";
 import { scoreJobsForUser } from "@/lib/jobs/score";
+import { selectAll } from "@/lib/jobs/paging";
 import type { Job } from "@/lib/db/schema";
 import type { PostedWithin, SizeBucket, RoleMode, VisaConfidence } from "@/lib/jobs/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -132,16 +133,23 @@ export function matchesVisaNeed(
 }
 
 // Staffing firms (company_universe org_type 'staffing') stay out of the feed
-// and the email unless the user opted in or explicitly follows the company.
-// Read-time twin of the scan-time exclusion in resolveCompanyIds, so matches
-// scored before the user turned them off disappear too.
+// and the email unless the user opted in, follows the company, or pinned it —
+// the same exemptions as the scan-time exclusion in resolveCompanyIds, so
+// nothing is scored only to be hidden, and matches scored before the user
+// turned them off disappear too.
 export function matchesStaffingPref(
-  job: { company_id: string | null; companies?: { org_type: string | null } | null },
+  job: { company_id: string | null; company: string; companies?: { org_type: string | null } | null },
   includeStaffing: boolean,
-  followed: ReadonlySet<string>,
+  explicit: { followed: ReadonlySet<string>; pinned: ReadonlySet<string> },
 ): boolean {
   if (includeStaffing || job.companies?.org_type !== "staffing") return true;
-  return !!job.company_id && followed.has(job.company_id);
+  if (job.company_id && explicit.followed.has(job.company_id)) return true;
+  return explicit.pinned.has(job.company.toLowerCase().trim());
+}
+
+// The explicit-intent sets matchesStaffingPref needs, from loadScanPrefs output.
+export function explicitCompanies(follows: string[], pins: string[]) {
+  return { followed: new Set(follows), pinned: new Set(pins.map((p) => p.toLowerCase().trim())) };
 }
 
 // Followed company_ids for a user (catalog ids, already resolved — no name
@@ -194,10 +202,13 @@ export async function resolveCompanyIds(
   if (prefs.interests.length) {
     // Staffing firms only enter through sectors on explicit opt-in; a pin or
     // follow (below / above) is explicit intent and always counts.
-    let q = sb.from("companies").select("id").eq("active", true).overlaps("sectors", prefs.interests);
-    if (!prefs.include_staffing) q = q.neq("org_type", "staffing");
-    const { data } = await q;
-    for (const c of data ?? []) companyIds.add(c.id as string);
+    // Sectors can now span >1000 universe boards: page past the row cap.
+    const rows = await selectAll<{ id: string }>((from, to) => {
+      let q = sb.from("companies").select("id").eq("active", true).overlaps("sectors", prefs.interests);
+      if (!prefs.include_staffing) q = q.neq("org_type", "staffing");
+      return q.order("id").range(from, to);
+    });
+    for (const c of rows) companyIds.add(c.id);
   }
   if (pins.length) {
     const norms = pins.map((p) => p.toLowerCase().trim());
@@ -359,9 +370,14 @@ export async function enrichCandidates(sb: SupabaseClient, jobs: Job[], prefs: S
   if (pending.length) {
     try {
       await enrichJobs({ jobIds: pending, limit: pending.length });
+      // Re-read everything enrichment may have written — including the
+      // hydrated JD / location / date columns, so the scorer doesn't fetch
+      // the Workday detail a second time.
       const { data } = await sb
         .from("jobs")
-        .select("id, visa_confidence, visa_evidence, company_size, enriched_at")
+        .select(
+          "id, visa_confidence, visa_evidence, company_size, enriched_at, raw_json, location_raw, city, region, country, remote_type, posted_date, posted_date_approx",
+        )
         .in("id", pending);
       const byId = new Map((data ?? []).map((r) => [r.id as string, r]));
       for (const j of jobs) {
@@ -414,11 +430,15 @@ export async function scoreDueUsers(opts: {
   if (opts.onlyUser) {
     users = [opts.onlyUser];
   } else {
-    const { data } = await sb.from("user_profile").select("user_id").not("onboarded_at", "is", null);
-    users = (data ?? []).map((r) => r.user_id as string);
+    const rows = await selectAll<{ user_id: string }>((from, to) =>
+      sb.from("user_profile").select("user_id").not("onboarded_at", "is", null).order("user_id").range(from, to),
+    );
+    users = rows.map((r) => r.user_id);
   }
-  const { data: state } = await sb.from("job_scan_state").select("user_id, last_scanned_at");
-  const last = new Map((state ?? []).map((r) => [r.user_id as string, r.last_scanned_at as string]));
+  const state = await selectAll<{ user_id: string; last_scanned_at: string }>((from, to) =>
+    sb.from("job_scan_state").select("user_id, last_scanned_at").order("user_id").range(from, to),
+  );
+  const last = new Map(state.map((r) => [r.user_id, r.last_scanned_at]));
   const due = users
     .filter((u) => opts.onlyUser || !last.has(u) || last.get(u)! < opts.staleBefore)
     .sort((a, b) => (last.get(a) ?? "").localeCompare(last.get(b) ?? ""));
@@ -437,33 +457,45 @@ export async function scoreDueUsers(opts: {
       const summary = await opts.runAs(uid, () => scoreUser(sb, uid));
       out.per_user.push({ user_id: uid, ...summary });
       out.scored_users++;
+      await sb
+        .from("job_scan_state")
+        .upsert({ user_id: uid, last_scanned_at: new Date().toISOString(), claimed_at: null }, { onConflict: "user_id" });
     } catch (e) {
       out.per_user.push({ user_id: uid, error: e instanceof Error ? e.message : String(e) });
-      // Release the claim so the next tick retries instead of waiting a day.
-      const prev = last.get(uid);
-      if (prev) await sb.from("job_scan_state").update({ last_scanned_at: prev }).eq("user_id", uid);
-      else await sb.from("job_scan_state").delete().eq("user_id", uid);
+      // Release the lease so the next tick retries.
+      await sb.from("job_scan_state").update({ claimed_at: null }).eq("user_id", uid);
     }
   }
   return out;
 }
 
-// Atomically take a user for scoring: insert their cursor row, or advance it
-// only if it's still older than `staleBefore`. False = another run has them.
+// A claim is a lease, not a scan: last_scanned_at only moves on success, so a
+// run killed mid-user (function timeout) delays that user by at most
+// SCAN_LEASE_MS, not a day.
+const SCAN_LEASE_MS = 10 * 60_000;
+
+// Atomically take a user for scoring. False = another run holds a live lease
+// or already scanned them since `staleBefore`.
 async function claimUser(sb: SupabaseClient, uid: string, staleBefore: string): Promise<boolean> {
-  const now = new Date().toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
   const { data: inserted } = await sb
     .from("job_scan_state")
-    .upsert({ user_id: uid, last_scanned_at: now }, { onConflict: "user_id", ignoreDuplicates: true })
+    .upsert(
+      { user_id: uid, last_scanned_at: new Date(0).toISOString(), claimed_at: nowIso },
+      { onConflict: "user_id", ignoreDuplicates: true },
+    )
     .select("user_id");
   if (inserted?.length) return true;
-  const { data: advanced } = await sb
+  const leaseExpired = new Date(now.getTime() - SCAN_LEASE_MS).toISOString();
+  const { data: claimed } = await sb
     .from("job_scan_state")
-    .update({ last_scanned_at: now })
+    .update({ claimed_at: nowIso })
     .eq("user_id", uid)
     .lt("last_scanned_at", staleBefore)
+    .or(`claimed_at.is.null,claimed_at.lt.${leaseExpired}`)
     .select("user_id");
-  return !!advanced?.length;
+  return !!claimed?.length;
 }
 
 // On-demand per-user refresh ("Refresh" on the feed): coverage → a bounded

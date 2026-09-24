@@ -21,7 +21,9 @@ export const maxDuration = 300;
 
 const COVERAGE_BUDGET_MS = 45_000;
 const FETCH_BUDGET_MS = 60_000;
-const SCORE_DEADLINE_MS = 270_000;
+// No new user starts after this; one user (enrich + hydrate + LLM pass) can
+// take a minute or more, and a run killed mid-user just waits out its lease.
+const SCORE_DEADLINE_MS = 200_000;
 // Boards the fetch cron hasn't refreshed in this long get topped up here.
 const STALE_MS = 20 * 3_600_000;
 

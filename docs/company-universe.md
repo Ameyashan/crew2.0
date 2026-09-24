@@ -33,9 +33,17 @@ data/company-universe.csv ──► classify.ts ──► company_universe (1 ro
   `tenant/wdN/site`). `careers.ts` scans the employer's careers page for
   board links. Every guess is **verified against the live board** before
   it's trusted:
-  * Greenhouse, Lever and Ashby boards must name the company.
+  * Greenhouse boards must carry the company's name. Only descriptor words
+    may differ, so "Scale AI" matches "Scale" but "Relativity Space" doesn't
+    match "Relativity".
+  * Lever and Ashby postings must mention the company.
+  * Workday boards need their tenant to match the company's name, or their
+    own branding or a sample posting to name it. Tenant names collide:
+    "pfg" is Pattison Food Group, not Performance Food Group.
   * Large employers need 20+ postings. That rejects "Post Holdings →
     ashby:post" collisions.
+  * A board belongs to at most one employer. Slugs are stored in canonical
+    form, with a unique index on `(ats, lower(slug))`.
 * **`src/lib/jobs/sources/workday.ts`**: the Workday adapter. It takes the
   newest 300 postings, filtered to the US when the tenant exposes a country
   facet. Descriptions are hydrated lazily (`hydrate.ts`) for jobs that get
@@ -61,8 +69,12 @@ data/company-universe.csv ──► classify.ts ──► company_universe (1 ro
   `fetch_failures`. After 5 consecutive failures the board is deactivated. If
   it was a universe employer, that employer goes back to `pending` so the
   resolver can find where it moved.
-* **Scoring.** `job_scan_state` is the per-user scoring cursor, with an
-  atomic claim so overlapping runs never score the same user twice.
+* **Boards are claimed before fetching.** `last_fetched_at` is stamped
+  first, so overlapping runs never fetch the same board at once.
+* **Scoring.** `job_scan_state` is the per-user scoring cursor.
+  `last_scanned_at` moves only when scoring succeeds, and `claimed_at` is a
+  10-minute lease. Overlapping runs never double-score a user, and a run
+  killed mid-user only delays that user by the lease.
 * **Enrichment.** Candidates are enriched right before scoring
   (`enrichCandidates`), so the visa and size chips users see are always
   filled in. The global drain handles the rest.

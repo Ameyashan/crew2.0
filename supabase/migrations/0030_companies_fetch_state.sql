@@ -11,7 +11,8 @@ create index if not exists companies_fetch_queue_idx on companies(active, last_f
 -- within a deadline and the rest carry over to later jobs-fetch ticks.
 create table if not exists job_scan_state (
   user_id         uuid primary key,
-  last_scanned_at timestamptz not null default now()
+  last_scanned_at timestamptz not null default now(),   -- last SUCCESSFUL scoring pass
+  claimed_at      timestamptz                           -- lease held by a run scoring this user now
 );
 -- Service-role only (written by crons), like the other scan internals.
 alter table public.job_scan_state enable row level security;

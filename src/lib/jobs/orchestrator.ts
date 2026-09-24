@@ -6,7 +6,7 @@
 //   * `first_seen_at` and the enrichment columns are intentionally OMITTED from
 //     the payload: DB defaults fill them on insert, and they're preserved on
 //     update (PostgREST only updates columns present in the payload).
-//   * Every seen job gets last_seen_at = runTs; a per-company stale-out then
+//   * Every seen job gets last_seen_at = the board's fetch time; a per-company stale-out then
 //     flips is_active=false on rows whose last_seen_at predates this run.
 //   * A company whose fetch throws is isolated (recorded in `errors`) and skips
 //     stale-out, so a transient outage never deactivates its jobs.
@@ -99,7 +99,6 @@ export interface FetchOptions {
 // time-budgeted slices (see src/app/api/cron/jobs-fetch).
 export async function fetchAllListings(opts?: FetchOptions): Promise<FetchResult> {
   const sb = supabaseAdmin();
-  const runTs = new Date().toISOString();
 
   const scope = opts?.companyIds;
   if (scope && scope.length === 0) {
@@ -151,7 +150,26 @@ export async function fetchAllListings(opts?: FetchOptions): Promise<FetchResult
       result.skipped = (result.skipped ?? 0) + 1;
       return;
     }
+    // Claim the board: two runs (the daily scan's top-up and a jobs-fetch
+    // tick) fetching it concurrently could rewind last_seen_at and let one
+    // run's stale-out deactivate the other's fresh jobs. Stamping
+    // last_fetched_at first makes the second run see it as fresh and skip.
+    if (opts?.staleBefore) {
+      const { data: won } = await sb
+        .from("companies")
+        .update({ last_fetched_at: new Date().toISOString() })
+        .eq("id", t.company_id)
+        .or(`last_fetched_at.is.null,last_fetched_at.lt.${opts.staleBefore}`)
+        .select("id");
+      if (!won?.length) {
+        result.skipped = (result.skipped ?? 0) + 1;
+        return;
+      }
+    }
     result.attempted = (result.attempted ?? 0) + 1;
+    // Per-board timestamp: last_seen_at and the stale-out compare against the
+    // moment THIS board was fetched, not the start of a long run.
+    const runTs = new Date().toISOString();
     try {
       const { jobs: normalized, complete } = await fetchBoardResult(t.ats, t.slug, t.name);
 

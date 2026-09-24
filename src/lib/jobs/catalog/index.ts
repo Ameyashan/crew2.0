@@ -10,6 +10,7 @@
 
 import { supabaseAdmin } from "@/lib/supabase";
 import { mapPool } from "@/lib/jobs/util";
+import { selectAll } from "@/lib/jobs/paging";
 import { resolveCandidates } from "@/lib/jobs/catalog/resolve";
 import { validateAttempts } from "@/lib/jobs/catalog/validate";
 import { isSectorId } from "@/lib/jobs/catalog/sectors";
@@ -86,7 +87,10 @@ export async function ensureCatalogCoverage(
   if (!resolved.length) return { ...EMPTY(gapsSectors, gapsCompanies), resolved: 0 };
 
   // Skip companies whose normalized name OR any attempt key already exists.
-  const { data: existing } = await sb.from("companies").select("ats, slug, normalized");
+  // Paged: the catalog is past PostgREST's 1000-row cap.
+  const existing = await selectAll<{ ats: string; slug: string; normalized: string }>((from, to) =>
+    sb.from("companies").select("ats, slug, normalized").order("id").range(from, to),
+  );
   const existingKeys = new Set((existing ?? []).map((r) => `${r.ats}:${String(r.slug).toLowerCase()}`));
   const existingNorms = new Set((existing ?? []).map((r) => r.normalized as string));
 

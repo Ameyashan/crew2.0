@@ -97,7 +97,7 @@ export async function PUT(req: NextRequest) {
     // preserved (they carry user intent, not just a ranking).
     const { data: prev } = await sb
       .from("job_preferences")
-      .select("interests, role_mode, target_roles")
+      .select("interests, role_mode, target_roles, include_universe")
       .eq("user_id", userId)
       .maybeSingle();
     const sameArr = (a: unknown, b: string[]) => {
@@ -108,6 +108,8 @@ export async function PUT(req: NextRequest) {
     const matchingChanged =
       !prev ||
       prev.role_mode !== role_mode ||
+      // Turning the universe pool off must drop the matches it contributed.
+      (prev.include_universe !== false) !== include_universe ||
       !sameArr(prev.interests, interests) ||
       !sameArr(prev.target_roles, target_roles);
 

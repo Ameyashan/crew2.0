@@ -7,6 +7,7 @@ import {
   matchesLocations,
   matchesSize,
   matchesStaffingPref,
+  explicitCompanies,
   matchesVisaNeed,
   postedThreshold,
 } from "@/lib/jobs/scan";
@@ -60,8 +61,8 @@ export async function GET(req: NextRequest) {
       .limit(CANDIDATE_WINDOW);
     if (filterNew) q = q.eq("status", "new");
 
-    const [{ data, error }, { prefs, follows }] = await Promise.all([q, loadScanPrefs(sb, userId)]);
-    const followed = new Set(follows);
+    const [{ data, error }, { prefs, follows, pins }] = await Promise.all([q, loadScanPrefs(sb, userId)]);
+    const explicit = explicitCompanies(follows, pins);
     if (error) return Response.json({ error: error.message }, { status: 500 });
 
     const threshold = postedThreshold(prefs.posted_within);
@@ -72,8 +73,8 @@ export async function GET(req: NextRequest) {
       if (!matchesSize(j, prefs.company_sizes)) return false;
       // "I need sponsorship" hides explicit-no postings outright.
       if (!matchesVisaNeed(j, prefs.visa_required)) return false;
-      // Staffing firms stay hidden unless opted in or explicitly followed.
-      if (!matchesStaffingPref(j, prefs.include_staffing, followed)) return false;
+      // Staffing firms stay hidden unless opted in, followed or pinned.
+      if (!matchesStaffingPref(j, prefs.include_staffing, explicit)) return false;
       // posted_within is enforced only here and in the email digest — scan-time
       // selection ignores it so a tight setting can't starve the pipeline. An
       // unknown posted date never hides a job.
