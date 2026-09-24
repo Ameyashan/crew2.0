@@ -1,4 +1,4 @@
-// Generate supabase/migrations/0027_company_universe_seed.sql from
+// Generate supabase/migrations/0028_company_universe_seed.sql from
 // data/company-universe.csv + data/company-universe-boards.json.
 //
 //   node scripts/probe-company-boards.ts   # 1. verify boards (network)
@@ -18,7 +18,7 @@ const BOARDS_PATH = new URL("../data/company-universe-boards.json", import.meta.
 const OUT_ARG = process.argv.find((a) => a.startsWith("--out="));
 const OUT_PATH = OUT_ARG
   ? new URL(`../${OUT_ARG.slice(6)}`, import.meta.url)
-  : new URL("../supabase/migrations/0027_company_universe_seed.sql", import.meta.url);
+  : new URL("../supabase/migrations/0028_company_universe_seed.sql", import.meta.url);
 
 interface ProbeResult {
   name: string;

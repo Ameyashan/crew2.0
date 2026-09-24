@@ -147,7 +147,7 @@ export interface DailyDigest {
 
 // ── Daily Job-Discovery Feed (mirrors 0010_jobs_feed.sql) ────────────────────
 
-export type Ats = "greenhouse" | "lever" | "ashby";
+export type Ats = "greenhouse" | "lever" | "ashby" | "workday";
 export type RemoteType = "remote" | "hybrid" | "onsite" | "unknown";
 export type SizeBucket = "large" | "medium" | "startup";
 // 'sponsors_verified' is backed by USCIS filing data (0021); 'no_sponsorship' is

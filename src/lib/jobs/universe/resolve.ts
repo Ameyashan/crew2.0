@@ -12,7 +12,7 @@
 //      is verified against the live board before it's trusted, same trust model
 //      as the catalog resolver (catalog/resolve.ts).
 //   3. careers-page sniff — fetch the careers URL the model suggested and scan
-//      its HTML for a board link (workday.ts).
+//      its HTML for a board link (careers.ts).
 // Hits insert a companies row (source 'universe'); misses back off
 // (next_resolve_at) and are retried a few times before staying unresolved.
 //
@@ -24,6 +24,8 @@ import { logAgentRun } from "@/lib/agent-runs";
 import { supabaseAdmin } from "@/lib/supabase";
 import { mapPool } from "@/lib/jobs/util";
 import { findBoard, probeBoard, LARGE_MIN_JOBS, type ProbeAts } from "@/lib/jobs/universe/probe";
+import { discoverFromCareersPage } from "@/lib/jobs/universe/careers";
+import { workdayJobCount } from "@/lib/jobs/sources/workday";
 import type { Ats } from "@/lib/jobs/types";
 
 const MODEL = "claude-sonnet-4-6";
@@ -54,12 +56,9 @@ export interface UniverseRow {
   probed_at: string | null;
 }
 
-// A board guess to verify. Workday slugs are "tenant/wdN/site"; the model may
-// propose Workday before the catalog can scan it — such guesses simply fail
-// verification until a Workday verifier is registered.
-export type BoardAts = Ats | "workday";
+// A board guess to verify. Workday slugs are "tenant/wdN/site".
 export interface BoardAttempt {
-  ats: BoardAts;
+  ats: Ats;
   slug: string;
 }
 
@@ -67,37 +66,18 @@ export interface VerifiedBoard extends BoardAttempt {
   jobs: number;
 }
 
-// Verify one guess against the live board. Pluggable per ATS so Workday
-// (step 2) slots in without touching the batch loop.
-export type Verifier = (a: BoardAttempt, name: string) => Promise<number | null>;
-
-const probeVerifier: Verifier = async (a, name) =>
-  a.ats === "greenhouse" || a.ats === "lever" || a.ats === "ashby"
-    ? probeBoard(a.ats as ProbeAts, a.slug, name)
-    : null;
-
-const verifiers: Verifier[] = [probeVerifier];
-
-// Register an extra verifier (e.g. Workday). Idempotent per function.
-export function registerVerifier(v: Verifier) {
-  if (!verifiers.includes(v)) verifiers.push(v);
-}
-
-async function verify(a: BoardAttempt, row: UniverseRow): Promise<number | null> {
+// Verify one guess against the live board; returns its job count or null.
+// Greenhouse/Lever/Ashby also check the board names this company (probe.ts);
+// Workday tenant/site pairs are specific enough that a live board from a
+// model guess or the company's own careers page is trusted. Large employers
+// must clear LARGE_MIN_JOBS either way.
+export async function verifyAttempt(a: BoardAttempt, row: Pick<UniverseRow, "name" | "size_bucket">): Promise<number | null> {
   const minJobs = row.size_bucket === "large" ? LARGE_MIN_JOBS : 1;
-  for (const v of verifiers) {
-    const n = await v(a, row.name).catch(() => null);
-    if (n && n >= minJobs) return n;
-  }
-  return null;
-}
-
-// Extra discovery after the LLM guesses fail (careers-page sniffing, step 2).
-// Receives the model's careers URL hint; returns attempts to verify.
-export type Discoverer = (name: string, careersUrl: string | null) => Promise<BoardAttempt[]>;
-const discoverers: Discoverer[] = [];
-export function registerDiscoverer(d: Discoverer) {
-  if (!discoverers.includes(d)) discoverers.push(d);
+  const n =
+    a.ats === "workday"
+      ? await workdayJobCount(a.slug)
+      : await probeBoard(a.ats as ProbeAts, a.slug, row.name).catch(() => null);
+  return n && n >= minJobs ? n : null;
 }
 
 // ── LLM guesses ──────────────────────────────────────────────────────────────
@@ -118,7 +98,7 @@ Rules:
 Output strict JSON only, no prose:
 { "companies": [ { "i": number, "boards": [ { "ats": string, "slug": string } ], "careers_url": string | null } ] }`;
 
-const ATS_SET = new Set<BoardAts>(["greenhouse", "lever", "ashby", "workday"]);
+const ATS_SET = new Set<Ats>(["greenhouse", "lever", "ashby", "workday"]);
 
 export interface Guess {
   boards: BoardAttempt[];
@@ -174,7 +154,7 @@ export async function guessBoards(names: string[]): Promise<Map<number, Guess>> 
     if (!(idx >= 0 && idx < names.length)) continue;
     const boards: BoardAttempt[] = [];
     for (const b of Array.isArray(c.boards) ? (c.boards as Array<Record<string, unknown>>) : []) {
-      const ats = b?.ats as BoardAts;
+      const ats = b?.ats as Ats;
       const slug = typeof b?.slug === "string" ? b.slug.trim() : "";
       if (ATS_SET.has(ats) && slug && boards.length < 3) boards.push({ ats, slug });
     }
@@ -351,14 +331,12 @@ export async function resolveUniverseBatch(opts?: {
       try {
         const g = guesses.get(b);
         for (const attempt of g?.boards ?? []) {
-          const n = await verify(attempt, row);
+          const n = await verifyAttempt(attempt, row);
           if (n) return hit(row, { ...attempt, jobs: n }, `llm_${attempt.ats}`);
         }
-        for (const d of discoverers) {
-          for (const attempt of await d(row.name, g?.careersUrl ?? null).catch(() => [])) {
-            const n = await verify(attempt, row);
-            if (n) return hit(row, { ...attempt, jobs: n }, `careers_${attempt.ats}`);
-          }
+        for (const attempt of await discoverFromCareersPage(g?.careersUrl ?? null)) {
+          const n = await verifyAttempt(attempt, row);
+          if (n) return hit(row, { ...attempt, jobs: n }, `careers_${attempt.ats}`);
         }
         const tried = (g?.boards ?? []).map((a) => `${a.ats}:${a.slug}`).join(", ");
         await markMiss(row, tried ? `no verified board (tried ${tried})` : "no verified board");

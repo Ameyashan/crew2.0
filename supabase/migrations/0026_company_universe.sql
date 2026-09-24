@@ -2,7 +2,7 @@
 --
 -- Source: data/company-universe.csv (Fortune 500 ∪ top-500 startups ∪ top-500
 -- H-1B sponsors, ~1.3k employers after folding subsidiaries). Rows are loaded
--- by the generated seed migration 0027 (scripts/build-company-universe.ts).
+-- by the generated seed migration 0028 (scripts/build-company-universe.ts).
 --
 --   company_universe  GLOBAL  one row per employer: list membership + ranks
 --                             (feed badges), USCIS petitioning entities (H-1B

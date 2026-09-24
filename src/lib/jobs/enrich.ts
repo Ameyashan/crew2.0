@@ -17,6 +17,7 @@ import { jdText, mapPool, mentionsVisa } from "@/lib/jobs/util";
 import { getYcSizeMap } from "@/lib/jobs/enrich/yc";
 import { inferVisa } from "@/lib/jobs/enrich/visa";
 import { evidenceFromStats } from "@/lib/jobs/h1b/normalize";
+import { hydrateJobs } from "@/lib/jobs/hydrate";
 import type { SizeBucket, VisaConfidence, VisaEvidence, H1bStats } from "@/lib/jobs/types";
 
 const DEFAULT_LIMIT = 40;
@@ -53,6 +54,10 @@ export async function enrichJobs(opts?: { limit?: number }): Promise<EnrichResul
 
   const jobs = (jobsData ?? []) as EnrichJob[];
   if (!jobs.length) return { enriched: 0, sized: 0, visaLikely: 0, visaVerified: 0, visaNone: 0 };
+
+  // Workday listings have no JD until their detail is fetched (hydrate.ts);
+  // the visa parse below needs it.
+  await hydrateJobs(jobs).catch(() => 0);
 
   // Curated company sizes + H-1B track records for the referenced companies.
   const companyIds = [...new Set(jobs.map((j) => j.company_id).filter(Boolean))] as string[];

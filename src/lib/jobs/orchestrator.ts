@@ -16,7 +16,20 @@ import { mapPool } from "@/lib/jobs/util";
 import { fetchGreenhouseBoard } from "@/lib/jobs/sources/greenhouse";
 import { fetchLeverBoard } from "@/lib/jobs/sources/lever";
 import { fetchAshbyBoard } from "@/lib/jobs/sources/ashby";
+import { fetchWorkdayBoard, fetchWorkdayBoardPaged } from "@/lib/jobs/sources/workday";
 import type { Ats, BoardTarget, FetchResult, NormalizedJob } from "@/lib/jobs/types";
+
+// A board fetch that may be deliberately partial (Workday caps at the newest
+// N postings). `complete: false` changes how unseen rows are aged out.
+export interface BoardFetchResult {
+  jobs: NormalizedJob[];
+  complete: boolean;
+}
+
+// How long a job from a PARTIAL board may go unseen before it's deactivated.
+// A complete board deactivates unseen rows immediately; a capped one can't
+// tell "closed" from "fell past the cap this run", so it waits.
+const PARTIAL_STALE_MS = 7 * 86_400_000;
 
 const CONCURRENCY = 5;
 
@@ -33,9 +46,16 @@ export async function fetchBoard(
       return fetchLeverBoard(slug, companyName);
     case "ashby":
       return fetchAshbyBoard(slug, companyName);
+    case "workday":
+      return fetchWorkdayBoard(slug, companyName);
     default:
       return [];
   }
+}
+
+export async function fetchBoardResult(ats: Ats, slug: string, companyName?: string): Promise<BoardFetchResult> {
+  if (ats === "workday") return fetchWorkdayBoardPaged(slug, companyName);
+  return { jobs: await fetchBoard(ats, slug, companyName), complete: true };
 }
 
 // `companyIds` scopes the fetch to a subset of the catalog (used by the on-demand
@@ -65,7 +85,7 @@ export async function fetchAllListings(opts?: { companyIds?: string[] }): Promis
 
   await mapPool(targets, CONCURRENCY, async (t) => {
     try {
-      const normalized = await fetchBoard(t.ats, t.slug, t.name);
+      const { jobs: normalized, complete } = await fetchBoardResult(t.ats, t.slug, t.name);
 
       // Pre-existing ids for this company -> accurate new-vs-seen classification.
       const { data: existingRows } = await sb
@@ -113,13 +133,15 @@ export async function fetchAllListings(opts?: { companyIds?: string[] }): Promis
         }
       }
 
-      // Stale-out: still-active jobs for this company we didn't see this run.
+      // Stale-out: still-active jobs for this company we didn't see this run
+      // (partial boards: unseen for PARTIAL_STALE_MS).
+      const staleBefore = complete ? runTs : new Date(Date.parse(runTs) - PARTIAL_STALE_MS).toISOString();
       await sb
         .from("jobs")
         .update({ is_active: false, updated_at: runTs })
         .eq("company_id", t.company_id)
         .eq("is_active", true)
-        .lt("last_seen_at", runTs);
+        .lt("last_seen_at", staleBefore);
     } catch (e) {
       result.errors.push({
         company: t.name,

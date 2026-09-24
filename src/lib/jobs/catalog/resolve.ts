@@ -35,11 +35,11 @@ interface ResolveInput {
   perSector?: number; // how many companies to request per sector
 }
 
-const SYSTEM = `You map job-market interests to company career boards. Given sector tags and/or specific company names, list real companies that ACTIVELY hire and are likely hosted on Greenhouse, Lever, or Ashby.
+const SYSTEM = `You map job-market interests to company career boards. Given sector tags and/or specific company names, list real companies that ACTIVELY hire and are likely hosted on Greenhouse, Lever, Ashby, or Workday.
 
 For each company give your single best guess of:
-- "ats": one of "greenhouse" | "lever" | "ashby".
-- "slug": the board/site slug used in that ATS's URL. Greenhouse and Lever slugs are almost always the company name lowercased with no spaces (e.g. "stripe", "scaleai"); Ashby slugs are usually the company name in its normal casing (e.g. "Ramp", "Linear", "OpenAI").
+- "ats": one of "greenhouse" | "lever" | "ashby" | "workday" (large enterprises mostly use Workday).
+- "slug": the board/site slug used in that ATS's URL. Greenhouse and Lever slugs are almost always the company name lowercased with no spaces (e.g. "stripe", "scaleai"); Ashby slugs are usually the company name in its normal casing (e.g. "Ramp", "Linear", "OpenAI"). Workday slugs are "tenant/wdN/site" from https://<tenant>.<wdN>.myworkdayjobs.com/<site> (e.g. "nvidia/wd5/NVIDIAExternalCareerSite").
 - "sectors": which of the PROVIDED sector ids this company fits (subset; may be empty for a company given only by name).
 
 Rules:
@@ -48,10 +48,10 @@ Rules:
 - Do NOT include a company more than once.
 
 Output strict JSON only, no prose:
-{ "companies": [ { "company": string, "ats": "greenhouse"|"lever"|"ashby", "slug": string, "sectors": string[] } ] }`;
+{ "companies": [ { "company": string, "ats": "greenhouse"|"lever"|"ashby"|"workday", "slug": string, "sectors": string[] } ] }`;
 
 function isAts(v: unknown): v is Ats {
-  return v === "greenhouse" || v === "lever" || v === "ashby";
+  return v === "greenhouse" || v === "lever" || v === "ashby" || v === "workday";
 }
 
 // Programmatic slug variants for a company name, used as fallbacks after the
@@ -139,7 +139,9 @@ export async function resolveCandidates(input: ResolveInput): Promise<ResolvedCo
 
     // Ordered attempts: model's primary guess, then programmatic variants on the
     // same ATS. Deduped and capped.
-    const slugs = [primarySlug, ...slugVariants(company)];
+    // Name-derived variants only make sense for token-style slugs; a Workday
+    // slug is a tenant/wdN/site triple.
+    const slugs = r.ats === "workday" ? [primarySlug] : [primarySlug, ...slugVariants(company)];
     const attempts: { ats: Ats; slug: string }[] = [];
     const seen = new Set<string>();
     for (const slug of slugs) {
