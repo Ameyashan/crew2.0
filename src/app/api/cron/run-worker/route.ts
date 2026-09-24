@@ -33,14 +33,17 @@ async function claimStale(
   statusColumn: string,
   threshold: string,
   extraSelect = "",
+  requirePayload = false,
 ): Promise<Claimed[]> {
   const sb = supabaseAdmin();
   const select = `id, heartbeat_at${extraSelect}`;
-  const { data: candidates, error } = await sb
+  let query = sb
     .from(table)
     .select(select)
     .eq(statusColumn, "in_flight")
-    .or(`heartbeat_at.is.null,heartbeat_at.lt.${threshold}`)
+    .or(`heartbeat_at.is.null,heartbeat_at.lt.${threshold}`);
+  if (requirePayload) query = query.not("payload", "is", null);
+  const { data: candidates, error } = await query
     .order("heartbeat_at", { ascending: true, nullsFirst: true })
     .limit(BATCH);
   if (error || !candidates) return [];
@@ -76,7 +79,12 @@ export async function GET(req: NextRequest) {
   const threshold = new Date(Date.now() - STALE_MS).toISOString();
 
   const composeClaimed = await claimStale("compose_runs", "outcome", threshold, ", kind");
-  const resumeClaimed = await claimStale("resume_generations", "status", threshold);
+  // Only standalone résumé runs carry a payload and are re-drivable. A row with
+  // no payload is a child tailor driven inline by its parent (a job compose run,
+  // or a synchronous regenerate stream): the parent owns it and re-drives it
+  // itself. Re-driving one here ran the tailor with NO job input and left a
+  // generic "Tailored resume" row beside the real application on the Desk.
+  const resumeClaimed = await claimStale("resume_generations", "status", threshold, "", true);
 
   // Re-drive each claimed run. Each executor loads the row's payload + user
   // context itself and finalizes idempotently. Dispatch compose runs by kind.
