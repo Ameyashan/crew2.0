@@ -1,8 +1,15 @@
 import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { withUser } from "@/lib/auth";
-import { feedItemFromJoin, type FeedJoinRow } from "@/lib/jobs/serialize";
-import { loadScanPrefs, matchesLocations, matchesSize, matchesVisaNeed, postedThreshold } from "@/lib/jobs/scan";
+import { feedItemFromJoin, COMPANY_EMBED, type FeedJoinRow } from "@/lib/jobs/serialize";
+import {
+  loadScanPrefs,
+  matchesLocations,
+  matchesSize,
+  matchesStaffingPref,
+  matchesVisaNeed,
+  postedThreshold,
+} from "@/lib/jobs/scan";
 import { diversifyByCompany } from "@/lib/jobs/format";
 import type { FeedItem } from "@/lib/jobs/types";
 
@@ -42,8 +49,7 @@ export async function GET(req: NextRequest) {
     const filterNew = url.searchParams.get("filter") === "new";
 
     const sb = supabaseAdmin();
-    const SELECT =
-      "id, score, reasons, status, jobs!inner(id, company_id, title, company, location_raw, city, region, country, remote_type, compensation, posted_date, posted_date_approx, url, visa_confidence, visa_evidence, company_size, is_active)";
+    const SELECT = `id, score, reasons, status, jobs!inner(id, company_id, title, company, location_raw, city, region, country, remote_type, compensation, posted_date, posted_date_approx, url, visa_confidence, visa_evidence, company_size, is_active, ${COMPANY_EMBED})`;
     let q = sb
       .from("job_matches")
       .select(SELECT)
@@ -54,7 +60,8 @@ export async function GET(req: NextRequest) {
       .limit(CANDIDATE_WINDOW);
     if (filterNew) q = q.eq("status", "new");
 
-    const [{ data, error }, { prefs }] = await Promise.all([q, loadScanPrefs(sb, userId)]);
+    const [{ data, error }, { prefs, follows }] = await Promise.all([q, loadScanPrefs(sb, userId)]);
+    const followed = new Set(follows);
     if (error) return Response.json({ error: error.message }, { status: 500 });
 
     const threshold = postedThreshold(prefs.posted_within);
@@ -65,6 +72,8 @@ export async function GET(req: NextRequest) {
       if (!matchesSize(j, prefs.company_sizes)) return false;
       // "I need sponsorship" hides explicit-no postings outright.
       if (!matchesVisaNeed(j, prefs.visa_required)) return false;
+      // Staffing firms stay hidden unless opted in or explicitly followed.
+      if (!matchesStaffingPref(j, prefs.include_staffing, followed)) return false;
       // posted_within is enforced only here and in the email digest — scan-time
       // selection ignores it so a tight setting can't starve the pipeline. An
       // unknown posted date never hides a job.

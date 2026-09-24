@@ -380,6 +380,29 @@ export default function JobDetailPage() {
                   >
                     {job.title}
                   </div>
+                  {job.badges?.length ? (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                      {job.badges.map((b) => (
+                        <span
+                          key={b}
+                          style={{
+                            fontFamily: PAPER_FONTS_V2.mono,
+                            fontWeight: 500,
+                            fontSize: 10,
+                            lineHeight: 1,
+                            letterSpacing: ".06em",
+                            textTransform: "uppercase",
+                            color: TOKENS.muted2,
+                            border: `1px solid ${TOKENS.lineSoft}`,
+                            borderRadius: 4,
+                            padding: "4px 7px",
+                          }}
+                        >
+                          {b}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                   <div
                     style={{
                       fontFamily: "system-ui, sans-serif",

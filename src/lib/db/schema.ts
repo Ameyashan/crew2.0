@@ -276,6 +276,8 @@ export interface JobPreferences {
   company_sizes: SizeBucket[];
   locations: string[];
   visa_required: boolean;
+  include_universe: boolean;
+  include_staffing: boolean;
   created_at: string;
   updated_at: string;
 }

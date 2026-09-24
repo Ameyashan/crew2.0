@@ -6,7 +6,7 @@ import { ensureCatalogCoverage } from "@/lib/jobs/catalog";
 import { fetchAllListings } from "@/lib/jobs/orchestrator";
 import { enrichJobs } from "@/lib/jobs/enrich";
 import { scoreJobsForUser } from "@/lib/jobs/score";
-import { loadScanPrefs, selectCandidateJobs, strArray, extractPins } from "@/lib/jobs/scan";
+import { loadScanPrefs, selectCandidateJobs, strArray, extractPins, hasScanSignal } from "@/lib/jobs/scan";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -20,7 +20,7 @@ export const maxDuration = 300;
 
 async function scoreUserScan(sb: SupabaseClient, uid: string) {
   const { prefs, pins, follows, currentRole } = await loadScanPrefs(sb, uid);
-  if (!prefs.interests.length && !pins.length && !follows.length) return { candidates: 0, scored: 0, skipped: 0 };
+  if (!hasScanSignal(prefs, pins, follows, currentRole)) return { candidates: 0, scored: 0, skipped: 0 };
   const candidates = await selectCandidateJobs(sb, prefs, pins, undefined, follows, currentRole);
   if (!candidates.length) return { candidates: 0, scored: 0, skipped: 0 };
   const summary = await scoreJobsForUser({

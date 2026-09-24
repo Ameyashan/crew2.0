@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { withUser } from "@/lib/auth";
-import { jobDetail } from "@/lib/jobs/serialize";
+import { jobDetail, COMPANY_EMBED, type CompanyEmbed } from "@/lib/jobs/serialize";
+import { hydrateJobs } from "@/lib/jobs/hydrate";
 import type { Job, JobMatch, MatchStatus } from "@/lib/db/schema";
 
 export const runtime = "nodejs";
@@ -17,9 +18,12 @@ export async function GET(
     const { id } = await params;
     const sb = supabaseAdmin();
 
-    const { data: job, error } = await sb.from("jobs").select("*").eq("id", id).maybeSingle();
+    const { data: row, error } = await sb.from("jobs").select(`*, ${COMPANY_EMBED}`).eq("id", id).maybeSingle();
     if (error) return Response.json({ error: error.message }, { status: 500 });
-    if (!job) return Response.json({ error: "not found" }, { status: 404 });
+    if (!row) return Response.json({ error: "not found" }, { status: 404 });
+    const { companies: company, ...job } = row as Job & { companies: CompanyEmbed | null };
+    // Workday listings carry no JD until hydrated; fetch it on first open.
+    await hydrateJobs([job]).catch(() => 0);
 
     const { data: match } = await sb
       .from("job_matches")
@@ -52,7 +56,7 @@ export async function GET(
       following = !!follow;
     }
 
-    return Response.json({ job: jobDetail(job as Job, (match as JobMatch | null) ?? null), following });
+    return Response.json({ job: jobDetail(job as Job, (match as JobMatch | null) ?? null, company), following });
   });
 }
 

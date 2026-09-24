@@ -193,6 +193,32 @@ function JobCard({
       <span style={{ color: comp.listed ? TOKENS.green : TOKENS.faint }}>{comp.label}</span>
     </div>
   );
+  // Why this employer is tracked (Fortune 500 / top startup / top H-1B
+  // sponsor) — context a visa seeker weighs, kept quieter than the visa chip.
+  const badgeRow = item.badges?.length ? (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: isMobile ? 0 : 7 }}>
+      {item.badges.map((b) => (
+        <span
+          key={b}
+          style={{
+            fontFamily: PAPER_FONTS_V2.mono,
+            fontWeight: 500,
+            fontSize: 9.5,
+            lineHeight: 1,
+            letterSpacing: ".06em",
+            textTransform: "uppercase",
+            color: TOKENS.muted2,
+            border: `1px solid ${TOKENS.lineSoft}`,
+            borderRadius: 4,
+            padding: "4px 7px",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {b}
+        </span>
+      ))}
+    </div>
+  ) : null;
   const reasons = item.reasons && (
     <div
       style={{
@@ -265,6 +291,7 @@ function JobCard({
           </div>
         </div>
         {metaLine}
+        {badgeRow}
         {reasons}
       </div>
     );
@@ -292,6 +319,7 @@ function JobCard({
           {item.title}
         </div>
         {metaLine}
+        {badgeRow}
         {reasons}
       </div>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flex: "none" }}>
