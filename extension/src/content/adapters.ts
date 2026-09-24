@@ -69,8 +69,23 @@ const ashby: Adapter = {
   isConfirmationPage: () => false,
   confirmationVisible: () =>
     bodyTextMatches(/application (was |has been )?submitted|thank you for applying/i),
-  findForm: () => biggestForm(),
-  findResumeInput: resumeFileInput,
+  // Ashby renders the form without a <form> element: the fields sit in
+  // .ashby-application-form-container and the submit button is a sibling of
+  // it, so return their common ancestor (submit arming needs the button inside).
+  findForm: () => {
+    const fields = document.querySelector<HTMLElement>(".ashby-application-form-container");
+    if (!fields) return biggestForm();
+    const submit = document.querySelector(".ashby-application-form-submit-button");
+    let el: HTMLElement | null = fields;
+    while (submit && el && !el.contains(submit)) el = el.parentElement;
+    return el ?? fields;
+  },
+  // Not resumeFileInput: the "Autofill from resume" uploader above the form is
+  // also a file input mentioning "resume", and attaching there makes Ashby
+  // re-parse and overwrite fields.
+  findResumeInput: (form) =>
+    form.querySelector<HTMLInputElement>('input[type="file"]#_systemfield_resume') ??
+    form.querySelector<HTMLInputElement>('.ashby-application-form-container input[type="file"]'),
   applicationHref: () => {
     if (/\/application\/?$/.test(location.pathname)) return null;
     // Posting page: the SPA's Application tab.
