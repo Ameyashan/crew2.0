@@ -32,5 +32,6 @@ needed for unpacked loading.
 All API calls happen in the background service worker with a `jga_…` bearer
 token (`/api/ext/*`, see `src/lib/ext-auth.ts` in the app). Content scripts
 never fetch the API — they'd be CORS-blocked under the ATS page's origin — and
-message the worker instead. The token can only read the application package and
-mark applications submitted.
+message the worker instead. The token can only read the application package,
+draft answers for essay boxes the run hasn't answered yet (`/api/ext/answers`,
+saved back onto the application), and mark applications submitted.

@@ -39,6 +39,12 @@ export type BgRequest =
   | { type: "disconnect" }
   | { type: "getPackage"; url: string }
   | { type: "getResumePdf"; generationId: string }
+  | {
+      type: "draftAnswers";
+      applicationId: string | null;
+      questions: string[];
+      job: { title: string | null; company: string | null };
+    }
   | { type: "markSubmitted"; applicationId: string }
   | { type: "armSubmit"; applicationId: string }
   | { type: "getArmed" }
@@ -48,6 +54,7 @@ export type BgResponse =
   | { ok: boolean; connected?: boolean; error?: string }
   | PackageResponse
   | { ok: true; b64: string; filename: string }
+  | { ok: true; answers: PackageAnswer[] }
   | { ok: true; armed: { applicationId: string; armedAt: number } | null };
 
 export function sendBg<T = BgResponse>(msg: BgRequest): Promise<T> {

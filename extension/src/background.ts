@@ -93,6 +93,20 @@ async function handle(msg: BgRequest): Promise<unknown> {
       return { ok: true, b64: btoa(bin), filename };
     }
 
+    case "draftAnswers": {
+      const res = await api("/api/ext/answers", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          application_id: msg.applicationId,
+          questions: msg.questions,
+          job: msg.job,
+        }),
+      });
+      if (!res?.ok) return { ok: false, error: `answers: ${res?.status ?? "no token"}` };
+      return (await res.json()) as { ok: true; answers: { question: string; body: string }[] };
+    }
+
     case "markSubmitted": {
       const res = await api("/api/ext/submitted", {
         method: "POST",
