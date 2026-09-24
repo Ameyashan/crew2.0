@@ -57,6 +57,16 @@ export async function POST(req: NextRequest) {
   if (context_structured !== undefined) patch.context_structured = context_structured;
   if ("resume_text" in body) patch.resume_text = body.resume_text ?? null;
   if ("resume_filename" in body) patch.resume_filename = body.resume_filename ?? null;
+  if ("email" in body) patch.email = body.email ?? null;
+  if ("phone" in body) patch.phone = body.phone ?? null;
+  if ("location" in body) patch.location = body.location ?? null;
+  if ("work_authorization" in body)
+    patch.work_authorization = body.work_authorization ?? null;
+  if ("needs_sponsorship" in body)
+    patch.needs_sponsorship =
+      typeof body.needs_sponsorship === "boolean" ? body.needs_sponsorship : null;
+  if ("github_url" in body) patch.github_url = body.github_url ?? null;
+  if ("portfolio_url" in body) patch.portfolio_url = body.portfolio_url ?? null;
   if (body.onboarded) patch.onboarded_at = new Date().toISOString();
 
   // Activation analytics: crossing onboarding is the key funnel step.

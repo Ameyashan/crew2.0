@@ -1,0 +1,72 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        width: 300px;
+        margin: 0;
+        padding: 16px;
+        font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #1d1c1a;
+        background: #faf8f5;
+      }
+      h1 { font-size: 14px; margin: 0 0 10px; }
+      .muted { color: #8a857d; font-size: 12px; }
+      .row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+      .dot { width: 9px; height: 9px; border-radius: 99px; background: #d8d3ca; flex-shrink: 0; }
+      .dot.on { background: #3d8b58; }
+      button {
+        padding: 7px 12px;
+        border-radius: 8px;
+        border: 1px solid #1d1c1a;
+        background: #1d1c1a;
+        color: #faf8f5;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      button.outline { background: transparent; color: #1d1c1a; border-color: #c9c3b8; }
+      button:disabled { opacity: 0.5; cursor: default; }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 7px 10px;
+        border: 1px solid #c9c3b8;
+        border-radius: 8px;
+        font-family: ui-monospace, monospace;
+        font-size: 11px;
+        margin-bottom: 8px;
+        background: #fff;
+      }
+      .section { margin-top: 12px; padding-top: 12px; border-top: 1px solid #e8e3da; }
+      #error { color: #b3392e; font-size: 12px; margin-top: 8px; }
+      a { color: #1d1c1a; }
+    </style>
+  </head>
+  <body>
+    <h1>Jugaadu</h1>
+    <div class="row"><span id="dot" class="dot"></span><span id="status">Checking…</span></div>
+
+    <div id="connect-section" style="display: none">
+      <p class="muted">
+        Connect from <a href="#" id="settings-link">Jugaadu → Settings → Chrome extension</a>, or
+        paste a one-time code:
+      </p>
+      <input id="code" placeholder="jga_…" autocomplete="off" spellcheck="false" />
+      <button id="save-code">Connect</button>
+    </div>
+
+    <div id="connected-section" style="display: none">
+      <div class="section">
+        <button id="fill">Fill this page</button>
+        <button id="mark" class="outline" style="display: none">Mark as submitted</button>
+      </div>
+      <div class="section">
+        <button id="disconnect" class="outline">Disconnect</button>
+      </div>
+    </div>
+
+    <div id="error"></div>
+    <script src="popup.js"></script>
+  </body>
+</html>
