@@ -12,6 +12,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { currentUserId } from "@/lib/user-context";
 import { getProfile, senderContextFromProfile, type UserProfile } from "@/lib/profile";
 import { jdText } from "@/lib/jobs/util";
+import { hydrateJobs } from "@/lib/jobs/hydrate";
 import { visaScoreBoost } from "@/lib/jobs/h1b/normalize";
 import type { Job } from "@/lib/db/schema";
 import type { ScoreResult, RoleMode } from "@/lib/jobs/types";
@@ -184,6 +185,11 @@ export async function scoreJobsForUser({
   const already = new Set((existing ?? []).map((r) => r.job_id as string));
   const todo = jobs.filter((j) => !already.has(j.id));
   if (!todo.length) return { scored: 0, skipped: jobs.length };
+
+  // Workday listings carry no JD until hydrated; fetch the ones we're about to
+  // score so the model sees a snippet (best-effort — a failure just scores on
+  // the title).
+  await hydrateJobs(todo).catch(() => 0);
 
   const profile = await getProfile();
   const senderContext = senderContextFromProfile(profile);

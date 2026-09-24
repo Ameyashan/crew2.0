@@ -2,8 +2,16 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { sendEmail, escapeHtml } from "@/lib/email";
 import { SITE_URL } from "@/lib/site";
-import { feedItemFromJoin, type FeedJoinRow } from "@/lib/jobs/serialize";
-import { loadScanPrefs, matchesLocations, matchesSize, matchesVisaNeed, postedThreshold } from "@/lib/jobs/scan";
+import { feedItemFromJoin, COMPANY_EMBED, type FeedJoinRow } from "@/lib/jobs/serialize";
+import {
+  loadScanPrefs,
+  matchesLocations,
+  matchesSize,
+  matchesStaffingPref,
+  explicitCompanies,
+  matchesVisaNeed,
+  postedThreshold,
+} from "@/lib/jobs/scan";
 import { compDisplay, diversifyByCompany, postedAgo } from "@/lib/jobs/format";
 import type { FeedItem } from "@/lib/jobs/types";
 
@@ -27,8 +35,7 @@ const PER_COMPANY_CAP = 3;
 // this many days.
 const MAX_WINDOW_DAYS = 7;
 
-const SELECT =
-  "id, score, reasons, status, scored_at, jobs!inner(id, company_id, title, company, location_raw, city, region, country, remote_type, compensation, posted_date, posted_date_approx, url, visa_confidence, visa_evidence, company_size, is_active)";
+const SELECT = `id, score, reasons, status, scored_at, jobs!inner(id, company_id, title, company, location_raw, city, region, country, remote_type, compensation, posted_date, posted_date_approx, url, visa_confidence, visa_evidence, company_size, is_active, ${COMPANY_EMBED})`;
 
 function digestHtml(items: FeedItem[], total: number): string {
   const cards = items
@@ -143,7 +150,7 @@ export async function GET(req: NextRequest) {
         Number.isFinite(lastSent) ? Math.max(lastSent, floor) : Date.now() - 86_400_000,
       ).toISOString();
 
-      const [{ data: matchData, error: mErr }, { prefs }] = await Promise.all([
+      const [{ data: matchData, error: mErr }, { prefs, follows, pins }] = await Promise.all([
         sb
           .from("job_matches")
           .select(SELECT)
@@ -160,12 +167,14 @@ export async function GET(req: NextRequest) {
 
       // Same preference re-check the feed applies at read time.
       const threshold = postedThreshold(prefs.posted_within);
+      const explicit = explicitCompanies(follows, pins);
       const rows = ((matchData ?? []) as unknown as FeedJoinRow[]).filter((row) => {
         const j = row.jobs;
         if (!j) return false;
         if (!matchesLocations(j, prefs.locations)) return false;
         if (!matchesSize(j, prefs.company_sizes)) return false;
         if (!matchesVisaNeed(j, prefs.visa_required)) return false;
+        if (!matchesStaffingPref(j, prefs.include_staffing, explicit)) return false;
         if (threshold && j.posted_date && j.posted_date < threshold) return false;
         return true;
       });

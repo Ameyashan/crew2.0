@@ -2,6 +2,11 @@
 // record. USCIS publishes LEGAL names ("AMAZON.COM SERVICES LLC"); the catalog
 // holds display names ("Amazon"). Two tiers, conservative on purpose:
 //
+//   0. listed: universe employers (company_universe, 0026) carry the USCIS
+//              petitioning entities their list published ("AMAZON COM SERVICES
+//              LLC; AMAZON DATA SERVICES INC; …"). Each is normalized and
+//              looked up by equality — trusted outright, and it covers
+//              subsidiaries a name match would miss.
 //   1. exact:  normalizeEmployerName(company) === h1b_employer_records.normalized_name.
 //              Trusted outright (suffix-stripped equality).
 //   2. LLM:    for companies with no exact hit, prefix-matched candidate legal
@@ -51,6 +56,7 @@ interface CompanyRow {
   id: string;
   name: string;
   h1b_matched_at: string | null;
+  company_universe: { h1b_entities: string[] | null } | null;
 }
 
 interface Pending {
@@ -60,6 +66,7 @@ interface Pending {
 
 export interface MatchSummary {
   companies: number;
+  matched_listed: number;
   matched_exact: number;
   matched_llm: number;
   unmatched: number;
@@ -179,20 +186,44 @@ export async function matchCompaniesToH1b(opts?: { onlyUnmatched?: boolean }): P
 
   // Nothing ingested yet → nothing to match against.
   const { count } = await sb.from("h1b_employer_records").select("id", { count: "exact", head: true });
-  if (!count) return { companies: 0, matched_exact: 0, matched_llm: 0, unmatched: 0 };
+  if (!count) return { companies: 0, matched_listed: 0, matched_exact: 0, matched_llm: 0, unmatched: 0 };
 
-  let q = sb.from("companies").select("id, name, h1b_matched_at").eq("active", true);
+  let q = sb
+    .from("companies")
+    .select("id, name, h1b_matched_at, company_universe(h1b_entities)")
+    .eq("active", true);
   if (onlyUnmatched) q = q.is("h1b_matched_at", null);
   const { data: compData, error } = await q;
   if (error) throw new Error(`load companies failed: ${error.message}`);
-  const companies = (compData ?? []) as CompanyRow[];
-  if (!companies.length) return { companies: 0, matched_exact: 0, matched_llm: 0, unmatched: 0 };
+  const companies = (compData ?? []) as unknown as CompanyRow[];
+  if (!companies.length) return { companies: 0, matched_listed: 0, matched_exact: 0, matched_llm: 0, unmatched: 0 };
 
-  const summary: MatchSummary = { companies: companies.length, matched_exact: 0, matched_llm: 0, unmatched: 0 };
+  const summary: MatchSummary = {
+    companies: companies.length,
+    matched_listed: 0,
+    matched_exact: 0,
+    matched_llm: 0,
+    unmatched: 0,
+  };
   const pending: Pending[] = [];
 
+  // Tier 0: the universe list's own petitioning entities.
   // Tier 1: exact normalized equality; collect prefix candidates for the rest.
   await mapPool(companies, DB_CONCURRENCY, async (company) => {
+    const entities = company.company_universe?.h1b_entities ?? [];
+    if (entities.length) {
+      const names = new Set<string>();
+      for (const ent of entities) {
+        const entKey = normalizeEmployerName(ent);
+        if (entKey) for (const n of await namesWhere("eq", entKey, CANDIDATES_PER_COMPANY)) names.add(n);
+      }
+      if (names.size) {
+        const listed = [...names];
+        await saveMatch(company.id, listed, await statsFor(listed));
+        summary.matched_listed++;
+        return;
+      }
+    }
     const key = normalizeEmployerName(company.name);
     if (!key) {
       await saveMatch(company.id, [], null);

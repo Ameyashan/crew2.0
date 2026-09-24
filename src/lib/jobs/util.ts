@@ -99,7 +99,8 @@ export function slugToName(slug: string): string {
 
 // Extract plain-text JD body from a stored raw_json blob, per ATS. Greenhouse
 // stores escaped HTML in `content`; Lever has descriptionPlain (+ html
-// fallback); Ashby has descriptionPlain (+ html fallback). Shared by the
+// fallback); Ashby has descriptionPlain (+ html fallback); Workday has
+// jobDescription HTML once hydrated. Shared by the
 // enrichment pass (visa inference) and the scorer (JD snippets).
 export function jdText(
   ats: string,
@@ -110,6 +111,8 @@ export function jdText(
   if (ats === "greenhouse") return htmlToText(get("content"), maxChars);
   if (ats === "lever") return (get("descriptionPlain") || htmlToText(get("description"), maxChars)).slice(0, maxChars);
   if (ats === "ashby") return (get("descriptionPlain") || htmlToText(get("descriptionHtml"), maxChars)).slice(0, maxChars);
+  // Workday listings carry no JD; hydrateWorkdayJob() adds jobDescription.
+  if (ats === "workday") return htmlToText(get("jobDescription"), maxChars);
   return "";
 }
 

@@ -24,6 +24,8 @@ const DEFAULTS: PreferencesDTO = {
   role_mode: null,
   target_roles: [],
   daily_email: true,
+  include_universe: true,
+  include_staffing: false,
 };
 
 function strArray(v: unknown): string[] {
@@ -57,6 +59,8 @@ export async function GET() {
           role_mode: coerceRoleMode(data.role_mode),
           target_roles: strArray(data.target_roles),
           daily_email: data.daily_email !== false,
+          include_universe: data.include_universe !== false,
+          include_staffing: data.include_staffing === true,
           current_role,
           pins,
         }
@@ -81,6 +85,9 @@ export async function PUT(req: NextRequest) {
       role_mode === "different" ? strArray(body.target_roles).map((r) => r.trim()).slice(0, 6) : [];
     // Anything but an explicit false means keep the daily email on.
     const daily_email = body.daily_email !== false;
+    // Universe scanning defaults on; staffing firms only on explicit opt-in.
+    const include_universe = body.include_universe !== false;
+    const include_staffing = body.include_staffing === true;
 
     const sb = supabaseAdmin();
 
@@ -90,7 +97,7 @@ export async function PUT(req: NextRequest) {
     // preserved (they carry user intent, not just a ranking).
     const { data: prev } = await sb
       .from("job_preferences")
-      .select("interests, role_mode, target_roles")
+      .select("interests, role_mode, target_roles, include_universe")
       .eq("user_id", userId)
       .maybeSingle();
     const sameArr = (a: unknown, b: string[]) => {
@@ -101,6 +108,8 @@ export async function PUT(req: NextRequest) {
     const matchingChanged =
       !prev ||
       prev.role_mode !== role_mode ||
+      // Turning the universe pool off must drop the matches it contributed.
+      (prev.include_universe !== false) !== include_universe ||
       !sameArr(prev.interests, interests) ||
       !sameArr(prev.target_roles, target_roles);
 
@@ -115,6 +124,8 @@ export async function PUT(req: NextRequest) {
         role_mode,
         target_roles,
         daily_email,
+        include_universe,
+        include_staffing,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" },
@@ -151,6 +162,8 @@ export async function PUT(req: NextRequest) {
       role_mode,
       target_roles,
       daily_email,
+      include_universe,
+      include_staffing,
       current_role,
       pins,
     };

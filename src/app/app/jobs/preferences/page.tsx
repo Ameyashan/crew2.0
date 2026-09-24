@@ -120,6 +120,8 @@ const DEFAULTS: PreferencesDTO = {
   role_mode: null,
   target_roles: [],
   daily_email: true,
+  include_universe: true,
+  include_staffing: false,
   current_role: null,
 };
 
@@ -372,6 +374,48 @@ export default function JobsPreferencesPage() {
                 active={prefs.visa_required === o.v}
                 onClick={() => {
                   setPrefs({ ...prefs, visa_required: o.v });
+                  setSaved(false);
+                }}
+              />
+            ))}
+          </Group>
+
+          <Group
+            eyebrow="Top employers"
+            color={TOKENS.muted2}
+            hint="We track ~1,300 employers — the Fortune 500, the top 500 startups and the top 500 H-1B sponsors. Scan them for roles matching your target title, beyond your chosen sectors."
+          >
+            {[
+              { v: true, label: "Scan them too" },
+              { v: false, label: "Only my sectors" },
+            ].map((o) => (
+              <Chip
+                key={o.label}
+                label={o.label}
+                active={(prefs.include_universe !== false) === o.v}
+                onClick={() => {
+                  setPrefs({ ...prefs, include_universe: o.v });
+                  setSaved(false);
+                }}
+              />
+            ))}
+          </Group>
+
+          <Group
+            eyebrow="Staffing firms"
+            color={TOKENS.muted2}
+            hint="IT outsourcing and staffing firms (TCS, Infosys, Cognizant, …) sponsor lots of H-1Bs but mostly post client-placed contract roles. Hidden unless you want them."
+          >
+            {[
+              { v: false, label: "Hide them" },
+              { v: true, label: "Include them" },
+            ].map((o) => (
+              <Chip
+                key={o.label}
+                label={o.label}
+                active={(prefs.include_staffing === true) === o.v}
+                onClick={() => {
+                  setPrefs({ ...prefs, include_staffing: o.v });
                   setSaved(false);
                 }}
               />

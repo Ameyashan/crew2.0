@@ -17,6 +17,7 @@ import { jdText, mapPool, mentionsVisa } from "@/lib/jobs/util";
 import { getYcSizeMap } from "@/lib/jobs/enrich/yc";
 import { inferVisa } from "@/lib/jobs/enrich/visa";
 import { evidenceFromStats } from "@/lib/jobs/h1b/normalize";
+import { hydrateJobs } from "@/lib/jobs/hydrate";
 import type { SizeBucket, VisaConfidence, VisaEvidence, H1bStats } from "@/lib/jobs/types";
 
 const DEFAULT_LIMIT = 40;
@@ -38,21 +39,28 @@ export interface EnrichResult {
   visaNone: number;
 }
 
-export async function enrichJobs(opts?: { limit?: number }): Promise<EnrichResult> {
+// `jobIds` targets specific jobs (a user's scoring candidates — the ones whose
+// chips people will actually see); otherwise the newest unenriched jobs.
+export async function enrichJobs(opts?: { limit?: number; jobIds?: string[] }): Promise<EnrichResult> {
   const sb = supabaseAdmin();
   const limit = opts?.limit ?? DEFAULT_LIMIT;
+  if (opts?.jobIds && !opts.jobIds.length) return { enriched: 0, sized: 0, visaLikely: 0, visaVerified: 0, visaNone: 0 };
 
-  const { data: jobsData, error } = await sb
+  let q = sb
     .from("jobs")
     .select("id, company_id, company, ats, raw_json")
     .is("enriched_at", null)
-    .eq("is_active", true)
-    .order("first_seen_at", { ascending: false })
-    .limit(limit);
+    .eq("is_active", true);
+  if (opts?.jobIds) q = q.in("id", opts.jobIds);
+  const { data: jobsData, error } = await q.order("first_seen_at", { ascending: false }).limit(limit);
   if (error) throw new Error(`load jobs for enrichment failed: ${error.message}`);
 
   const jobs = (jobsData ?? []) as EnrichJob[];
   if (!jobs.length) return { enriched: 0, sized: 0, visaLikely: 0, visaVerified: 0, visaNone: 0 };
+
+  // Workday listings have no JD until their detail is fetched (hydrate.ts);
+  // the visa parse below needs it.
+  await hydrateJobs(jobs).catch(() => 0);
 
   // Curated company sizes + H-1B track records for the referenced companies.
   const companyIds = [...new Set(jobs.map((j) => j.company_id).filter(Boolean))] as string[];

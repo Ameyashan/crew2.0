@@ -53,6 +53,8 @@ export interface FetchResult {
   updated: number;
   newJobIds: string[];
   errors: Array<{ company: string; ats: Ats; slug: string; error: string }>;
+  attempted?: number; // boards fetched this call
+  skipped?: number; // boards left for the next call (deadline hit)
 }
 
 // ── Catalog resolution (M2) ──────────────────────────────────────────────────
@@ -95,6 +97,9 @@ export interface FeedItem {
   company_size: SizeBucket | null;
   status: MatchStatus;
   is_new: boolean; // first_seen since the user's last visit / status === 'new'
+  // Why this employer is tracked ("Fortune 500 #12", "Top-100 H-1B sponsor");
+  // empty for companies outside the curated universe.
+  badges: string[];
 }
 
 // Full detail for one job + the viewer's match.
@@ -146,6 +151,10 @@ export interface PreferencesDTO {
   target_roles: string[];
   // Opt-out for the daily new-matches email (cron/jobs-email). Defaults true.
   daily_email?: boolean;
+  // Company universe (0029): also scan the curated employer list for
+  // title-matching roles (default true); let IT staffing firms in (default false).
+  include_universe?: boolean;
+  include_staffing?: boolean;
   // Read-only echo of the profile's current_role, so the preferences UI can
   // show what "like my current title" resolves to (and prompt for a resume when
   // it's empty). Not persisted on the preferences row.

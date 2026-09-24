@@ -3,6 +3,7 @@
 // returns at least one job — this is what gates LLM guesses out of the catalog.
 
 import { fetchBoard } from "@/lib/jobs/orchestrator";
+import { workdayJobCount } from "@/lib/jobs/sources/workday";
 import type { Ats } from "@/lib/jobs/types";
 
 export interface ValidationResult {
@@ -11,6 +12,11 @@ export interface ValidationResult {
 }
 
 export async function validateCandidate(ats: Ats, slug: string): Promise<ValidationResult> {
+  // Workday: a one-posting probe instead of paging the whole board.
+  if (ats === "workday") {
+    const n = await workdayJobCount(slug);
+    return { ok: !!n, jobCount: n ?? 0 };
+  }
   try {
     const jobs = await fetchBoard(ats, slug);
     return { ok: jobs.length > 0, jobCount: jobs.length };

@@ -1,6 +1,7 @@
 // API serializers (Module 5): turn DB rows into the wire DTOs the frontend reads.
 
 import { jdText } from "@/lib/jobs/util";
+import { universeBadges, type UniverseBadgeInput } from "@/lib/jobs/universe/classify";
 import type { Job, JobMatch } from "@/lib/db/schema";
 import type {
   FeedItem,
@@ -35,8 +36,20 @@ export interface FeedJoinRow {
     visa_confidence: VisaConfidence | null;
     visa_evidence: VisaEvidence | null;
     company_size: SizeBucket | null;
+    // Catalog row + its curated-universe entry (list membership → badges).
+    companies?: CompanyEmbed | null;
   } | null;
 }
+
+// PostgREST embed shape for jobs → companies → company_universe.
+export interface CompanyEmbed {
+  org_type: string | null;
+  company_universe: UniverseBadgeInput | null;
+}
+
+// Select fragment matching CompanyEmbed, for routes that serialize jobs.
+export const COMPANY_EMBED =
+  "companies(org_type, company_universe(in_fortune500, in_top_startups, in_top_h1b, fortune_rank, startup_rank, valuation_busd, h1b_rank))";
 
 export function jobLocation(j: {
   location_raw: string | null;
@@ -71,10 +84,11 @@ export function feedItemFromJoin(row: FeedJoinRow): FeedItem | null {
     company_size: j.company_size,
     status: row.status,
     is_new: row.status === "new",
+    badges: universeBadges(j.companies?.company_universe),
   };
 }
 
-export function jobDetail(job: Job, match: JobMatch | null): JobDetail {
+export function jobDetail(job: Job, match: JobMatch | null, company?: CompanyEmbed | null): JobDetail {
   return {
     match_id: match?.id ?? "",
     job_id: job.id,
@@ -94,6 +108,7 @@ export function jobDetail(job: Job, match: JobMatch | null): JobDetail {
     company_size: job.company_size,
     status: match?.status ?? "new",
     is_new: match?.status === "new",
+    badges: universeBadges(company?.company_universe),
     description: jdText(job.ats, job.raw_json),
     city: job.city,
     region: job.region,

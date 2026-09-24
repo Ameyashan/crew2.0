@@ -147,7 +147,7 @@ export interface DailyDigest {
 
 // ── Daily Job-Discovery Feed (mirrors 0010_jobs_feed.sql) ────────────────────
 
-export type Ats = "greenhouse" | "lever" | "ashby";
+export type Ats = "greenhouse" | "lever" | "ashby" | "workday";
 export type RemoteType = "remote" | "hybrid" | "onsite" | "unknown";
 export type SizeBucket = "large" | "medium" | "startup";
 // 'sponsors_verified' is backed by USCIS filing data (0021); 'no_sponsorship' is
@@ -178,7 +178,9 @@ export interface VisaEvidence {
   recent_fy: number;
   approval_rate: number | null;
 }
-export type CompanySource = "seed" | "llm_resolved";
+export type CompanySource = "seed" | "llm_resolved" | "universe";
+// Universe org type (0026): staffing firms are excluded from feeds by default.
+export type OrgType = "company" | "staffing" | "academic" | "hospital";
 export type PostedWithin = "24h" | "1wk" | "1mo" | "any";
 export type MatchStatus = "new" | "seen" | "dismissed" | "outreach_started";
 
@@ -199,6 +201,43 @@ export interface Company {
   h1b_employer_names: string[];
   h1b_stats: H1bStats | null;
   h1b_matched_at: string | null;
+  // Company universe link (0026): the curated employer list this board belongs to.
+  universe_id: string | null;
+  org_type: OrgType;
+}
+
+// company_universe (0026): one curated employer — list membership + ranks,
+// USCIS petitioning entities, and board-resolution state.
+export interface CompanyUniverse {
+  id: string;
+  name: string;
+  match_key: string;
+  aliases: string[];
+  in_fortune500: boolean;
+  in_top_startups: boolean;
+  in_top_h1b: boolean;
+  fortune_rank: number | null;
+  revenue_musd: number | null;
+  startup_rank: number | null;
+  valuation_busd: number | null;
+  investors: string | null;
+  h1b_rank: number | null;
+  h1b_approvals: number | null;
+  h1b_entities: string[];
+  industry: string | null;
+  hq: string | null;
+  org_type: OrgType;
+  sectors: string[];
+  size_bucket: SizeBucket | null;
+  resolve_status: "pending" | "resolved" | "unresolved";
+  resolve_attempts: number;
+  resolve_note: string | null;
+  probed_at: string | null;
+  next_resolve_at: string | null;
+  resolved_at: string | null;
+  sectors_refined_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Job {
@@ -237,6 +276,8 @@ export interface JobPreferences {
   company_sizes: SizeBucket[];
   locations: string[];
   visa_required: boolean;
+  include_universe: boolean;
+  include_staffing: boolean;
   created_at: string;
   updated_at: string;
 }

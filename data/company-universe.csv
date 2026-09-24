@@ -1,0 +1,1368 @@
+#,Company,Fortune 500,Top 500 Startup,Top 500 H-1B Sponsor,# Lists,Industry,HQ (US State / Country),Fortune 500 Rank,Revenue ($M),Startup Rank (by valuation),Valuation ($B),Select Investors,H-1B Rank,H-1B Approvals,H-1B Petitioning Entities
+1,Amazon,Yes,,Yes,2,Internet Services and Retailing,Washington,1,716924,,,,1,12991,AMAZON COM SERVICES LLC; AMAZON DATA SERVICES INC; AMAZON DEVELOPMENT CENTER U S INC; AMAZON WEB SERVICES INC
+2,Anthropic,,Yes,Yes,2,Enterprise Tech,United States,,,1,965,Google,173,143,ANTHROPIC PBC
+3,OpenAI,,Yes,Yes,2,Enterprise Tech,United States,,,2,840,"Khosla Ventures, Thrive Capital, Sequoia Capital",74,304,OPENAI OPCO LLC
+4,Walmart,Yes,,Yes,2,General Merchandisers,Arkansas,2,713163,,,,11,1669,WAL-MART ASSOCIATES INC
+5,ByteDance,,Yes,Yes,2,Media & Entertainment,China,,,3,480,"Sequoia Capital China, SIG Asia Investments, Sina Weibo, SoftBank Group",48,435,BYTEDANCE INC
+6,Apple,Yes,,Yes,2,"Computers, Office Equipment",California,4,416161,,,,4,3879,APPLE INC
+7,Stripe,,Yes,Yes,2,Financial Services,United States,,,4,159,"Khosla Ventures, LowercaseCapital, capitalG",110,212,STRIPE INC; STRIPE LLC
+8,Alphabet,Yes,,Yes,2,Internet Services and Retailing,California,5,402836,,,,7,3183,GOOGLE LLC; GOOGLE PUBLIC SECTOR LLC
+9,Databricks,,Yes,Yes,2,Enterprise Tech,United States,,,5,100,"Andreessen Horowitz, New Enterprise Associates, Battery Ventures",68,316,DATABRICKS INC
+10,Microsoft,Yes,,Yes,2,Computer Software,Washington,11,281724,,,,5,3688,MICROSOFT CORPORATION
+11,Cognizant Technology Solutions,Yes,,Yes,2,Information Technology Services,New Jersey,216,21108,,,,6,3509,COGNIZANT TECHNOLOGY SOLUTIONS US CORP
+12,CVS Health,Yes,,Yes,2,Health Care: Pharmacy and Other Services,Rhode Island,6,402067,,,,64,328,CVS SHARED SERVICES RESOURCES LLC
+13,McKesson,Yes,,Yes,2,Wholesalers: Health Care,Texas,8,359051,,,,443,63,MCKESSON CORPORATION
+14,Meta Platforms,Yes,,Yes,2,Internet Services and Retailing,California,17,200966,,,,8,2563,META PLATFORMS INC
+15,JPMorgan Chase,Yes,,Yes,2,Commercial Banks,New York,12,280345,,,,9,2112,JPMORGAN CHASE AND CO
+16,Oracle,Yes,,Yes,2,Computer Software,Texas,82,57399,,,,10,1716,ORACLE AMERICA INC
+17,Costco Wholesale,Yes,,Yes,2,General Merchandisers,Washington,13,275235,,,,368,77,COSTCO WHOLESALE CORPORATION
+18,Tesla,Yes,,Yes,2,Motor Vehicles & Parts,Texas,43,94827,,,,13,1574,TESLA INC
+19,Cigna Group,Yes,,Yes,2,Health Care: Pharmacy and Other Services,Connecticut,14,274900,,,,81,284,CIGNA-EVERNORTH SERVICES INC
+20,Cardinal Health,Yes,,Yes,2,Wholesalers: Health Care,Ohio,15,222578,,,,228,113,CARDINAL HEALTH INC
+21,Nvidia,Yes,,Yes,2,Semiconductors and Other Electronic Components,California,16,215938,,,,15,1453,NVIDIA CORPORATION
+22,Elevance Health,Yes,,Yes,2,Health Care: Insurance and Managed Care,Indiana,18,199125,,,,80,286,ELEVANCE HEALTH INC
+23,Centene,Yes,,Yes,2,Health Care: Insurance and Managed Care,Missouri,19,194777,,,,500,57,CENTENE MANAGEMENT COMPANY LLC
+24,Bank of America,Yes,,Yes,2,Commercial Banks,North Carolina,20,191567,,,,63,332,BANK OF AMERICA N A
+25,Chime,,Yes,Yes,2,Financial Services,United States,,,20,25,"Forerunner Ventures, Crosslink Capital, Homebrew",491,58,CHIME FINANCIAL INC
+26,IBM,Yes,,Yes,2,Information Technology Services,New York,66,67535,,,,20,1230,IBM CORPORATION
+27,Cisco Systems,Yes,,Yes,2,Network and Other Communications Equipment,California,83,56654,,,,22,1222,CISCO SYSTEMS INC
+28,Ford Motor,Yes,,Yes,2,Motor Vehicles & Parts,Michigan,22,187267,,,,33,605,FORD MOTOR COMPANY
+29,General Motors,Yes,,Yes,2,Motor Vehicles & Parts,Michigan,23,185019,,,,46,464,GENERAL MOTORS
+30,Capital One Financial,Yes,,Yes,2,Commercial Banks,Virginia,63,69252,,,,24,1077,CAPITAL ONE NATIONAL ASSOCIATION; CAPITAL ONE SERVICES LLC
+31,Citigroup,Yes,,Yes,2,Commercial Banks,New York,24,168297,,,,29,866,CITIBANK N A
+32,Home Depot,Yes,,Yes,2,Specialty Retailers: Other,Georgia,25,164683,,,,118,200,HOME DEPOT MANAGEMENT COMPANY LLC
+33,Goldman Sachs Group,Yes,,Yes,2,Commercial Banks,New York,36,125097,,,,26,1030,GOLDMAN SACHS AND CO LLC; GOLDMAN SACHS BANK USA; GOLDMAN SACHS SERVICES LLC
+34,Salesforce,Yes,,Yes,2,Computer Software,California,114,41525,,,,27,996,SALESFORCE INC
+35,Verizon Communications,Yes,,Yes,2,Telecommunications,New York,28,138191,,,,216,119,VERIZON DATA SERVICES LLC
+36,Qualcomm,Yes,,Yes,2,Semiconductors and Other Electronic Components,California,108,44284,,,,30,862,QUALCOMM INCORPORATED; QUALCOMM TECHNOLOGIES INC
+37,Rippling,,Yes,Yes,2,Enterprise Tech,United States,,,32,16.8,"Initialized Capital, Y Combinator, Kleiner Perkins Caufield & Byers",444,63,PEOPLE CENTER INC D B A RIPPLING
+38,Humana,Yes,,Yes,2,Health Care: Insurance and Managed Care,Kentucky,34,129664,,,,112,208,HUMANA INC
+39,Morgan Stanley,Yes,,Yes,2,Commercial Banks,New York,39,119662,,,,34,589,MORGAN STANLEY AND CO LLC; MORGAN STANLEY SERVICES GROUP INC
+40,AT&T,Yes,,Yes,2,Telecommunications,Texas,35,125648,,,,83,283,AT AND T SERVICES INC
+41,Intuit,Yes,,Yes,2,Computer Software,California,231,18831,,,,36,573,INTUIT INC
+42,Comcast,Yes,,Yes,2,Telecommunications,Pennsylvania,37,123707,,,,73,307,"COMCAST CABLE COMMUNICATIONS LLC; COMCAST CABLE COMMUNICATIONS, LLC"
+43,Wells Fargo,Yes,,Yes,2,Commercial Banks,California,38,123529,,,,76,303,WELLS FARGO BANK N A
+44,Adobe,Yes,,Yes,2,Computer Software,California,192,23769,,,,40,525,ADOBE INC
+45,Dell Technologies,Yes,,Yes,2,"Computers, Office Equipment",Texas,41,113538,,,,175,143,DELL USA L P
+46,PayPal Holdings,Yes,,Yes,2,Financial Data Services,California,139,33172,,,,41,520,PAYPAL INC
+47,Target,Yes,,Yes,2,General Merchandisers,Minnesota,42,104780,,,,246,106,TARGET ENTERPRISE INC
+48,Visa,Yes,,Yes,2,Financial Data Services,California,119,40000,,,,42,487,VISA TECHNOLOGY AND OPERATIONS LLC; VISA U S A INC
+49,Uber Technologies,Yes,,Yes,2,Internet Services and Retailing,California,92,52017,,,,43,480,UBER TECHNOLOGIES INC
+50,Intel,Yes,,Yes,2,Semiconductors and Other Electronic Components,California,88,52853,,,,44,474,INTEL CORPORATION
+51,FedEx,Yes,,Yes,2,"Mail, Package, and Freight Delivery",Tennessee,50,87926,,,,72,309,FEDERAL EXPRESS CORPORATION
+52,Palo Alto Networks,Yes,,Yes,2,Computer Software,California,437,9221.5,,,,50,409,PALO ALTO NETWORKS INC
+53,ServiceNow,Yes,,Yes,2,Computer Software,California,333,13278,,,,52,401,SERVICENOW INC
+54,Cummins,Yes,,Yes,2,Industrial Machinery,Indiana,137,33670,,,,53,397,CUMMINS INC.
+55,Advanced Micro Devices,Yes,,Yes,2,Semiconductors and Other Electronic Components,California,131,34639,,,,56,380,ADVANCED MICRO DEVICES INC
+56,American Express,Yes,,Yes,2,Diversified Financials,New York,56,80463,,,,94,249,AMERICAN EXPRESS TRAVEL RELATED SERVICES COMPANY INC
+57,U.S. Bancorp,Yes,,Yes,2,Commercial Banks,Minnesota,110,42861,,,,58,372,U S BANK NATIONAL ASSOCIATION
+58,Charter Communications,Yes,,Yes,2,Telecommunications,Connecticut,85,54774,,,,59,371,CHARTER COMMUNICATIONS INC
+59,MetLife,Yes,,Yes,2,"Insurance: Life, Health (Stock)",New York,59,77084,,,,467,60,METLIFE GROUP INC
+60,HCA Healthcare,Yes,,Yes,2,Health Care: Medical Facilities,Tennessee,60,75600,,,,323,85,HCA MANAGEMENT SERVICES LP
+61,Ebay,Yes,,Yes,2,Internet Services and Retailing,California,393,11100,,,,61,356,EBAY INC
+62,Micron Technology,Yes,,Yes,2,Semiconductors and Other Electronic Components,Idaho,125,37378,,,,62,339,MICRON TECHNOLOGY INC
+63,New York Life Insurance,Yes,,Yes,2,"Insurance: Life, Health (Mutual)",New York,62,73145.5,,,,388,72,NEW YORK LIFE INSURANCE COMPANY
+64,Caterpillar,Yes,,Yes,2,Construction and Farm Machinery,Texas,65,67589,,,,107,217,CATERPILLAR INC
+65,Eli Lilly,Yes,,Yes,2,Pharmaceuticals,Indiana,67,65179,,,,100,226,ELI LILLY AND COMPANY
+66,Hewlett Packard Enterprise,Yes,,Yes,2,"Computers, Office Equipment",Texas,133,34296,,,,67,320,HEWLETT PACKARD ENTERPRISE COMPANY
+67,Merck,Yes,,Yes,2,Pharmaceuticals,New Jersey,68,65011,,,,351,80,MERCK SHARP AND DOHME LLC
+68,Expedia Group,Yes,,Yes,2,Internet Services and Retailing,Washington,304,14733,,,,69,314,EXPEDIA INC
+69,Applied Materials,Yes,,Yes,2,Semiconductors and Other Electronic Components,California,160,28368,,,,70,313,APPLIED MATERIALS INC
+70,Delta Air Lines,Yes,,Yes,2,Airlines,Georgia,71,63364,,,,357,79,DELTA AIR LINES INC
+71,AbbVie,Yes,,Yes,2,Pharmaceuticals,Illinois,77,61160,,,,169,148,ABBVIE INC; ABBVIE US LLC
+72,Prudential Financial,Yes,,Yes,2,"Insurance: Life, Health (Stock)",New Jersey,78,60774,,,,417,66,THE PRUDENTIAL INSURANCE COMPANY OF AMERICA
+73,HP,Yes,,Yes,2,"Computers, Office Equipment",California,84,55295,,,,220,118,HP INC
+74,American Airlines Group,Yes,,Yes,2,Airlines,Texas,86,54633,,,,109,212,AMERICAN AIRLINES INC
+75,Crusoe,,Yes,Yes,2,Industrials,United States,,,86,10,"Bain Capital Ventures, Founders Fund, Winklevoss Capital",318,86,CRUSOE ENERGY SYSTEMS LLC
+76,DoorDash,Yes,,Yes,2,Internet Services and Retailing,California,329,13717,,,,87,268,DOORDASH INC
+77,Charles Schwab,Yes,,Yes,2,Securities,Texas,165,27675,,,,88,266,CHARLES SCHWAB AND COMPANY INC
+78,Netflix,Yes,,Yes,2,Entertainment,California,105,45183,,,,92,255,NETFLIX INC
+79,Liberty Mutual Insurance Group,Yes,,Yes,2,Insurance: Property and Casualty (Stock),Massachusetts,95,50465,,,,322,85,LIBERTY MUTUAL GROUP INC; LIBERTY MUTUAL TECHNOLOGY GROUP INC
+80,Bristol-Myers Squibb,Yes,,Yes,2,Pharmaceuticals,New Jersey,97,48194,,,,192,133,BRISTOL-MYERS SQUIBB COMPANY
+81,Fiserv,Yes,,Yes,2,Financial Data Services,Wisconsin,215,21193,,,,98,232,FISERV SOLUTIONS LLC
+82,Nike,Yes,,Yes,2,Apparel,Oregon,99,46309,,,,278,96,NIKE INC; NIKE USA INC
+83,Deere,Yes,,Yes,2,Construction and Farm Machinery,Illinois,102,45684,,,,230,112,DEERE AND COMPANY
+84,Thermo Fisher Scientific,Yes,,Yes,2,"Scientific,Photographic and Control Equipment",Massachusetts,106,44556,,,,207,122,THERMO FISHER SCIENTIFIC INC
+85,Abbott Laboratories,Yes,,Yes,2,Medical Products and Equipment,Illinois,107,44328,,,,478,59,ABBOTT LABORATORIES
+86,Mastercard,Yes,,Yes,2,Financial Data Services,New York,141,32791,,,,108,213,MASTERCARD INTERNATIONAL INCORPORATED; MASTERCARD TECHNOLOGIES LLC
+87,Northwestern Mutual,Yes,,Yes,2,"Insurance: Life, Health (Mutual)",Wisconsin,109,43676.2,,,,498,57,NORTHWESTERN MUTUAL LIFE INSURANCE COMPANY
+88,Best Buy,Yes,,Yes,2,Specialty Retailers: Other,Minnesota,113,41691,,,,305,88,BEST BUY CO INC
+89,Bank of New York (BNY),Yes,,Yes,2,Commercial Banks,New York,115,40762,,,,268,100,THE BANK OF NEW YORK MELLON
+90,Honeywell International,Yes,,Yes,2,Industrial Machinery,North Carolina,116,40686,,,,221,118,HONEYWELL INTERNATIONAL INC
+91,Texas Instruments,Yes,,Yes,2,Semiconductors and Other Electronic Components,Texas,252,17682,,,,116,202,TEXAS INSTRUMENTS INCORPORATED
+92,CBRE Group,Yes,,Yes,2,Real Estate,Texas,118,40550,,,,453,62,CBRE INC
+93,Truist Financial,Yes,,Yes,2,Commercial Banks,North Carolina,150,30438,,,,125,193,TRUIST BANK
+94,Starbucks,Yes,,Yes,2,Food Services,Washington,127,37184.4,,,,441,63,STARBUCKS COFFEE COMPANY
+95,Amgen,Yes,,Yes,2,Pharmaceuticals,California,129,36751,,,,149,158,AMGEN INC
+96,BlackRock,Yes,,Yes,2,Securities,New York,190,24216,,,,136,172,BLACKROCK FINANCIAL MANAGEMENT INC
+97,State Street,Yes,,Yes,2,Commercial Banks,Massachusetts,202,22628,,,,139,170,STATE STREET BANK AND TRUST COMPANY
+98,Analog Devices,Yes,,Yes,2,Semiconductors and Other Electronic Components,Massachusetts,396,11019.7,,,,145,160,ANALOG DEVICES INC
+99,Gilead Sciences,Yes,,Yes,2,Pharmaceuticals,California,153,29443,,,,179,139,GILEAD SCIENCES INC
+100,Workday,Yes,,Yes,2,Computer Software,California,430,9552,,,,153,157,WORKDAY INC
+101,KLA,Yes,,Yes,2,Semiconductors and Other Electronic Components,California,361,12156.2,,,,154,155,KLA CORPORATION
+102,Intuitive Surgical,Yes,,Yes,2,Medical Products and Equipment,California,418,10064.7,,,,157,154,INTUITIVE SURGICAL OPERATIONS INC
+103,Applied Intuition,,Yes,Yes,2,Industrials,United States,,,158,6,"Andreessen Horowitz, Lux Capital, General Catalyst",391,71,APPLIED INTUITION INC
+104,First Citizens BancShares,Yes,,Yes,2,Commercial Banks,North Carolina,309,14505,,,,158,153,FIRST CITIZENS BANK AND TRUST CO
+105,Marvell Technology,Yes,,Yes,2,Semiconductors and Other Electronic Components,Delaware,476,8194.6,,,,159,153,MARVELL SEMICONDUCTOR INC
+106,Medline,Yes,,Yes,2,Health Care: Pharmacy and Other Services,Illinois,159,28432,,,,250,105,MEDLINE INDUSTRIES LP
+107,Verkada,,Yes,Yes,2,Industrials,United States,,,166,5.8,"next47, First Round Capital, Sequoia Capital",488,58,VERKADA INC
+108,Arista Networks,Yes,,Yes,2,Network and Other Communications Equipment,California,444,9005.7,,,,191,134,ARISTA NETWORKS INC
+109,Block,Yes,,Yes,2,Financial Data Services,California,191,24193.7,,,,451,62,BLOCK INC
+110,Motorola Solutions,Yes,,Yes,2,Network and Other Communications Equipment,Illinois,378,11682,,,,193,133,MOTOROLA SOLUTIONS INC
+111,Macy’s,Yes,,Yes,2,General Merchandisers,New York,203,22621,,,,396,70,MACYS SYSTEMS AND TECHNOLOGY INC
+112,Chewy,Yes,,Yes,2,Internet Services and Retailing,Florida,349,12601.5,,,,206,122,CHEWY INC
+113,Wayfair,Yes,,Yes,2,Internet Services and Retailing,Massachusetts,353,12457,,,,208,121,WAYFAIR LLC
+114,AECOM,Yes,,Yes,2,Engineering & Construction,Texas,276,16237.2,,,,210,120,AECOM TECHNICAL SERVICES INC
+115,Becton Dickinson,Yes,,Yes,2,Medical Products and Equipment,New Jersey,211,21840,,,,460,62,BECTON DICKINSON AND COMPANY
+116,American Family Insurance Group,Yes,,Yes,2,Insurance: Property and Casualty (Stock),Wisconsin,226,19556.8,,,,377,74,AMERICAN FAMILY MUTUAL INSURANCE COMPANY S I
+117,Jacobs Solutions,Yes,,Yes,2,Diversified Outsourcing Services,Texas,369,12029.8,,,,226,114,JACOBS ENGINEERING GROUP INC
+118,Lam Research,Yes,,Yes,2,Semiconductors and Other Electronic Components,California,238,18435.6,,,,296,90,LAM RESEARCH CORPORATION
+119,Citizens Financial Group,Yes,,Yes,2,Commercial Banks,Rhode Island,365,12057,,,,242,107,CITIZENS FINANCIAL GROUP INC
+120,Concentrix,Yes,,Yes,2,Information Technology Services,California,423,9825.8,,,,255,105,"CONCENTRIX CVG CUSTOMER MANAGEMENT GROUP INC; CONCENTRIX CVG CUSTOMER MANAGEMENT GROUP, INC."
+121,Airbnb,Yes,,Yes,2,Internet Services and Retailing,California,357,12241,,,,267,101,AIRBNB INC
+122,J.B. Hunt Transport Services,Yes,,Yes,2,"Trucking, Truck Leasing",Arkansas,371,11999.1,,,,270,98,J B HUNT TRANSPORT INC
+123,IQVIA Holdings,Yes,,Yes,2,Health Care: Pharmacy and Other Services,North Carolina,274,16310,,,,341,82,IQVIA INC
+124,Raymond James Financial,Yes,,Yes,2,Securities,Florida,283,15912,,,,379,73,RAYMOND JAMES AND ASSOCIATES INC
+125,Vertex Pharmaceuticals,Yes,,Yes,2,Pharmaceuticals,Massachusetts,370,12001.3,,,,283,94,VERTEX PHARMACEUTICALS INCORPORATED
+126,Cohesity,,Yes,Yes,2,Enterprise Tech,United States,,,299,3.7,"SoftBank Group, Sequoia Capital, Wing Venture Capital",308,88,COHESITY INC
+127,Blackstone,Yes,,Yes,2,Diversified Financials,New York,310,14450.3,,,,415,66,BLACKSTONE INC
+128,Regeneron Pharmaceuticals,Yes,,Yes,2,Pharmaceuticals,New York,314,14342.9,,,,310,88,REGENERON PHARMACEUTICALS INC
+129,Intercontinental Exchange,Yes,,Yes,2,Securities,Georgia,347,12640,,,,331,83,INTERCONTINENTAL EXCHANGE HOLDINGS INC
+130,Huntington Bancshares,Yes,,Yes,2,Commercial Banks,Ohio,350,12485,,,,456,62,THE HUNTINGTON NATIONAL BANK
+131,Equinix,Yes,,Yes,2,Real Estate,California,436,9260,,,,427,65,EQUINIX INC
+132,Zimmer Biomet Holdings,Yes,,Yes,2,Medical Products and Equipment,Indiana,473,8231.5,,,,428,65,ZIMMER INC
+133,Western Digital,Yes,,Yes,2,"Computers, Office Equipment",California,432,9520,,,,496,57,WESTERN DIGITAL TECHNOLOGIES INC
+134,Tata Consultancy Services,,,Yes,1,,,,,,,,2,4450,TATA CONSULTANCY SERVICES LIMITED
+135,Infosys,,,Yes,1,,,,,,,,3,4113,INFOSYS LIMITED
+136,UnitedHealth Group,Yes,,,1,Health Care: Insurance and Managed Care,Minnesota,3,447567,,,,,,
+137,VAST Data,,Yes,,1,Enterprise Tech,United States,,,6,80,"Norwest Venture Partners, Goldman Sachs, Dell Technologies Capital",,,
+138,Berkshire Hathaway,Yes,,,1,Insurance: Property and Casualty (Stock),Nebraska,7,371444,,,,,,
+139,Revolut,,Yes,,1,Financial Services,United Kingdom,,,7,75,"Index Ventures, DST Global, Ribbit Capital",,,
+140,SHEIN,,Yes,,1,Consumer & Retail,Singapore,,,8,66,"Tiger Global Management, Sequoia Capital China, Shunwei Capital Partners",,,
+141,DeepSeek,,Yes,,1,Enterprise Tech,China,,,9,50,"Alibaba Group, CATL, Guozhitou Private Equity Fund Management",,,
+142,Exxon Mobil,Yes,,,1,Petroleum Refining,Texas,9,332238,,,,,,
+143,Cencora,Yes,,,1,Wholesalers: Health Care,Pennsylvania,10,321332.8,,,,,,
+144,Moonshot AI,,Yes,,1,Consumer & Retail,China,,,10,50,"HongShan, Jinfu Investment, ZhenFund",,,
+145,Ramp,,Yes,,1,Enterprise Tech,United States,,,11,44,"D1 Capital Partners, Stripe, Coatue Management",,,
+146,Capgemini America,,,Yes,1,,,,,,,,12,1611,"CAPGEMINI AMERICA INC; CAPGEMINI AMERICA, INC."
+147,Project Prometheus,,Yes,,1,Enterprise Tech,United States,,,12,41,"ARCH Venture Partners, BlackRock, DST Global",,,
+148,Ripple,,Yes,,1,Financial Services,United States,,,13,40,"IDG Capital, Venture51, Lightspeed Venture Partners",,,
+149,Figure,,Yes,,1,Industrials,United States,,,14,39,"Intel Capital, Parkway VC, Amazon Industrial Innovation Fund",,,
+150,HCL America,,,Yes,1,,,,,,,,14,1524,HCL AMERICA INC; HCL AMERICA SOLUTIONS INC
+151,Canva,,Yes,,1,Enterprise Tech,Australia,,,15,32,"Sequoia Capital China, Blackbird Ventures, Matrix Partners",,,
+152,Ernst and Young US,,,Yes,1,,,,,,,,16,1350,ERNST AND YOUNG U S LLP
+153,Fanatics,,Yes,,1,Consumer & Retail,United States,,,16,31,"SoftBank Group, Andreessen Horowitz, Temasek Holdings",,,
+154,Fidelity Technology Group LLC dba Fidelity Investments,,,Yes,1,,,,,,,,17,1328,FIDELITY TECHNOLOGY GROUP LLC D B A FIDELITY INVESTMENTS
+155,Safe Superintelligence,,Yes,,1,Enterprise Tech,United States,,,17,30,"Sequoia Capital, DST Global, Andreessen Horowitz",,,
+156,Anysphere,,Yes,,1,Enterprise Tech,United States,,,18,29.3,"Andreessen Horowitz, Thrive Capital, OpenAI Startup Fund",,,
+157,Deloitte Consulting,,,Yes,1,,,,,,,,18,1298,DELOITTE CONSULTING LLP
+158,Cognition,,Yes,,1,Enterprise Tech,United States,,,19,26,"Founders Fund, Khosla Ventures",,,
+159,LTIMINDTREE,,,Yes,1,,,,,,,,19,1289,LTIMINDTREE LIMITED
+160,Accenture,,,Yes,1,,,,,,,,21,1227,ACCENTURE LLP
+161,Chevron,Yes,,,1,Petroleum Refining,Texas,21,189031,,,,,,
+162,OKX,,Yes,,1,Financial Services,Seychelles,,,21,25,Morningstar Ventures,,,
+163,Epic Games,,Yes,,1,Media & Entertainment,United States,,,22,22.5,"Tencent Holdings, KKR, Smash Ventures",,,
+164,Kalshi,,Yes,,1,Enterprise Tech,United States,,,23,22,Sequoia Capital,,,
+165,Wipro,,,Yes,1,,,,,,,,23,1168,WIPRO LIMITED
+166,Etched,,Yes,,1,Industrial,United States,,,24,21,"Primary Venture Partners, Positive Sum",,,
+167,Perplexity,,Yes,,1,Enterprise Tech,United States,,,25,20,"New Enterprise Associates, Institutional Venture Partners, NVentures",,,
+168,TT Commerce and Global Services,,,Yes,1,,,,,,,,25,1070,TT COMMERCE AND GLOBAL SERVICES LLC
+169,Chobani,,Yes,,1,Consumer & Retail,United States,,,26,20,,,,
+170,Fannie Mae,Yes,,,1,Diversified Financials,District of Columbia,26,159169,,,,,,
+171,Helsing,,Yes,,1,Enterprise Tech,Germany,,,27,18,,,,
+172,Kroger,Yes,,,1,Food and Drug Stores,Ohio,27,147642,,,,,,
+173,Compunnel Software Group,,,Yes,1,,,,,,,,28,953,COMPUNNEL SOFTWARE GROUP INC
+174,Deel,,Yes,,1,Enterprise Tech,United States,,,28,17.5,"Andreessen Horowitz, Spark Capital, Y Combinator",,,
+175,Fireworks,,Yes,,1,Enterprise Tech,United States,,,29,17.5,"Evantic Capital, Index Ventures, Sequoia Capital",,,
+176,Phillips 66,Yes,,,1,Petroleum Refining,Texas,29,136560,,,,,,
+177,Marathon Petroleum,Yes,,,1,Petroleum Refining,Ohio,30,135222,,,,,,
+178,Miro,,Yes,,1,Enterprise Tech,United States,,,30,17.5,"Accel, AltaIR Capital, Technology Crossover Ventures",,,
+179,Mphasis,,,Yes,1,,,,,,,,31,657,MPHASIS CORPORATION
+180,StoneX Group,Yes,,,1,Diversified Financials,New York,31,132378.2,,,,,,
+181,Xiaohongshu,,Yes,,1,Media & Entertainment,China,,,31,17,"GGV Capital, ZhenFund, Tencent",,,
+182,State Farm Insurance,Yes,,,1,Insurance: Property and Casualty (Mutual),Illinois,32,132311.6,,,,,,
+183,Tech Mahindra Americas,,,Yes,1,,,,,,,,32,628,TECH MAHINDRA AMERICAS INC
+184,Freddie Mac,Yes,,,1,Diversified Financials,Virginia,33,131688,,,,,,
+185,Sierra,,Yes,,1,Enterprise Tech,United States,,,33,15.8,"Benchmark, Sequoia Capital, Greenoaks",,,
+186,Yuanfudao,,Yes,,1,Consumer & Retail,China,,,34,15.5,"Tencent Holdings, Warbug Pincus, IDG Capital",,,
+187,Bloomberg,,,Yes,1,,,,,,,,35,587,BLOOMBERG LP
+188,Helion Energy,,Yes,,1,Industrials,United States,,,35,15.5,"Mithril Capital Management, Y Combinator, Capricorn Investment Group",,,
+189,DJI Innovations,,Yes,,1,Industrials,China,,,36,15,"Accel Partners, Sequoia Capital",,,
+190,CGI Technologies and Solutions,,,Yes,1,,,,,,,,37,557,CGI TECHNOLOGIES AND SOLUTIONS INC
+191,ClickHouse,,Yes,,1,Enterprise Tech,United States,,,37,15,"Lightspeed Venture Partners, Almaz Capital Partners, Altimeter Capital",,,
+192,LinkedIn,,,Yes,1,,,,,,,,38,542,LINKEDIN CORPORATION
+193,Yuanqi Senlin,,Yes,,1,Consumer & Retail,China,,,38,15,"Sequoia Capital China, Longfor Capitalm, Gaorong Capital",,,
+194,Discord,,Yes,,1,Media & Entertainment,United States,,,39,15,"Benchmark, Greylock Partners, Tencent Holdings",,,
+195,PWC Advisory Services,,,Yes,1,,,,,,,,39,537,PWC ADVISORY SERVICES LLC
+196,Trade Republic,,Yes,,1,Financial Services,Germany,,,40,14.65,"Founders Fund. Accel, Creandum",,,
+197,Valero Energy,Yes,,,1,Petroleum Refining,Texas,40,115939,,,,,,
+198,ArtIn Energy,,Yes,,1,Industrials,United States,,,41,14.5,,,,
+199,Skild AI,,Yes,,1,Industrials,United States,,,42,14,"CRV, General Catalyst, Menlo Ventures",,,
+200,Anduril,,Yes,,1,Industrials,United States,,,43,14,"Andreessen Horowitz, Founders Fund, Revolution Ventures",,,
+201,Scale,,Yes,,1,Enterprise Tech,United States,,,44,13.8,"Accel, Y Combinator, Index Ventures",,,
+202,Walt Disney,Yes,,,1,Entertainment,California,44,94425,,,,,,
+203,Johnson & Johnson,Yes,,,1,Pharmaceuticals,New Jersey,45,94193,,,,,,
+204,McKinsey & Company,,,Yes,1,,,,,,,,45,467,MCKINSEY AND COMPANY INC UNITED STATES
+205,OpenSea,,Yes,,1,Media & Entertainment,United States,,,45,13.3,"Andreessen Horowitz, Thirty Five Ventures, Sound Ventures",,,
+206,Mistral AI,,Yes,,1,Enterprise Tech,France,,,46,13.25,"Lightspeed Venture Partners, General Catalyst, Andreessen Horowitz",,,
+207,PepsiCo,Yes,,,1,Food Consumer Products,New York,46,93925,,,,,,
+208,Barclays Services,,,Yes,1,,,,,,,,47,460,BARCLAYS SERVICES CORP; BARCLAYS SERVICES LLC
+209,Boeing,Yes,,,1,Aerospace & Defense,Virginia,47,89463,,,,,,
+210,Grammarly,,Yes,,1,Media & Entertainment,United States,,,47,13,"General Catalyst, Institutional Venture Partners, Breyer Capital",,,
+211,Baseten,,Yes,,1,Enterprise Tech,United States,,,48,13,"Bond, Greylock Partners, Institutional Venture Partners",,,
+212,UPS,Yes,,,1,"Mail, Package, and Freight Delivery",Georgia,48,88661,,,,,,
+213,Celonis,,Yes,,1,Enterprise Tech,Germany,,,49,13,"Accel, 83North",,,
+214,RTX,Yes,,,1,Aerospace & Defense,Virginia,49,88603,,,,,,
+215,UST Global,,,Yes,1,,,,,,,,49,427,UST GLOBAL INC
+216,Devoted Health,,Yes,,1,Healthcare & Life Sciences,United States,,,50,12.9,"Andreessen Horowitz, F-Prime Capital, Venrock",,,
+217,Boston Consulting Group,,,Yes,1,,,,,,,,51,405,BOSTON CONSULTING GROUP INC
+218,Progressive,Yes,,,1,Insurance: Property and Casualty (Stock),Ohio,51,87671,,,,,,
+219,Shield AI,,Yes,,1,Industrials,United States,,,51,12.7,"Andreessen Horowitz, Homebrew, Point72 Ventures",,,
+220,Faire,,Yes,,1,Consumer & Retail,United States,,,52,12.59,"Khosla Ventures, Forerunner Ventures, Sequoia Capital",,,
+221,Lowe’s,Yes,,,1,Specialty Retailers: Other,North Carolina,52,86286,,,,,,
+222,Labs,,Yes,,1,Enterprise Tech,United States,,,53,12.5,"JET Venture Capital, Sivad VC",,,
+223,Energy Transfer,Yes,,,1,Pipelines,Texas,53,85536,,,,,,
+224,Brex,,Yes,,1,Enterprise Tech,United States,,,54,12.3,"DST Global, Ribbit Capital, Greenoaks Capital Management",,,
+225,Procter & Gamble,Yes,,,1,Household and Personal Products,Ohio,54,84284,,,,,,
+226,Randstad Digital,,,Yes,1,,,,,,,,54,395,RANDSTAD DIGITAL LLC
+227,NinjaOne,,Yes,,1,Enterprise Tech,United States,,,55,12.3,,,,
+228,SAP America,,,Yes,1,,,,,,,,55,381,SAP AMERICA INC; SAP LABS LLC
+229,Sysco,Yes,,,1,Wholesalers: Food and Grocery,Texas,55,81370,,,,,,
+230,GoodLeap,,Yes,,1,Financial Services,United States,,,56,12,"New Enterprise Associates, BDT Capital Partners, Davidson Kempner Capital Management",,,
+231,Albertsons,Yes,,,1,Food and Drug Stores,Idaho,57,80390.9,,,,,,
+232,JUUL Labs,,Yes,,1,Consumer & Retail,United States,,,57,12,Tiger Global Management,,,
+233,Virtusa,,,Yes,1,,,,,,,,57,376,VIRTUSA CORPORATION
+234,Archer Daniels Midland,Yes,,,1,Food Production,Illinois,58,80269,,,,,,
+235,Cyera,,Yes,,1,Enterprise Tech,United States,,,58,12,"Accel, CyberStarts, Sequoia Capital",,,
+236,Bitmain Technologies,,Yes,,1,Enterprise Tech,China,,,59,12,"Coatue Management, Sequoia Capital China, IDG Capital",,,
+237,Government Employee Insurance Company Geico,,,Yes,1,,,,,,,,60,358,GOVERNMENT EMPLOYEE INSURANCE COMPANY GEICO
+238,Xingsheng Selected,,Yes,,1,Consumer & Retail,China,,,60,12,"KKR, Tencent Holdings, Sequoia Capital China",,,
+239,Bending Spoons,,Yes,,1,Consumer & Retail,Italy,,,61,11.71,"Durable Capital Partners, Adjacent, Creator Partners",,,
+240,Lockheed Martin,Yes,,,1,Aerospace & Defense,Maryland,61,75048,,,,,,
+241,Airtable,,Yes,,1,Enterprise Tech,United States,,,62,11.7,"Caffeinated Capital, CRV, Founder Collective",,,
+242,Whatnot,,Yes,,1,Consumer & Retail,United States,,,63,11.5,"Y Combinator, Andreessen Horowitz, Wonder Ventures",,,
+243,Allstate,Yes,,,1,Insurance: Property and Casualty (Stock),Illinois,64,67685,,,,,,
+244,ZongMu Technology,,Yes,,1,Industrials,China,,,64,11.4,"LTW Capital, Legend Capital, Qualcomm Ventures",,,
+245,Global Switch,,Yes,,1,Enterprise Tech,United Kingdom,,,65,11.1,"Aviation Industry Corporation of China, Essence Financial, Jiangsu Sha Steel Group",,,
+246,Kforce,,,Yes,1,,,,,,,,65,327,KFORCE INC
+247,Checkout.com,,Yes,,1,Financial Services,United Kingdom,,,66,11,"Tiger Global Management, Insight Partners, DST Global",,,
+248,Optum Services,,,Yes,1,,,,,,,,66,324,OPTUM SERVICES INC
+249,Oura,,Yes,,1,Healthcare & Life Sciences,Finland,,,67,11,"Forerunner Ventures, Lifeline Ventures, MSD Capital",,,
+250,Notion,,Yes,,1,Enterprise Tech,United States,,,68,11,"Index Ventures, Draft Ventures, Felicis Ventures",,,
+251,Nationwide,Yes,,,1,Insurance: Property and Casualty (Mutual),Ohio,69,64929.8,,,,,,
+252,SambaNova Systems,,Yes,,1,Enterprise Tech,United States,,,69,11,"Walden International, Google Ventures, Intel Capital",,,
+253,Bolt,,Yes,,1,Financial Services,United States,,,70,11,"Activant Capital, Tribe Capital, General Atlantic",,,
+254,Broadcom,Yes,,,1,Semiconductors and Other Electronic Components,California,70,63887,,,,,,
+255,Airwallex,,Yes,,1,Financial Services,Singapore,,,71,11,"DST Global, Sequoia Capital China, Tencent Holdings",,,
+256,Rivian Automotive,,,Yes,1,,,,,,,,71,312,RIVIAN AUTOMOTIVE LLC
+257,ElevenLabs,,Yes,,1,Enterprise Tech,United States,,,72,11,"Andreessen Horowitz, Credo Ventures, Sequoia Capital",,,
+258,Publix Super Markets,Yes,,,1,Food and Drug Stores,Florida,72,63209,,,,,,
+259,Bilt Rewards,,Yes,,1,Financial Services,United States,,,73,10.75,"Camber Creek, Kairos HQ, Fifth Wall Ventures",,,
+260,Pfizer,Yes,,,1,Pharmaceuticals,New York,73,62579,,,,,,
+261,Supabase,,Yes,,1,Enterprise Tech,United States,,,74,10.5,"Accel, Coatue, Craft Ventures",,,
+262,TD Synnex,Yes,,,1,Wholesalers: Electronics and Office Equipment,California,74,62508.1,,,,,,
+263,Alchemy,,Yes,,1,Enterprise Tech,United States,,,75,10.2,"DFJ Growth Fund, Coatue Management, Addition",,,
+264,ConocoPhillips,Yes,,,1,"Mining, Crude-Oil Production",Texas,75,61548,,,,,,
+265,The Leland Stanford Jr University,,,Yes,1,,,,,,,,75,304,THE LELAND STANFORD JR UNIVERSITY
+266,Colossal,,Yes,,1,Healthcare & Life Sciences,United States,,,76,10.2,"Animal Capital, Breyer Capital, In-Q-Tel",,,
+267,Galaxy Digital,Yes,,,1,Diversified Financials,New York,76,61355.7,,,,,,
+268,KPMG,,,Yes,1,,,,,,,,77,295,KPMG LLP
+269,Quince,,Yes,,1,Enterprise Tech,United States,,,77,10.1,"8VC, Notable Capital",,,
+270,Gusto,,Yes,,1,Financial Services,United States,,,78,10,"General Catalyst Partners, Google Ventures, Kleiner Perkins Caufield & Byers",,,
+271,Tiktok,,,Yes,1,,,,,,,,78,295,TIKTOK INC
+272,Huolala,,Yes,,1,Industrials,China,,,79,10,"MindWorks Ventures, Shunwei Capital Partners, Xiang He Capital",,,
+273,"Infinite Computer Solutions,",,,Yes,1,,,,,,,,79,291,"INFINITE COMPUTER SOLUTIONS INC; INFINITE COMPUTER SOLUTIONS, INC."
+274,TJX,Yes,,,1,Specialty Retailers: Apparel,Massachusetts,79,60372,,,,,,
+275,Performance Food Group,Yes,,,1,Wholesalers: Food and Grocery,Virginia,80,59898.9,,,,,,
+276,Thinking Machines Lab,,Yes,,1,Enterprise Tech,United States,,,80,10,"Andreessen Horowitz, Accel",,,
+277,Mercor,,Yes,,1,Enterprise Tech,United States,,,81,10,"Felicis, Benchmark",,,
+278,United Airlines Holdings,Yes,,,1,Airlines,Illinois,81,59070,,,,,,
+279,Digital Currency Group,,Yes,,1,Financial Services,United States,,,82,10,"Ribbit Capital, capitalG, Softbank Group",,,
+280,L and T Technology Services,,,Yes,1,,,,,,,,82,284,L AND T TECHNOLOGY SERVICES LLC; L AND T TECHNOLOGY SERVICES LTD
+281,Talkdesk,,Yes,,1,Enterprise Tech,United States,,,83,10,"DJF, Salesforce Ventures, Storm Ventures",,,
+282,Hexaware Technologies,,,Yes,1,,,,,,,,84,280,HEXAWARE TECHNOLOGIES INC
+283,KuCoin,,Yes,,1,Financial Services,Seychelles,,,84,10,"IDG Capital, Matrix Partners China, Jump Crypto",,,
+284,Chehaoduo,,Yes,,1,Consumer & Retail,China,,,85,10,"Sequoia Capital China, GX Capital",,,
+285,University of Michigan,,,Yes,1,,,,,,,,85,280,UNIVERSITY OF MICHIGAN
+286,Mayo Clinic,,,Yes,1,,,,,,,,86,276,MAYO CLINIC
+287,Neuralink,,Yes,,1,Healthcare & Life Sciences,United States,,,87,9.65,"Craft Ventures, Founders Fund, VY Capital",,,
+288,Tyson Foods,Yes,,,1,Food Production,Arkansas,87,54441,,,,,,
+289,Wonder,,Yes,,1,Consumer & Retail,United States,,,88,9.65,"Accel, Forerunner Ventures",,,
+290,Enterprise Products Partners,Yes,,,1,Pipelines,Texas,89,52596,,,,,,
+291,Snowflake,,,Yes,1,,,,,,,,89,265,SNOWFLAKE INC
+292,Vinted,,Yes,,1,Consumer & Retail,Lithuania,,,89,9.39,"Accel, Insight Partners, Burda Principal Investments",,,
+293,Exlservice Com,,,Yes,1,,,,,,,,90,264,EXLSERVICE COM LLC
+294,HEYTEA,,Yes,,1,Consumer & Retail,China,,,90,9.28,"Sequoia Capital China, Tencent Investment, BA Capital",,,
+295,Ingram Micro Holding,Yes,,,1,Wholesalers: Electronics and Office Equipment,California,90,52556.3,,,,,,
+296,General Dynamics,Yes,,,1,Aerospace & Defense,Virginia,91,52550,,,,,,
+297,Saronic Technologies,,Yes,,1,Industrials,United States,,,91,9.25,"8VC, Caffeinated Capital, Andreessen Horowitz",,,
+298,"T-mobile Usa,",,,Yes,1,,,,,,,,91,259,"T-MOBILE USA INC; T-MOBILE USA, INC."
+299,N26,,Yes,,1,Financial Services,Germany,,,92,9.23,"Redalpine Venture Partners, Earlybird Venture Capital, Valar Ventures",,,
+300,Lucid USA,,,Yes,1,,,,,,,,93,250,LUCID GROUP USA INC; LUCID USA INC
+301,Navan,,Yes,,1,Enterprise Tech,United States,,,93,9.2,"Andreessen Horowitz, Lightspeed Venture Partners, Zeev Ventures",,,
+302,USAA,Yes,,,1,Insurance: Property and Casualty (Stock),Texas,93,51499.2,,,,,,
+303,Polymarket,,Yes,,1,Financial Services,United States,,,94,9,"1789 Capital, Founders Fund",,,
+304,TIAA,Yes,,,1,"Insurance: Life, Health (Mutual)",New York,94,50604.7,,,,,,
+305,ADP Technology Services,,,Yes,1,,,,,,,,95,247,ADP INC; ADP TECHNOLOGY SERVICES INC
+306,Wayve,,Yes,,1,Enterprise Tech,United Kingdom,,,95,9,,,,
+307,Deloitte and Touche,,,Yes,1,,,,,,,,96,241,DELOITTE AND TOUCHE LLP
+308,Tanium,,Yes,,1,Enterprise Tech,United States,,,96,9,"Andreessen Horowitz, Nor-Cal Invest, TPG Growth",,,
+309,Travelers,Yes,,,1,Insurance: Property and Casualty (Stock),New York,96,48828,,,,,,
+310,Deloitte Tax,,,Yes,1,,,,,,,,97,240,DELOITTE TAX LLP
+311,Niantic,,Yes,,1,Media & Entertainment,United States,,,97,9,"Nintendo, Google, Pokemon Company International, Spark Capital",,,
+312,Coca-Cola,Yes,,,1,Beverages,Georgia,98,47941,,,,,,
+313,OYO Rooms,,Yes,,1,Consumer & Retail,India,,,98,9,"SoftBank Group, Sequoia Capital India, Lightspeed India Partners",,,
+314,Rapyd,,Yes,,1,Financial Services,United Kingdom,,,99,8.75,"Target Global, General Catalyst, Durable Capital Partners",,,
+315,Rocket Limited Partnership,,,Yes,1,,,,,,,,99,230,ROCKET LIMITED PARTNERSHIP
+316,Chainalysis,,Yes,,1,Financial Services,United States,,,100,8.6,"Addition, Benhcmark, Accel",,,
+317,Massachusetts Mutual Life,Yes,,,1,"Insurance: Life, Health (Mutual)",Massachusetts,100,46053.7,,,,,,
+318,DriveNets,,Yes,,1,Enterprise Tech,Israel,,,101,8.5,"Bessemer Venture Partners, Pitango Venture Capital, D1 Capital Partners",,,
+319,GE Aerospace,Yes,,,1,Aerospace & Defense,Ohio,101,45855,,,,,,
+320,NTT Data Americas,,,Yes,1,,,,,,,,101,225,NTT DATA AMERICAS INC; NTT DATA SERVICES LLC
+321,Gopuff,,Yes,,1,Consumer & Retail,United States,,,102,8.5,"Accel, SoftBank Group, Anthos Capital",,,
+322,Synechron,,,Yes,1,,,,,,,,102,223,SYNECHRON INC
+323,Birlasoft,,,Yes,1,,,,,,,,103,223,BIRLASOFT INC; BIRLASOFT SOLUTIONS INC
+324,Personio,,Yes,,1,Enterprise Tech,Germany,,,103,8.5,"Global Founders Capital, Nortzone Ventures, Picus Capital",,,
+325,Plains GP Holdings,Yes,,,1,Pipelines,Texas,103,45579,,,,,,
+326,Molina Healthcare,Yes,,,1,Health Care: Insurance and Managed Care,California,104,45426,,,,,,
+327,SumUp,,Yes,,1,Financial Services,United States,,,104,8.5,"American Express Ventures, Goldman Sachs, Bain Capital Credit",,,
+328,Washington University In St Louis,,,Yes,1,,,,,,,,104,220,WASHINGTON UNIVERSITY IN ST LOUIS
+329,Flock Safety,,Yes,,1,Consumer & Retail,United States,,,105,8.4,"Matrix Partners, Initialized Capital, Tiger Global Management",,,
+330,Innova Solutions,,,Yes,1,,,,,,,,105,218,INNOVA SOLUTIONS INC
+331,Insight Global,,,Yes,1,,,,,,,,106,218,INSIGHT GLOBAL LLC
+332,Tipalti,,Yes,,1,Enterprise Tech,United States,,,106,8.3,"01 Advisors, Zeev Ventures, Group 11",,,
+333,Together AI,,Yes,,1,Enterprise Tech,United States,,,107,8.3,"Definition Capital, Long Journey Ventures, Lux Capital",,,
+334,Odoo,,Yes,,1,Enterprise Tech,Belgium,,,108,8.13,"Summit Partners, Noshaq, Sofinnova Partners",,,
+335,Quantum Systems,,Yes,,1,Industrials,Germany,,,109,8,"Notion Capital, Bayern Kapital",,,
+336,Dream11,,Yes,,1,Media & Entertainment,India,,,110,8,"Kaalari Capital, Tencent Holdings, Steadview Capital",,,
+337,Dollar General,Yes,,,1,Specialty Retailers: Other,Tennessee,111,42724.4,,,,,,
+338,FalconX,,Yes,,1,Financial Services,United States,,,111,8,"Tiger Global Management, American Express Ventures, B Capital Group",,,
+339,Nokia of America,,,Yes,1,,,,,,,,111,211,NOKIA OF AMERICA CORPORATION
+340,Northrop Grumman,Yes,,,1,Aerospace & Defense,Virginia,112,41954,,,,,,
+341,Reflection AI,,Yes,,1,Enterprise Tech,United States,,,112,8,"1789 Capital, Charles River Ventures, Sequoia Capital",,,
+342,Plaid,,Yes,,1,Financial Services,United States,,,113,8,"New Enterprise Associates, Spar Capital, Index Ventures",,,
+343,Ubs Business Solutions Us,,,Yes,1,,,,,,,,113,208,UBS BUSINESS SOLUTIONS US LLC
+344,Coforge,,,Yes,1,,,,,,,,114,206,COFORGE LIMITED
+345,StarkWare,,Yes,,1,Enterprise Tech,Israel,,,114,8,"Sequoia Capital, Paradigm, Pantera Capital",,,
+346,Harvey,,Yes,,1,Enterprise Tech,United States,,,115,8,"OpenAI Startup Fund, Kleiner Perkins, Sequoia Capital",,,
+347,University of Pennsylvania,,,Yes,1,,,,,,,,115,204,UNIVERSITY OF PENNSYLVANIA
+348,Fireblocks,,Yes,,1,Financial Services,United States,,,116,8,"Tenaya Capital, Coatue Management, Stripes Group",,,
+349,Global Eggs,,Yes,,1,Industrials,Canada,,,117,8,,,,
+350,Philip Morris International,Yes,,,1,Tobacco,Connecticut,117,40648,,,,,,
+351,St Jude Childrens Research Hospital,,,Yes,1,,,,,,,,117,201,ST JUDE CHILDRENS RESEARCH HOSPITAL
+352,Flexport,,Yes,,1,Industrials,United States,,,118,8,"Bloomberg Beta, Founders Fund, First Round Capital",,,
+353,Arm,,,Yes,1,,,,,,,,119,199,ARM INC
+354,Lenskart,,Yes,,1,Consumer & Retail,India,,,119,7.9,"Chiratae Ventures, PremjiInvest, Softbank",,,
+355,Asml Us,,,Yes,1,,,,,,,,120,198,ASML US LLC; ASML US LP
+356,Caris,,Yes,,1,Healthcare & Life Sciences,United States,,,120,7.83,"Sixth Street Partners, OrbiMed Advisors, Highland Capital Management",,,
+357,Dow,Yes,,,1,Chemicals,Michigan,120,39968,,,,,,
+358,Cadence Design Systems,,,Yes,1,,,,,,,,121,196,CADENCE DESIGN SYSTEMS INC
+359,US Foods Holding,Yes,,,1,Wholesalers: Food and Grocery,Illinois,121,39424,,,,,,
+360,Zipline,,Yes,,1,Industrials,United States,,,121,7.6,"Sequoia Capital, Baillie Gifford & Co., Google Ventures",,,
+361,CitiusTech,,,Yes,1,,,,,,,,122,195,CITIUSTECH INC
+362,Dapper Labs,,Yes,,1,Media & Entertainment,Canada,,,122,7.6,"Union Square Ventures, Venrock, Andreessen Horowitz",,,
+363,Mondelez International,Yes,,,1,Food Consumer Products,Illinois,122,38537,,,,,,
+364,Automattic,,Yes,,1,Media & Entertainment,United States,,,123,7.5,"Insight Venture Partners, Lowercase Capital, Polaris Partners",,,
+365,Lithia Motors,Yes,,,1,"Automotive Retailing, Services",Oregon,123,38133.9,,,,,,
+366,University of Illinois at Urbana-champaign,,,Yes,1,,,,,,,,123,195,UNIVERSITY OF ILLINOIS AT URBANA-CHAMPAIGN
+367,GE Vernova,Yes,,,1,Energy,Massachusetts,124,38068,,,,,,
+368,Lowes Companies,,,Yes,1,,,,,,,,124,194,LOWES COMPANIES INC
+369,Razorpay,,Yes,,1,Financial Services,India,,,124,7.5,"Sequoia Capital India, Tiger Global Management, Matrix Partners India",,,
+370,AlphaSense,,Yes,,1,Enterprise Tech,United States,,,125,7.5,"Viking Global Investors, GS Growth, BlackRock",,,
+371,Netskope,,Yes,,1,Enterprise Tech,United States,,,126,7.5,"Lightspeed Venture Partners, Social Capital, Accel",,,
+372,University of Maryland,,,Yes,1,,,,,,,,126,187,UNIVERSITY OF MARYLAND
+373,Warner Bros. Discovery,Yes,,,1,Entertainment,New York,126,37296,,,,,,
+374,CVS Pharmacy,,,Yes,1,,,,,,,,127,186,CVS PHARMACY INC
+375,iCapital,,Yes,,1,Financial Services,United States,,,127,7.5,"BlackRock, Blackstone, UBS",,,
+376,Caremark,,,Yes,1,,,,,,,,128,186,CAREMARK LLC
+377,Snyk,,Yes,,1,Enterprise Tech,United States,,,128,7.4,"BOLDstart Ventures, Google Ventures, Accel",,,
+378,World Kinect,Yes,,,1,Energy,Florida,128,36916.6,,,,,,
+379,Carta,,Yes,,1,Financial Services,United States,,,129,7.4,"Menlo Ventures, Spark Capital, Union Square Ventures",,,
+380,University of California San Francisco,,,Yes,1,,,,,,,,129,184,UNIVERSITY OF CALIFORNIA SAN FRANCISCO
+381,Bofa Securities,,,Yes,1,,,,,,,,130,184,BOFA SECURITIES INC
+382,CHS,Yes,,,1,Food Production,Minnesota,130,35462.6,,,,,,
+383,Upgrade,,Yes,,1,Financial Services,United States,,,130,7.3,"Union Square Ventures, Ribbit Capital, VY Capital",,,
+384,Gong,,Yes,,1,Enterprise Tech,United States,,,131,7.25,"Norwest Venture Partners, Next World Capital, Wing Venture Capital",,,
+385,University of Florida,,,Yes,1,,,,,,,,131,179,UNIVERSITY OF FLORIDA
+386,Blockchain.com,,Yes,,1,Financial Services,United Kingdom,,,132,7,"Lightspeed Venture Partners, Google Ventures, Lakestar",,,
+387,Coupang,Yes,,,1,Internet Services and Retailing,Washington,132,34534,,,,,,
+388,The Mathworks,,,Yes,1,,,,,,,,132,178,THE MATHWORKS INC
+389,Commure,,Yes,,1,Healthcare & Life Sciences,United States,,,133,7,"General Catalyst, HCA Healthcare",,,
+390,Indiana University Indianapolis,,,Yes,1,,,,,,,,133,175,INDIANA UNIVERSITY INDIANAPOLIS
+391,D.R. Horton,Yes,,,1,Homebuilders,Texas,134,34250.4,,,,,,
+392,Johns Hopkins University,,,Yes,1,,,,,,,,134,174,JOHNS HOPKINS UNIVERSITY
+393,Toss,,Yes,,1,Financial Services,South Korea,,,134,7,"Bessemer Venture Partners, Qualcomm Ventures, Kleiner Perkins Caufield & Byers",,,
+394,Lennar,Yes,,,1,Homebuilders,Florida,135,34186.9,,,,,,
+395,Neko Health,,Yes,,1,Healthcare & Life Sciences,Sweden,,,135,7,"Lightspeed Venture Partners, General Catalyst",,,
+396,ZS Associates,,,Yes,1,,,,,,,,135,172,ZS ASSOCIATES INC
+397,PNC Financial Services Group,Yes,,,1,Commercial Banks,Pennsylvania,136,33996,,,,,,
+398,PsiQuantum,,Yes,,1,Enterprise Tech,United States,,,136,7,"Playground Global, M12, BlackRock",,,
+399,ConsenSys,,Yes,,1,Enterprise Tech,United States,,,137,7,"Third Point, Electric Capital, Coinbase Ventures",,,
+400,Zoox,,,Yes,1,,,,,,,,137,172,ZOOX INC
+401,Dallas Independent School District,,,Yes,1,,,,,,,,138,171,DALLAS INDEPENDENT SCHOOL DISTRICT
+402,Oneok,Yes,,,1,Pipelines,Oklahoma,138,33629,,,,,,
+403,Ro,,Yes,,1,Healthcare & Life Sciences,United States,,,138,7,"Initialized Capital, General Catalyst, SignalFire",,,
+404,Zepto,,Yes,,1,Consumer & Retail,India,,,139,7,"Nexus Venture Partners, Contrary, Global Founders Capital",,,
+405,GuideWell Mutual Holding,Yes,,,1,"Insurance: Life, Health (Stock)",Florida,140,32863.2,,,,,,
+406,MatX,,Yes,,1,Industrials,United States,,,140,7,Spark Capital,,,
+407,Tiktok Usds Joint Venture,,,Yes,1,,,,,,,,140,169,TIKTOK USDS JOINT VENTURE LLC
+408,Htc Global Services,,,Yes,1,,,,,,,,141,166,HTC GLOBAL SERVICES INC
+409,We Doctor,,Yes,,1,Healthcare & Life Sciences,China,,,141,7,"Tencent, Morningside Group",,,
+410,Emory University,,,Yes,1,,,,,,,,142,166,EMORY UNIVERSITY
+411,NEURA Robotics,,Yes,,1,Industrials,Germany,,,142,7,"Amazon, Australian Gulf Capital, Bosch",,,
+412,Nucor,Yes,,,1,Metals,North Carolina,142,32494,,,,,,
+413,Apollo Global Management,Yes,,,1,Securities,New York,143,32102,,,,,,
+414,Automation Anywhere,,Yes,,1,Enterprise Tech,United States,,,143,6.8,"General Atlantic, Goldman Sachs, New Enterprise Associates",,,
+415,Icahn School of Medicine at Mount Sinai,,,Yes,1,,,,,,,,143,165,ICAHN SCHOOL OF MEDICINE AT MOUNT SINAI
+416,1Password,,Yes,,1,Enterprise Tech,Canada,,,144,6.8,"Slack Fund, Accel, Skip Capital",,,
+417,Autodesk,,,Yes,1,,,,,,,,144,161,AUTODESK INC
+418,Penske Automotive Group,Yes,,,1,"Automotive Retailing, Services",Michigan,144,31808.5,,,,,,
+419,Duke Energy,Yes,,,1,Utilities: Gas and Electric,North Carolina,145,31794,,,,,,
+420,Peregrine,,Yes,,1,Enterprise Tech,United States,,,145,6.8,"Sequoia Capital, Fifth Down Capital",,,
+421,Cleveland Clinic,,,Yes,1,,,,,,,,146,160,CLEVELAND CLINIC
+422,United Natural Foods,Yes,,,1,Wholesalers: Food and Grocery,Rhode Island,146,31784,,,,,,
+423,Ziroom,,Yes,,1,Consumer & Retail,China,,,146,6.6,"Sequoia Capital China, Warburg Pincus, General Catalyst",,,
+424,Ferguson Enterprises,Yes,,,1,Wholesalers: Diversified,Virginia,147,31316,,,,,,
+425,Lovable,,Yes,,1,Enterprise Tech,Sweden,,,147,6.6,"Accel, Hummingbird Ventures",,,
+426,Snap,,,Yes,1,,,,,,,,147,159,SNAP INC
+427,Arrow Electronics,Yes,,,1,Wholesalers: Electronics and Office Equipment,Colorado,148,30852.9,,,,,,
+428,Dfs Corporate Services,,,Yes,1,,,,,,,,148,159,DFS CORPORATE SERVICES LLC
+429,SVOLT,,Yes,,1,Industrials,China,,,148,6.51,"IDG Capital, Bank Of China Group Investment,, SDIC CMC Investment Management",,,
+430,Mollie,,Yes,,1,Financial Services,Netherlands,,,149,6.5,Technology Crossover Ventures,,,
+431,NRG Energy,Yes,,,1,Energy,Texas,149,30713,,,,,,
+432,National Stock Exchange of India,,Yes,,1,Financial Services,India,,,150,6.5,"TA Associates, SoftBank Group, GS Growth",,,
+433,Siemens Industry Software,,,Yes,1,,,,,,,,150,158,SIEMENS INDUSTRY SOFTWARE INC
+434,Doctolib,,Yes,,1,Healthcare & Life Sciences,France,,,151,6.4,"BPI France, Kerala Ventures, Accel",,,
+435,Globallogic,,,Yes,1,,,,,,,,151,158,GLOBALLOGIC INC
+436,Jabil,Yes,,,1,Semiconductors and Other Electronic Components,Florida,151,29802,,,,,,
+437,Snorkel AI,,Yes,,1,Enterprise Tech,United States,,,152,6.35,"Greylock Partners, Google Ventures, BlackRock",,,
+438,Southern,Yes,,,1,Utilities: Gas and Electric,Georgia,152,29553,,,,,,
+439,Ut Southwestern Medical Center,,,Yes,1,,,,,,,,152,158,UT SOUTHWESTERN MEDICAL CENTER
+440,DataRobot,,Yes,,1,Enterprise Tech,United States,,,153,6.3,"New Enterprise Associates, Accomplice, IA Ventures",,,
+441,Alan,,Yes,,1,Healthcare & Life Sciences,France,,,154,6.26,"Index Ventures, Temasek, Portag3 Ventures",,,
+442,PBF Energy,Yes,,,1,Petroleum Refining,New Jersey,154,29332.3,,,,,,
+443,Benchling,,Yes,,1,Healthcare & Life Sciences,United States,,,155,6.1,"Thrive Capital, Benchmark, MenloVentures",,,
+444,Paramount Skydance,Yes,,,1,Entertainment,New York,155,28891,,,,,,
+445,The University of Chicago,,,Yes,1,,,,,,,,155,155,THE UNIVERSITY OF CHICAGO
+446,Black Unicorn Factory,,Yes,,1,Enterprise Tech,United States,,,156,6.1,Barter Ventures,,,
+447,KKR,Yes,,,1,Securities,New York,156,28888.4,,,,,,
+448,Univ of Wi System Madison,,,Yes,1,,,,,,,,156,154,UNIV OF WI SYSTEM MADISON
+449,Hark,,Yes,,1,Enterprise Tech,United States,,,157,6,"AMD Ventures, ARK Invest, Align Ventures",,,
+450,Quanta Services,Yes,,,1,Engineering & Construction,Texas,157,28479.7,,,,,,
+451,Paccar,Yes,,,1,Motor Vehicles & Parts,Washington,158,28444.8,,,,,,
+452,Redwood Materials,,Yes,,1,Industrials,United States,,,159,6,"Breakthrough Energy Ventures, Capricorn Investment Group, Valor Equity Partners",,,
+453,Fca Us,,,Yes,1,,,,,,,,160,152,FCA US LLC
+454,Hartford Insurance Group,Yes,,,1,Insurance: Property and Casualty (Stock),Connecticut,160,28368,,,,,,
+455,Nuro,,Yes,,1,Industrials,United States,,,160,6,"SoftBank Group, Greylock Partners, Gaorong Capital",,,
+456,Grafana Labs,,Yes,,1,Enterprise Tech,United States,,,161,6,"Lightspeed Venture Partners, Lead Edge Capital, Coatue Management",,,
+457,Roblox,,,Yes,1,,,,,,,,161,152,ROBLOX CORPORATION
+458,CarMax,Yes,,,1,"Automotive Retailing, Services",Virginia,162,28207.3,,,,,,
+459,Northwestern University,,,Yes,1,,,,,,,,162,152,NORTHWESTERN UNIVERSITY
+460,OpenEvidence,,Yes,,1,Healthcare & Life Sciences,United States,,,162,6,Sequoia Capital,,,
+461,Attentive,,Yes,,1,Enterprise Tech,United States,,,163,5.99,"NextView Ventures, Eniac Ventures, Sequoia Capital",,,
+462,Social Finance,,,Yes,1,,,,,,,,163,151,SOCIAL FINANCE LLC
+463,Southwest Airlines,Yes,,,1,Airlines,Texas,163,28063,,,,,,
+464,Baker Hughes,Yes,,,1,"Oil and Gas Equipment, Services",Texas,164,27733,,,,,,
+465,Monzo,,Yes,,1,Financial Services,United Kingdom,,,164,5.9,"Passion Capital, Thrive Capital, Orange Digital Ventures",,,
+466,University of Minnesota,,,Yes,1,,,,,,,,164,150,UNIVERSITY OF MINNESOTA
+467,Lyra Health,,Yes,,1,Healthcare & Life Sciences,United States,,,165,5.85,"Greylock Partners, Venrock, Providence Ventures",,,
+468,Yale University,,,Yes,1,,,,,,,,165,149,YALE UNIVERSITY
+469,AutoNation,Yes,,,1,"Automotive Retailing, Services",Florida,166,27631.4,,,,,,
+470,Columbia University,,,Yes,1,,,,,,,,166,148,COLUMBIA UNIVERSITY
+471,Easyhome,,Yes,,1,Consumer & Retail,China,,,167,5.78,"Alibaba Group, Boyu Capital, Borui Capital",,,
+472,Health Care Service,,,Yes,1,,,,,,,,167,148,HEALTH CARE SERVICE CORPORATION
+473,NextEra Energy,Yes,,,1,Utilities: Gas and Electric,Florida,167,27412,,,,,,
+474,Lianjia,,Yes,,1,Financial Services,China,,,168,5.77,"Tencent, Baidu, Huasheng Capital",,,
+475,Marsh & McLennan,Yes,,,1,Diversified Financials,New York,168,26981,,,,,,
+476,Medtronic,,,Yes,1,,,,,,,,168,148,MEDTRONIC INC
+477,Booking Holdings,Yes,,,1,Internet Services and Retailing,Connecticut,169,26917,,,,,,
+478,RELEX,,Yes,,1,Consumer & Retail,Finland,,,169,5.7,"Blackstone, Technology Crossover Ventures, Summit Partners",,,
+479,Aetna Resources,,,Yes,1,,,,,,,,170,146,AETNA RESOURCES LLC
+480,Back Market,,Yes,,1,Consumer & Retail,France,,,170,5.7,"Aglae Ventures, Eurazeo, Daphni",,,
+481,McDonald’s,Yes,,,1,Food Services,Illinois,170,26885,,,,,,
+482,HF Sinclair,Yes,,,1,Petroleum Refining,Texas,171,26869,,,,,,
+483,Pinterest,,,Yes,1,,,,,,,,171,144,PINTEREST INC
+484,Workato,,Yes,,1,Enterprise Tech,United States,,,171,5.7,"Battery Ventures, Storm Ventures, Redpoint Ventures",,,
+485,AIG,Yes,,,1,Insurance: Property and Casualty (Stock),New York,172,26775,,,,,,
+486,The Boring Company,,Yes,,1,Industrials,United States,,,172,5.7,"VY Capital, 8VC, Craft Ventures",,,
+487,The Vanguard Group,,,Yes,1,,,,,,,,172,144,THE VANGUARD GROUP INC
+488,Legora,,Yes,,1,Enterprise Tech,Sweden,,,173,5.6,"Redpoint Ventures, Bessemer Venture Partners",,,
+489,Occidental Petroleum,Yes,,,1,"Mining, Crude-Oil Production",Texas,173,26446,,,,,,
+490,ContentSquare,,Yes,,1,Enterprise Tech,France,,,174,5.6,"Highland Europe, Eurazeo, Canaan Partners",,,
+491,Marriott International,Yes,,,1,"Hotels, Casinos, Resorts",Maryland,174,26186,,,,,,
+492,University of Pittsburgh,,,Yes,1,,,,,,,,174,143,UNIVERSITY OF PITTSBURGH
+493,Jones Lang LaSalle,Yes,,,1,Real Estate,Illinois,175,26115.6,,,,,,
+494,Postman,,Yes,,1,Enterprise Tech,United States,,,175,5.6,"Nexus Venture Partners, CRV, Insight Partners",,,
+495,FiveTran,,Yes,,1,Enterprise Tech,United States,,,176,5.6,"Matrix Partners, Andreessen Horowitz, General Catalyst",,,
+496,General Hosp Corp dba Mass General Hosp,,,Yes,1,,,,,,,,176,141,GENERAL HOSP CORP D B A MASS GENERAL HOSP
+497,International Paper,Yes,,,1,"Packaging, Containers",Tennessee,176,26104,,,,,,
+498,Freeport-McMoRan,Yes,,,1,"Mining, Crude-Oil Production",Arizona,177,25915,,,,,,
+499,SandboxAQ,,Yes,,1,Enterprise Tech,United States,,,177,5.6,"Breyer Capital, Parkway VC, TIME Ventures",,,
+500,Wsp USA,,,Yes,1,,,,,,,,177,140,WSP USA INC
+501,Constellation Energy,Yes,,,1,Energy,Maryland,178,25533,,,,,,
+502,Physical Intelligence,,Yes,,1,Enterprise Tech,United States,,,178,5.6,"Khosla Ventures, Sequoia Capital, Lux Capital",,,
+503,Waymo,,,Yes,1,,,,,,,,178,140,WAYMO LLC
+504,Harness,,Yes,,1,Enterprise Tech,United States,,,179,5.5,"Menlo Ventures, Alkeon Capital Management, Citi Ventures",,,
+505,Waste Management,Yes,,,1,Waste Management,Texas,179,25204,,,,,,
+506,Live Nation Entertainment,Yes,,,1,Entertainment,California,180,25201.4,,,,,,
+507,Purdue University,,,Yes,1,,,,,,,,180,139,PURDUE UNIVERSITY
+508,Vuori,,Yes,,1,Consumer & Retail,United States,,,180,5.5,"SoftBank Group, Norwest Venture Partners",,,
+509,firmus,,Yes,,1,Enterprise Tech,Australia,,,181,5.5,,,,
+510,Sk Hynix Nand Product Solutions Corp Dba Solidigm,,,Yes,1,,,,,,,,181,138,SK HYNIX NAND PRODUCT SOLUTIONS CORP DBA SOLIDIGM
+511,Stryker,Yes,,,1,Medical Products and Equipment,Michigan,181,25116,,,,,,
+512,Dollar Tree,Yes,,,1,Specialty Retailers: Other,Virginia,182,25041.8,,,,,,
+513,Genpact,,,Yes,1,,,,,,,,182,138,GENPACT LLC
+514,Mambu,,Yes,,1,Financial Services,Netherlands,,,182,5.5,"Runa Capital, Acton Capital Partners, Point Nine Capital",,,
+515,3M,Yes,,,1,Chemicals,Minnesota,183,24948,,,,,,
+516,Suno,,Yes,,1,Enterprise Tech,United States,,,183,5.4,"Menlo Ventures, Lightspeed Venture Partners, Bessemer Venture Partners",,,
+517,Zensar Technologies,,,Yes,1,,,,,,,,183,137,ZENSAR TECHNOLOGIES INC
+518,Kraft Heinz,Yes,,,1,Food Consumer Products,Illinois,184,24942,,,,,,
+519,Runway,,Yes,,1,Media & Entertainment,United States,,,184,5.32,"Lux Capital, Compound, Amplify Partners",,,
+520,The University of Tennessee,,,Yes,1,,,,,,,,184,137,THE UNIVERSITY OF TENNESSEE
+521,PG&E,Yes,,,1,Utilities: Gas and Electric,California,185,24935,,,,,,
+522,Rappi,,Yes,,1,Consumer & Retail,Mexico,,,185,5.25,"DST Global, Andreessen Horowitz, Sequoia Capital, Redpoint e.ventures",,,
+523,University of Nebraska Medical Center,,,Yes,1,,,,,,,,185,137,UNIVERSITY OF NEBRASKA MEDICAL CENTER
+524,Collibra,,Yes,,1,Enterprise Tech,Belgium,,,186,5.25,"Index Ventures, Battery Ventures, ICONIQ Capital",,,
+525,Danaher,Yes,,,1,Medical Products and Equipment,District of Columbia,186,24568,,,,,,
+526,The University of Iowa,,,Yes,1,,,,,,,,186,137,THE UNIVERSITY OF IOWA
+527,Mercury,,Yes,,1,Financial Services,United States,,,187,5.2,"Andreessen Horowitz, Coatue Management, Clocktower Technology Ventures",,,
+528,Persistent Systems,,,Yes,1,,,,,,,,187,135,PERSISTENT SYSTEMS INC
+529,Union Pacific,Yes,,,1,Railroads,Nebraska,187,24510,,,,,,
+530,Atos Syntel,,,Yes,1,,,,,,,,188,135,ATOS SYNTEL INC
+531,Genuine Parts,Yes,,,1,Wholesalers: Diversified,Georgia,188,24300.1,,,,,,
+532,n8n,,Yes,,1,Enterprise Tech,Germany,,,188,5.2,"Accel, Evantic Capital, Seqouoia Capital",,,
+533,6Sense,,Yes,,1,Enterprise Tech,United States,,,189,5.2,"Venrock, Battery Ventures, Insight Partners",,,
+534,Atlassian Us,,,Yes,1,,,,,,,,189,135,ATLASSIAN US INC
+535,Exelon,Yes,,,1,Utilities: Gas and Electric,Illinois,189,24258,,,,,,
+536,CtrlS,,Yes,,1,Enterprise Tech,India,,,190,5.2,CPP Investments,,,
+537,Ut-battelle LLC Ornl,,,Yes,1,,,,,,,,190,135,UT-BATTELLE LLC ORNL
+538,QuintoAndar,,Yes,,1,Financial Services,Brazil,,,191,5.1,"Kaszek Ventures, General Atlantic, SoftBank Group",,,
+539,Abnormal Security,,Yes,,1,Enterprise Tech,United States,,,192,5.1,"Greylock Partners, Insight Partners,Menlo Ventures",,,
+540,Ineffable Intelligence,,Yes,,1,Enterprise Tech,United Kingdom,,,193,5.1,"Bond, British Business Bank, DST Global",,,
+541,Reinsurance Group of America,Yes,,,1,"Insurance: Life, Health (Stock)",Missouri,193,23698,,,,,,
+542,C6 Bank,,Yes,,1,Financial Services,Brazil,,,194,5.05,Credit Suisse,,,
+543,Sherwin-Williams,Yes,,,1,Chemicals,Ohio,194,23574.3,,,,,,
+544,University of California Berkeley,,,Yes,1,,,,,,,,194,131,UNIVERSITY OF CALIFORNIA BERKELEY
+545,Cockroach Labs,,Yes,,1,Enterprise Tech,United States,,,195,5,"Google Ventures, Benchmark, FirstMark Capital",,,
+546,WESCO International,Yes,,,1,Wholesalers: Diversified,Pennsylvania,195,23510.9,,,,,,
+547,Yahoo Holdings,,,Yes,1,,,,,,,,195,131,YAHOO HOLDINGS INC
+548,Lear,Yes,,,1,Motor Vehicles & Parts,Michigan,196,23259.1,,,,,,
+549,"Populus Group,",,,Yes,1,,,,,,,,196,129,"POPULUS GROUP LLC; POPULUS GROUP, LLC"
+550,ShareChat,,Yes,,1,Media & Entertainment,India,,,196,5,"India Quotient, Elevation Capital, Lightspeed Venture Partners",,,
+551,Hopper,,Yes,,1,Consumer & Retail,Canada,,,197,5,"Capital One Growth Ventures, Citi Ventures, OMERS Ventures",,,
+552,Synchrony,Yes,,,1,Diversified Financials,Connecticut,197,23121,,,,,,
+553,University of Colorado Boulder,,,Yes,1,,,,,,,,197,128,UNIVERSITY OF COLORADO BOULDER
+554,Amphenol,Yes,,,1,Network and Other Communications Equipment,Connecticut,198,23094.7,,,,,,
+555,Netapp,,,Yes,1,,,,,,,,198,127,NETAPP INC
+556,VerSe Innovation,,Yes,,1,Media & Entertainment,India,,,198,5,"Falcon Edge Capital, Omidyar Network, Sequoia Capital India",,,
+557,Emc,,,Yes,1,,,,,,,,199,126,EMC CORPORATION
+558,Icertis,,Yes,,1,Enterprise Tech,United States,,,199,5,"Eight Roads Ventures, Greycroft, Ignition Partners",,,
+559,Ross Stores,Yes,,,1,Specialty Retailers: Apparel,California,199,22750.6,,,,,,
+560,Fuse Energy,,Yes,,1,Industrials,United Kingdom,,,200,5,,,,
+561,Newmont,Yes,,,1,"Mining, Crude-Oil Production",Colorado,200,22669,,,,,,
+562,Samsung Austin Semiconductor,,,Yes,1,,,,,,,,200,126,SAMSUNG AUSTIN SEMICONDUCTOR LLC
+563,Clay,,Yes,,1,Enterprise Tech,United States,,,201,5,"Sequoia Capital, First Round Capital",,,
+564,Db Global Technology,,,Yes,1,,,,,,,,201,125,DB GLOBAL TECHNOLOGY INC
+565,EOG Resources,Yes,,,1,"Mining, Crude-Oil Production",Texas,201,22632,,,,,,
+566,Mpg Operations,,,Yes,1,,,,,,,,202,124,MPG OPERATIONS LLC
+567,Plata,,Yes,,1,Financial Services,Mexico,,,202,5,Coatue,,,
+568,Equifax,,,Yes,1,,,,,,,,203,124,EQUIFAX INC
+569,OakNorth Bank,,Yes,,1,Financial Services,United Kingdom,,,203,5,"Clermont Group, Coltrane Asset Management, Toscafund Asset Management",,,
+570,Group 1 Automotive,Yes,,,1,"Automotive Retailing, Services",Texas,204,22571.4,,,,,,
+571,Moon Active,,Yes,,1,Media & Entertainment,Israel,,,204,5,"Insight Partners, Andalusian Capital Partners",,,
+572,Rockwell Collins Inc dba Collins Aerospace,,,Yes,1,,,,,,,,204,124,ROCKWELL COLLINS INC D B A COLLINS AEROSPACE
+573,CDW,Yes,,,1,Information Technology Services,Illinois,205,22424.1,,,,,,
+574,Intellectt,,,Yes,1,,,,,,,,205,123,"INTELLECTT INC; INTELLECTT, INC."
+575,OfBusiness,,Yes,,1,Industrials,India,,,205,5,"Matrix Partners India, Falcon Edge Capital, SoftBank Group",,,
+576,Avnet,Yes,,,1,Wholesalers: Electronics and Office Equipment,Arizona,206,22200.8,,,,,,
+577,Joulent,,Yes,,1,Industrials,United States,,,206,5,National Grid Ventures,,,
+578,Halliburton,Yes,,,1,"Oil and Gas Equipment, Services",Texas,207,22184,,,,,,
+579,ZEPZ,,Yes,,1,Financial Services,United Kingdom,,,207,5,"Accel, Technology Crossover Ventures, LeapFrog Investments",,,
+580,Pine Labs,,Yes,,1,Financial Services,India,,,208,5,"Sequoia Capital India, Temasek, PayPal Ventures",,,
+581,Super Micro Computer,Yes,,,1,"Computers, Office Equipment",California,208,21972,,,,,,
+582,American Electric Power,Yes,,,1,Utilities: Gas and Electric,Ohio,209,21876,,,,,,
+583,Genentech,,,Yes,1,,,,,,,,209,121,GENENTECH INC; GENENTECH USA INC
+584,Island,,Yes,,1,Enterprise Tech,United States,,,209,5,"Insight Partners, Sequoia Capital, Stripes Group",,,
+585,Clio,,Yes,,1,Enterprise Tech,Canada,,,210,5,"OMERS Private Equity, T. Rowe Price, Technology Crossover Ventures",,,
+586,L3Harris Technologies,Yes,,,1,Aerospace & Defense,Florida,210,21865,,,,,,
+587,Metropolis,,Yes,,1,Consumer & Retail,United States,,,211,5,,,,
+588,Rutgers the State University of Nj,,,Yes,1,,,,,,,,211,120,RUTGERS THE STATE UNIVERSITY OF NJ
+589,Carrier Global,Yes,,,1,Industrial Machinery,Florida,212,21747,,,,,,
+590,Skims,,Yes,,1,Consumer & Retail,United States,,,212,5,"Thrive Capital, Alliance Consumer Growth, Imaginary Ventures",,,
+591,Synopsys,,,Yes,1,,,,,,,,212,119,SYNOPSYS INC
+592,BJ’s Wholesale Club,Yes,,,1,General Merchandisers,Massachusetts,213,21457.3,,,,,,
+593,Coalition,,Yes,,1,Insurance,United States,,,213,5,"Two Sigma Ventures, Flint Capital, Commerce Ventures",,,
+594,HCL Global Systems,,,Yes,1,,,,,,,,213,119,HCL GLOBAL SYSTEMS INC
+595,Bain & Company,,,Yes,1,,,,,,,,214,119,BAIN AND COMPANY INC
+596,Howden Group Holdings,,Yes,,1,Insurance,United Kingdom,,,214,5,"General Atlantic, 3i Group, Huagai Capital",,,
+597,Tenet Healthcare,Yes,,,1,Health Care: Medical Facilities,Texas,214,21310,,,,,,
+598,Qonto,,Yes,,1,Enterprise Tech,France,,,215,5,"Alven Capital, Valar Ventures, Tencent Holdings",,,
+599,Tiger Analytics,,,Yes,1,,,,,,,,215,119,TIGER ANALYTICS INC
+600,Reify Health,,Yes,,1,Healthcare & Life Sciences,United States,,,216,4.8,"Sierra Ventures, Battery Ventures, Asset Management Ventures",,,
+601,Akamai Technologies,,,Yes,1,,,,,,,,217,118,AKAMAI TECHNOLOGIES INC
+602,Cerebral,,Yes,,1,Healthcare & Life Sciences,United States,,,217,4.8,"Oak HC/FT Partners, Artis Ventures, WestCap Group",,,
+603,GE HealthCare Technologies,Yes,,,1,Medical Products and Equipment,Illinois,217,20625,,,,,,
+604,Automatic Data Processing,Yes,,,1,Diversified Outsourcing Services,New Jersey,218,20560.9,,,,,,
+605,Chipone,,Yes,,1,Industrials,China,,,218,4.73,"China Grand Prosperity Investment, Silk Road Huacheng, Oriza Equity Investment",,,
+606,The Curators of the University of Missouri,,,Yes,1,,,,,,,,218,118,THE CURATORS OF THE UNIVERSITY OF MISSOURI
+607,Brillio,,,Yes,1,,,,,,,,219,118,BRILLIO LLC
+608,Colgate-Palmolive,Yes,,,1,Household and Personal Products,New York,219,20382,,,,,,
+609,Modal,,Yes,,1,Enterprise Tech,United States,,,219,4.7,"Accel, Bain Capital Ventures, General Catalyst",,,
+610,BetterUp,,Yes,,1,Enterprise Tech,United States,,,220,4.7,"Threshold Ventures, Lightspeed Venture Partners, Crosslink Capital",,,
+611,Carvana,Yes,,,1,"Automotive Retailing, Services",Arizona,220,20322,,,,,,
+612,Altria Group,Yes,,,1,Tobacco,Virginia,221,20139,,,,,,
+613,Pleo,,Yes,,1,Enterprise Tech,Denmark,,,221,4.7,"Creandum, Founders, Kinnevik",,,
+614,Boston Scientific,Yes,,,1,Medical Products and Equipment,Massachusetts,222,20074,,,,,,
+615,Recursive Superintelligence,,Yes,,1,Enterprise Tech,United Kingdom,,,222,4.7,"AMD Ventures, GV, Greycroft",,,
+616,University of California Los Angeles,,,Yes,1,,,,,,,,222,117,UNIVERSITY OF CALIFORNIA LOS ANGELES
+617,Cheniere Energy,Yes,,,1,Pipelines,Texas,223,19976,,,,,,
+618,The Ohio State University,,,Yes,1,,,,,,,,223,116,THE OHIO STATE UNIVERSITY
+619,SonarSource,,Yes,,1,Enterprise Tech,Switzerland,,,223,4.7,"Advent International,General Catalyst,Insight Partners",,,
+620,Cotiviti,,,Yes,1,,,,,,,,224,115,COTIVITI INC
+621,Glean,,Yes,,1,Enterprise Tech,United States,,,224,4.6,"General Catalyst, Kleiner Perkins Caufield & Byers, Lightspeed Venture Partners",,,
+622,Parker-Hannifin,Yes,,,1,Industrial Machinery,Ohio,224,19850,,,,,,
+623,Color,,Yes,,1,Healthcare & Life Sciences,United States,,,225,4.6,"General Catalyst, Viking Global Investors, T. Rowe Price",,,
+624,Kimberly-Clark,Yes,,,1,Household and Personal Products,Texas,225,19701,,,,,,
+625,"V-soft Consulting Group,",,,Yes,1,,,,,,,,225,115,"V-SOFT CONSULTING GROUP INC; V-SOFT CONSULTING GROUP, INC."
+626,Checkr,,Yes,,1,Enterprise Tech,United States,,,226,4.6,"Y Combinator, Accel, T. Rowe Price",,,
+627,General Mills,Yes,,,1,Food Consumer Products,Minnesota,227,19486.6,,,,,,
+628,Lendable,,Yes,,1,Financial Services,United Kingdom,,,227,4.58,"Ontario Teachers' Pension Plan, Goldman Sachs",,,
+629,Manhattan Associates,,,Yes,1,,,,,,,,227,114,MANHATTAN ASSOCIATES INC
+630,Edison International,Yes,,,1,Utilities: Gas and Electric,California,228,19317,,,,,,
+631,GrubMarket,,Yes,,1,Consumer & Retail,United States,,,228,4.55,"GGV Capital, BlackRock, ACE & Company",,,
+632,AMI Labs,,Yes,,1,Enterprise Tech,France,,,229,4.53,"Cathay Innovation, Bezos Expeditions, HV Capital",,,
+633,AutoZone,Yes,,,1,Specialty Retailers: Other,Tennessee,229,18938.7,,,,,,
+634,Dell Products,,,Yes,1,,,,,,,,229,112,DELL PRODUCTS L P
+635,Ameriprise Financial,Yes,,,1,Diversified Financials,Minnesota,230,18911,,,,,,
+636,VIPKid,,Yes,,1,Consumer & Retail,China,,,230,4.5,"Sequoia Capital China, Tencent Holdings, Sinovation Ventures",,,
+637,Fedex Freight,,,Yes,1,,,,,,,,231,112,FEDEX FREIGHT INC
+638,Socure,,Yes,,1,Financial Services,United States,,,231,4.5,"Two Sigma Ventures, Flint Capital, Commerce Ventures",,,
+639,Guardian Life Ins. Co. of America,Yes,,,1,"Insurance: Life, Health (Mutual)",New York,232,18706,,,,,,
+640,Vmware,,,Yes,1,,,,,,,,232,112,VMWARE LLC
+641,wefox,,Yes,,1,Insurance,Germany,,,232,4.5,"Salesforce Ventures, Seedcamp, OMERS Ventures",,,
+642,Cleveland-Cliffs,Yes,,,1,Metals,Ohio,233,18610,,,,,,
+643,Harvard University,,,Yes,1,,,,,,,,233,111,HARVARD UNIVERSITY
+644,Unconventional AI,,Yes,,1,Enterprise Tech,United States,,,233,4.5,"Andreessen Horowitz, Lightspeed Venture Partners",,,
+645,Global Partners,Yes,,,1,Wholesalers: Diversified,Massachusetts,234,18561.4,,,,,,
+646,OneTrust,,Yes,,1,Enterprise Tech,United States,,,234,4.5,Insight Partners,,,
+647,The Pennsylvania State University,,,Yes,1,,,,,,,,234,110,THE PENNSYLVANIA STATE UNIVERSITY
+648,Aramark,Yes,,,1,Diversified Outsourcing Services,Pennsylvania,235,18506.3,,,,,,
+649,CRED,,Yes,,1,Financial Services,India,,,235,4.5,"Tiger Global Management, DST Global, Sequoia Capital India",,,
+650,Dana-farber Cancer Institute,,,Yes,1,,,,,,,,235,110,DANA-FARBER CANCER INSTITUTE
+651,Corebridge Financial,Yes,,,1,Diversified Financials,Texas,236,18481,,,,,,
+652,Hugging Face,,Yes,,1,Enterprise Tech,France,,,236,4.5,"Betaworks Ventures, Addition, Lux Capital",,,
+653,Massachusetts Institute of Technology,,,Yes,1,,,,,,,,236,110,MASSACHUSETTS INSTITUTE OF TECHNOLOGY
+654,Loews,Yes,,,1,Insurance: Property and Casualty (Stock),New York,237,18454,,,,,,
+655,Slk America,,,Yes,1,,,,,,,,237,109,SLK AMERICA INC
+656,Tabby,,Yes,,1,Financial Services,Saudi Arabia,,,237,4.5,"Arbor Ventures, STV, Global Founders Capital",,,
+657,Fal,,Yes,,1,Enterprise Tech,United States,,,238,4.5,"Andreessen Horowitz, Notable Capital, Meritech Capital Partners",,,
+658,Memorial Sloan Kettering Cancer Center,,,Yes,1,,,,,,,,238,108,MEMORIAL SLOAN KETTERING CANCER CENTER
+659,Goodyear Tire & Rubber,Yes,,,1,Motor Vehicles & Parts,Ohio,239,18280,,,,,,
+660,humansand,,Yes,,1,Enterprise Tech,United States,,,239,4.48,,,,
+661,Texas A&M University,,,Yes,1,,,,,,,,239,108,TEXAS A AND M UNIVERSITY; TEXAS A&M UNIVERSITY
+662,F5,,,Yes,1,,,,,,,,240,108,F5 INC
+663,MiRus,,Yes,,1,Healthcare & Life Sciences,United States,,,240,4.4,Boston Scientific,,,
+664,Pacific Life,Yes,,,1,"Insurance: Life, Health (Mutual)",California,240,18235,,,,,,
+665,Auto-Owners Insurance,Yes,,,1,Insurance: Property and Casualty (Mutual),Michigan,241,18229.3,,,,,,
+666,Guild Education,,Yes,,1,Enterprise Tech,United States,,,241,4.4,"General Atlantic, Blackstone, ICONIQ Growth",,,
+667,University of Alabama at Birmingham,,,Yes,1,,,,,,,,241,108,UNIVERSITY OF ALABAMA AT BIRMINGHAM
+668,Lightmatter,,Yes,,1,Enterprise Tech,United States,,,242,4.4,"Google Ventures, Spark Capital, Matrix Partners",,,
+669,Peter Kiewit Sons’,Yes,,,1,Engineering & Construction,Nebraska,242,18213,,,,,,
+670,Arizona State University,,,Yes,1,,,,,,,,243,107,ARIZONA STATE UNIVERSITY
+671,Lincoln National,Yes,,,1,"Insurance: Life, Health (Stock)",Pennsylvania,243,18212,,,,,,
+672,Skydio,,Yes,,1,Industrials,United States,,,243,4.4,"Andreessen Horowitz, Andreessen Horowitz, Institutional Venture Partners, Accel",,,
+673,Outreach,,Yes,,1,Enterprise Tech,United States,,,244,4.4,"Mayfield Fund, M12, Trinity Ventures",,,
+674,Steel Dynamics,Yes,,,1,Metals,Indiana,244,18176.6,,,,,,
+675,The University of Virginia,,,Yes,1,,,,,,,,244,107,THE UNIVERSITY OF VIRGINIA
+676,Citadel Securities Americas Services,,,Yes,1,,,,,,,,245,106,CITADEL SECURITIES AMERICAS SERVICES LLC
+677,Emerson Electric,Yes,,,1,Industrial Machinery,Missouri,245,18016,,,,,,
+678,Erebor,,Yes,,1,Financial Services,United States,,,245,4.35,"Lux Capital, 8VC",,,
+679,Asbury Automotive Group,Yes,,,1,"Automotive Retailing, Services",Georgia,246,17999,,,,,,
+680,Sorare,,Yes,,1,Media & Entertainment,France,,,246,4.3,"Benchmark, Accel, SoftBank Group",,,
+681,Arctic Wolf Networks,,Yes,,1,Enterprise Tech,United States,,,247,4.3,"Lightspeed Venture Partners, Redpoint Ventures, Viking Global Investors",,,
+682,ManpowerGroup,Yes,,,1,Diversified Outsourcing Services,Wisconsin,247,17957.1,,,,,,
+683,Nutanix,,,Yes,1,,,,,,,,247,106,NUTANIX INC
+684,Impulse Space,,Yes,,1,Industrials,United States,,,248,4.3,"137 Ventures, Banner VC, Founders Fund",,,
+685,Robinhood Markets,,,Yes,1,,,,,,,,248,106,ROBINHOOD MARKETS INC
+686,W.W. Grainger,Yes,,,1,Wholesalers: Diversified,Illinois,248,17942,,,,,,
+687,Jones Financial (Edward Jones),Yes,,,1,Securities,Missouri,249,17897,,,,,,
+688,OutSystems,,Yes,,1,Enterprise Tech,Portugal,,,249,4.3,"KKR, ES Ventures, North Bridge Growth Equity",,,
+689,University of Utah,,,Yes,1,,,,,,,,249,105,UNIVERSITY OF UTAH
+690,Miaoshou Doctor,,Yes,,1,Healthcare & Life Sciences,China,,,250,4.25,"Sequoia Capital China, Qiming Venture Partners, Tencent Holdings",,,
+691,O’Reilly Automotive,Yes,,,1,Specialty Retailers: Other,Missouri,250,17782,,,,,,
+692,Fis Management Services,,,Yes,1,,,,,,,,251,105,FIS MANAGEMENT SERVICES LLC
+693,Globalization Partners,,Yes,,1,Enterprise Tech,United States,,,251,4.2,"Vista Equity Partners, Wincove, TDR Capital",,,
+694,Vistra,Yes,,,1,Energy,Texas,251,17738,,,,,,
+695,Michigan State University,,,Yes,1,,,,,,,,252,105,MICHIGAN STATE UNIVERSITY
+696,Relativity Space,,Yes,,1,Industrials,United States,,,252,4.2,"Playground Global, Bond, Tribe Capital",,,
+697,MGM Resorts International,Yes,,,1,"Hotels, Casinos, Resorts",Nevada,253,17537.7,,,,,,
+698,Navy Federal Credit Union,,,Yes,1,,,,,,,,253,105,NAVY FEDERAL CREDIT UNION
+699,ThoughtSpot,,Yes,,1,Enterprise Tech,United States,,,253,4.2,"Lightspeed Venture Partners, Khosla Ventures, Geodesic Capital",,,
+700,Anchorage Digital,,Yes,,1,Financial Services,United States,,,254,4.2,"Andreessen Horowitz, Blockchain Capital, Lux Capital",,,
+701,Corteva,Yes,,,1,Food Production,Indiana,254,17401,,,,,,
+702,Erp Analysts,,,Yes,1,,,,,,,,254,105,ERP ANALYSTS INC
+703,Nexthop,,Yes,,1,Enterprise Tech,United States,,,255,4.2,"Andreessen Horowitz, Lightspeed Venture Partners, Battery Ventures",,,
+704,Universal Health Services,Yes,,,1,Health Care: Medical Facilities,Pennsylvania,255,17364.8,,,,,,
+705,"Intraedge,",,,Yes,1,,,,,,,,256,104,"INTRAEDGE, INC."
+706,PulteGroup,Yes,,,1,Homebuilders,Georgia,256,17312,,,,,,
+707,Vanta,,Yes,,1,Enterprise Tech,United States,,,256,4.15,"Craft Ventures, Sequoia Capital, Verissimo Ventures",,,
+708,BitPanda,,Yes,,1,Financial Services,Austria,,,257,4.11,"Speedinvest, Valar Ventures, Uniqa Ventures",,,
+709,Omnicom Group,Yes,,,1,"Advertising, Marketing",New York,257,17271.9,,,,,,
+710,University of Washington,,,Yes,1,,,,,,,,257,104,UNIVERSITY OF WASHINGTON
+711,Dataminr,,Yes,,1,Enterprise Tech,United States,,,258,4.1,"Venrock, Institutional Venture Partners, Goldman Sachs",,,
+712,Dick’s Sporting Goods,Yes,,,1,Specialty Retailers: Other,Pennsylvania,258,17215.1,,,,,,
+713,Nordstrom Inc dba Nordstrom,,,Yes,1,,,,,,,,258,104,NORDSTROM INC D B A NORDSTROM
+714,Devon Energy,Yes,,,1,"Mining, Crude-Oil Production",Oklahoma,259,17188,,,,,,
+715,Moodys Analytics,,,Yes,1,,,,,,,,259,103,MOODYS ANALYTICS INC
+716,Weee!,,Yes,,1,Consumer & Retail,United States,,,259,4.1,"Goodwater Capital, iFly, XVC Venture Capital",,,
+717,Leidos Holdings,Yes,,,1,Information Technology Services,Virginia,260,17174,,,,,,
+718,Pennylane,,Yes,,1,Enterprise Tech,France,,,260,4.08,Sequoia Capital,,,
+719,Xilinx,,,Yes,1,,,,,,,,260,103,XILINX INC
+720,Aflac,Yes,,,1,"Insurance: Life, Health (Stock)",Georgia,261,17164,,,,,,
+721,Grant Thornton Advisors,,,Yes,1,,,,,,,,261,103,GRANT THORNTON ADVISORS LLC
+722,Yello Mobile,,Yes,,1,Consumer & Retail,South Korea,,,261,4,Formation 8,,,
+723,Luma AI,,Yes,,1,Enterprise Tech,United States,,,262,4,"Humain, AMD Ventures",,,
+724,Staples,,,Yes,1,,,,,,,,262,103,STAPLES INC
+725,Targa Resources,Yes,,,1,Pipelines,Texas,262,17028.3,,,,,,
+726,MEGVII,,Yes,,1,Enterprise Tech,China,,,263,4,"Ant Financial Services Group, Russia-China Investment Fund, Foxconn Technology Company",,,
+727,Murphy USA,Yes,,,1,Specialty Retailers: Other,Arkansas,263,17017.9,,,,,,
+728,Umass Chan Medical School,,,Yes,1,,,,,,,,263,102,UMASS CHAN MEDICAL SCHOOL
+729,Cosmic Healthcare,,,Yes,1,,,,,,,,264,102,COSMIC HEALTHCARE LLC
+730,LPL Financial Holdings,Yes,,,1,Securities,California,264,16989.5,,,,,,
+731,Synthesia,,Yes,,1,Enterprise Tech,United Kingdom,,,264,4,"Google Ventures, Kleiner Perkins Caufield & Byers, FirstMark Capital",,,
+732,Beacon Hill Solutions Group,,,Yes,1,,,,,,,,265,102,BEACON HILL SOLUTIONS GROUP LLC
+733,EMCOR Group,Yes,,,1,Engineering & Construction,Connecticut,265,16986.4,,,,,,
+734,Ricursive Intelligence,,Yes,,1,Industrials,United States,,,265,4,"Lightspeed Venture Partners, 49 Palms Ventures, Sequoia Capital",,,
+735,Element Labs,,Yes,,1,Enterprise Tech,Israel,,,266,4,"Fidelity Investments, Undisclosed Investors",,,
+736,Kinder Morgan,Yes,,,1,Pipelines,Texas,266,16937,,,,,,
+737,Photon Infotech,,,Yes,1,,,,,,,,266,101,PHOTON INFOTECH INC
+738,Base Power,,Yes,,1,Industrials,United States,,,267,4,"Addition, 137 Ventures",,,
+739,Consolidated Edison,Yes,,,1,Utilities: Gas and Electric,New York,267,16918,,,,,,
+740,Greensill,,Yes,,1,Financial Services,United Kingdom,,,268,4,"SoftBank Group, General Atlantic",,,
+741,Keurig Dr Pepper,Yes,,,1,Beverages,Massachusetts,268,16603,,,,,,
+742,Inflection AI,,Yes,,1,Enterprise Tech,United States,,,269,4,"Gates Frontier, Greylock Partners, Horizons Ventures",,,
+743,Quadrant Technologies,,,Yes,1,,,,,,,,269,100,QUADRANT TECHNOLOGIES LLC
+744,Republic Services,Yes,,,1,Waste Management,Arizona,269,16591,,,,,,
+745,Markel Group,Yes,,,1,Insurance: Property and Casualty (Stock),Virginia,270,16589.3,,,,,,
+746,Tekion,,Yes,,1,Industrials,United States,,,270,4,"Airbus Ventures, Index Ventures, Advent International",,,
+747,Farmers Insurance Exchange,Yes,,,1,Insurance: Property and Casualty (Mutual),California,271,16573.2,,,,,,
+748,The Trustees of Princeton University,,,Yes,1,,,,,,,,271,98,THE TRUSTEES OF PRINCETON UNIVERSITY
+749,Zapier,,Yes,,1,Enterprise Tech,United States,,,271,4,"Sequoia Capital, Bessemer Venture Partners, Threshold Ventures",,,
+750,BrowserStack,,Yes,,1,Enterprise Tech,Ireland,,,272,4,"Accel, Insight Partners, Bond Capital",,,
+751,Dominion Energy,Yes,,,1,Utilities: Gas and Electric,Virginia,272,16506,,,,,,
+752,Nyu Grossman School of Medicine,,,Yes,1,,,,,,,,272,98,NYU GROSSMAN SCHOOL OF MEDICINE
+753,Aurora Solar,,Yes,,1,Industrials,United States,,,273,4,"Fifth Wall Ventures, Energize Ventures, ICONIQ Capital",,,
+754,Docusign,,,Yes,1,,,,,,,,273,98,DOCUSIGN INC
+755,Land O’Lakes,Yes,,,1,Food Consumer Products,Minnesota,273,16411.5,,,,,,
+756,Decart,,Yes,,1,Enterprise Tech,United States,,,274,4,"Sequoia Capital, Zeev Ventures",,,
+757,Dish Wireless,,,Yes,1,,,,,,,,274,96,DISH WIRELESS LLC
+758,Farmers Business Network,,Yes,,1,Industrials,United States,,,275,4,"Blackrock, Kleiner Perkins Caulfield & Byers, Google Ventures",,,
+759,Fox,Yes,,,1,Entertainment,New York,275,16300,,,,,,
+760,Management Health Systems LLC Dba Medpro International,,,Yes,1,,,,,,,,275,96,MANAGEMENT HEALTH SYSTEMS LLC DBA MEDPRO INTERNATIONAL
+761,Branch,,Yes,,1,Enterprise Tech,United States,,,276,4,"New Enterprise Associates, Pear, Cowboy Ventures",,,
+762,University of California Davis,,,Yes,1,,,,,,,,276,96,UNIVERSITY OF CALIFORNIA DAVIS
+763,C.H. Robinson Worldwide,Yes,,,1,Transportation and Logistics,Minnesota,277,16232.8,,,,,,
+764,Corgi,,Yes,,1,Financial Services,United States,,,277,4,"8188 Capital, First Order Fund, GSB Backers",,,
+765,Hubspot,,,Yes,1,,,,,,,,277,96,HUBSPOT INC
+766,Bitgo Holdings,Yes,,,1,Financial Data Services,California,278,16152.1,,,,,,
+767,PointClickCare,,Yes,,1,Healthcare & Life Sciences,Canada,,,278,4,"Dragoneer Investment Group, Hellman & Friedman, JMI Equity",,,
+768,Houzz,,Yes,,1,Consumer & Retail,United States,,,279,4,"New Enterprise Associates, Sequoia Capital, Comcast Ventures",,,
+769,United Rentals,Yes,,,1,Specialty Retailers: Other,Connecticut,279,16099,,,,,,
+770,The University of Texas at Austin,,,Yes,1,,,,,,,,279,96,THE UNIVERSITY OF TEXAS AT AUSTIN
+771,"Ascendion, Inc. Formerly Known As Collabera,",,,Yes,1,,,,,,,,280,96,"ASCENDION, INC. FORMERLY KNOWN AS COLLABERA, INC."
+772,Clubhouse,,Yes,,1,Media & Entertainment,United States,,,280,4,"Andreessen Horowitz, TQ Ventures",,,
+773,Ecolab,Yes,,,1,Chemicals,Minnesota,280,16081.2,,,,,,
+774,Illinois Tool Works,Yes,,,1,Industrial Machinery,Illinois,281,16044,,,,,,
+775,Impossible Foods,,Yes,,1,Consumer & Retail,United States,,,281,4,"Khosla Ventures, Horizons Ventures, Temasek Holdings",,,
+776,Perficient,,,Yes,1,,,,,,,,281,96,"PERFICIENT INC; PERFICIENT, INC."
+777,Casey’s General Stores,Yes,,,1,Specialty Retailers: Other,Iowa,282,15940.9,,,,,,
+778,Nc State University,,,Yes,1,,,,,,,,282,95,NC STATE UNIVERSITY
+779,Radiology Partners,,Yes,,1,Healthcare & Life Sciences,United States,,,282,4,"New Enterprise Associates, Starr Investment Holdings",,,
+780,ClickUp,,Yes,,1,Enterprise Tech,United States,,,283,4,"Georgian Partners, Craft Ventures",,,
+781,PPG Industries,Yes,,,1,Chemicals,Pennsylvania,284,15875,,,,,,
+782,West Virginia University,,,Yes,1,,,,,,,,284,93,WEST VIRGINIA UNIVERSITY
+783,Yuga Labs,,Yes,,1,Media & Entertainment,United States,,,284,4,"Andreessen Horowitz, Thrive Capital, Sound Ventures",,,
+784,DTE Energy,Yes,,,1,Utilities: Gas and Electric,Michigan,285,15814,,,,,,
+785,Takeda Development Center Americas,,,Yes,1,,,,,,,,285,92,TAKEDA DEVELOPMENT CENTER AMERICAS INC
+786,Webflow,,Yes,,1,Enterprise Tech,United States,,,285,4,"Accel, Silversmith Capital Partners, capitalG",,,
+787,The Brandtech Group,,Yes,,1,Enterprise Tech,United States,,,286,4,Undisclosed,,,
+788,Corning,Yes,,,1,"Electronics, Electrical Equip.",New York,286,15629,,,,,,
+789,Laboratory Corporation of America Holdings,,,Yes,1,,,,,,,,286,91,LABORATORY CORPORATION OF AMERICA; LABORATORY CORPORATION OF AMERICA HOLDINGS
+790,Kpler,,Yes,,1,Enterprise Tech,Belgium,,,287,4,Sixth Street,,,
+791,Nagarro,,,Yes,1,,,,,,,,287,91,NAGARRO INC
+792,Principal Financial,Yes,,,1,"Insurance: Life, Health (Stock)",Iowa,287,15625.5,,,,,,
+793,EON,,Yes,,1,Enterprise Tech,United States,,,288,4,"Lightspeed Venture Partners, Sequoia Capital, Bond",,,
+794,Insurance Services Office,,,Yes,1,,,,,,,,288,90,INSURANCE SERVICES OFFICE INC
+795,Mutual of Omaha,Yes,,,1,"Insurance: Life, Health (Mutual)",Nebraska,288,15539.5,,,,,,
+796,Kohl’s,Yes,,,1,General Merchandisers,Wisconsin,289,15527,,,,,,
+797,Next Insurance,,Yes,,1,Insurance,United States,,,289,4,"Zeev Ventures, Ribbit Capital, TLV Partners",,,
+798,Northwell Health,,,Yes,1,,,,,,,,289,90,NORTHWELL HEALTH
+799,Hozon Auto,,Yes,,1,Industrials,China,,,290,3.95,"HD Capital, Qihoo 360 Technology, China Fortune Land Development",,,
+800,Tractor Supply,Yes,,,1,Specialty Retailers: Other,Tennessee,290,15524.1,,,,,,
+801,The University of Texas M D Anderson Cancer Center,,,Yes,1,,,,,,,,290,90,THE UNIVERSITY OF TEXAS M D ANDERSON CANCER CENTER
+802,Medlinker,,Yes,,1,Healthcare & Life Sciences,China,,,291,3.92,"China Health Industry Investment Fund, China Renaissance, and Sequoia Capital China",,,
+803,Stantec Consulting Services,,,Yes,1,,,,,,,,291,90,STANTEC CONSULTING SERVICES INC.
+804,Whirlpool,Yes,,,1,"Electronics, Electrical Equip.",Michigan,291,15524,,,,,,
+805,Fluor,Yes,,,1,Engineering & Construction,Texas,292,15503,,,,,,
+806,MessageBird,,Yes,,1,Enterprise Tech,Netherlands,,,292,3.8,"Y Combinator, Atomico, Accel",,,
+807,University of California San Diego,,,Yes,1,,,,,,,,292,90,UNIVERSITY OF CALIFORNIA SAN DIEGO
+808,Gap,Yes,,,1,Specialty Retailers: Apparel,California,293,15366,,,,,,
+809,StockX,,Yes,,1,Consumer & Retail,United States,,,293,3.8,"Google Ventures, Battery Ventures, DST Global",,,
+810,University of Southern California,,,Yes,1,,,,,,,,293,90,UNIVERSITY OF SOUTHERN CALIFORNIA
+811,Ayar Labs,,Yes,,1,Industrials,United States,,,294,3.75,"Intel Capital, Founders Fund, Playground Global",,,
+812,S&P Global,Yes,,,1,Financial Data Services,New York,294,15336,,,,,,
+813,Weill Cornell Medical College,,,Yes,1,,,,,,,,294,90,WEILL CORNELL MEDICAL COLLEGE
+814,Ally Financial,Yes,,,1,Diversified Financials,Michigan,295,15259,,,,,,
+815,Dutchie,,Yes,,1,Consumer & Retail,United States,,,295,3.75,"Casa Verde Capital, Gron Ventures, Thrity Five Ventures",,,
+816,Schlumberger Technology,,,Yes,1,,,,,,,,295,90,SCHLUMBERGER TECHNOLOGY CORPORATION
+817,Articulate,,Yes,,1,Enterprise Tech,United States,,,296,3.75,"Blackstone, ICONIQ Growth, General Atlantic",,,
+818,Builders FirstSource,Yes,,,1,"Building Materials, Glass",Texas,296,15190.6,,,,,,
+819,Papaya Global,,Yes,,1,Enterprise Tech,United States,,,297,3.7,"Bessemer Venture Partners, Insight Partners, New Era Ventures",,,
+820,Sonic Automotive,Yes,,,1,"Automotive Retailing, Services",North Carolina,297,15153.6,,,,,,
+821,University of Kentucky,,,Yes,1,,,,,,,,297,89,UNIVERSITY OF KENTUCKY
+822,Abogen,,Yes,,1,Healthcare & Life Sciences,China,,,298,3.7,"Hillhouse Capital Management, SoftBank Group, Qiming Venture Partners",,,
+823,Stanley Black & Decker,Yes,,,1,Industrial Machinery,Connecticut,298,15130.4,,,,,,
+824,University of Oklahoma,,,Yes,1,,,,,,,,298,89,UNIVERSITY OF OKLAHOMA
+825,Kenvue,Yes,,,1,Household and Personal Products,New Jersey,299,15124,,,,,,
+826,"Mastech Digital Technologies, Inc., A Mastech Digital, Inc. Company",,,Yes,1,,,,,,,,299,89,"MASTECH DIGITAL TECHNOLOGIES, INC., A MASTECH DIGITAL, INC. COMPANY"
+827,Abba Platforms,,Yes,,1,Financial Services,United States,,,300,3.7,Run4 Capital,,,
+828,Kyndryl Holdings,Yes,,,1,Information Technology Services,New York,300,15057,,,,,,
+829,PWC Us Tax,,,Yes,1,,,,,,,,300,89,PWC US TAX LLP
+830,Diamondback Energy,Yes,,,1,"Mining, Crude-Oil Production",Texas,301,15026,,,,,,
+831,o9 Solutions,,Yes,,1,Enterprise Tech,United States,,,301,3.7,KKR,,,
+832,University of Miami,,,Yes,1,,,,,,,,301,88,UNIVERSITY OF MIAMI
+833,EchoStar,Yes,,,1,Telecommunications,Colorado,302,15005,,,,,,
+834,Noom,,Yes,,1,Healthcare & Life Sciences,United States,,,302,3.7,"Qualcomm Ventures, Samsung Ventures, Silver Lake",,,
+835,Sony Interactive Entertainment,,,Yes,1,,,,,,,,302,88,SONY INTERACTIVE ENTERTAINMENT LLC
+836,Digipulse Technologies,,,Yes,1,,,,,,,,303,88,DIGIPULSE TECHNOLOGIES INC
+837,GOAT,,Yes,,1,Consumer & Retail,United States,,,303,3.7,"Upfront Ventures, Webb Investment Network, D1 Capital Partners",,,
+838,Textron,Yes,,,1,Aerospace & Defense,Rhode Island,303,14799,,,,,,
+839,Dataiku,,Yes,,1,Enterprise Tech,United States,,,304,3.7,"Alven Capital, FirstMark Capital, capitalG",,,
+840,Kpit Technologies,,,Yes,1,,,,,,,,304,88,KPIT TECHNOLOGIES INC
+841,Stark,,Yes,,1,Industrials,Germany,,,305,3.66,"Founders Fund, Sequoia Capital, 8VC",,,
+842,W.R. Berkley,Yes,,,1,Insurance: Property and Casualty (Stock),Connecticut,305,14707.9,,,,,,
+843,Barclays Capital,,,Yes,1,,,,,,,,306,88,BARCLAYS CAPITAL INC
+844,SiFive,,Yes,,1,Enterprise Tech,United States,,,306,3.65,"Sutter Hill Ventures, Osage University Partners, Spark Capital",,,
+845,Xcel Energy,Yes,,,1,Utilities: Gas and Electric,Minnesota,306,14669,,,,,,
+846,FirstEnergy,Yes,,,1,Utilities: Gas and Electric,Ohio,307,14627,,,,,,
+847,Pyramid Consulting,,,Yes,1,,,,,,,,307,88,PYRAMID CONSULTING INC
+848,Whoop,,Yes,,1,Healthcare & Life Sciences,United States,,,307,3.6,"NextView Ventures, Promus Ventures, Two Sigma Ventures",,,
+849,Erie Insurance Group,Yes,,,1,Insurance: Property and Casualty (Mutual),Pennsylvania,308,14615.9,,,,,,
+850,Oxylabs,,Yes,,1,Enterprise Tech,Lithuania,,,308,3.6,Warburg Pincus,,,
+851,Course Hero,,Yes,,1,Consumer & Retail,United States,,,309,3.6,"NewView Capital, Maveron, Ridge Ventures",,,
+852,Ochsner Clinic Foundation,,,Yes,1,,,,,,,,309,88,OCHSNER CLINIC FOUNDATION
+853,SpotOn,,Yes,,1,Financial Services,United States,,,310,3.6,"Dragoneer Investment Group, DST Global, Franklin Templeton",,,
+854,Axon Enterprise,,,Yes,1,,,,,,,,311,87,AXON ENTERPRISE INC
+855,Fidelity National Financial,Yes,,,1,Insurance: Property and Casualty (Stock),Florida,311,14445,,,,,,
+856,Relativity,,Yes,,1,Enterprise Tech,United States,,,311,3.6,"Silver Lake, ICONIQ Capital",,,
+857,Maplebear Inc dba Instacart,,,Yes,1,,,,,,,,312,87,MAPLEBEAR INC D B A INSTACART
+858,Otis Worldwide,Yes,,,1,Industrial Machinery,Connecticut,312,14431,,,,,,
+859,Otto Bock HealthCare,,Yes,,1,Healthcare & Life Sciences,Germany,,,312,3.52,EQT Partners,,,
+860,Amentum Holdings,Yes,,,1,Engineering & Construction,Virginia,313,14393,,,,,,
+861,Relx Inc dba Lexisnexis USA,,,Yes,1,,,,,,,,313,87,RELX INC D B A LEXISNEXIS USA
+862,Via,,Yes,,1,Industrials,United States,,,313,3.5,"83North, RiverPark Ventures, Pitango Venture Capital",,,
+863,Brigham and Womens Hospital,,,Yes,1,,,,,,,,314,87,BRIGHAM AND WOMENS HOSPITAL
+864,Rokt,,Yes,,1,Consumer & Retail,United States,,,314,3.5,"Square Peg Capital, TDM Growth Partners, Tiger Global Management",,,
+865,Chainguard,,Yes,,1,Enterprise Tech,United States,,,315,3.5,"Amplify Partners, MANTIS Venture Capital, Sequoia Capital",,,
+866,Estee Lauder,Yes,,,1,Household and Personal Products,New York,315,14326,,,,,,
+867,Slalom,,,Yes,1,,,,,,,,315,87,SLALOM INC
+868,BorgWarner,Yes,,,1,Motor Vehicles & Parts,Michigan,316,14316,,,,,,
+869,Environmental Systems Research Institute,,,Yes,1,,,,,,,,316,87,ENVIRONMENTAL SYSTEMS RESEARCH INSTITUTE INC
+870,HyalRoute,,Yes,,1,Industrials,Singapore,,,316,3.5,Kuang-Chi,,,
+871,A24 Films,,Yes,,1,Media & Entertainment,United States,,,317,3.5,"Stripes Group, Neuberger Berman",,,
+872,Northern Trust,Yes,,,1,Commercial Banks,Illinois,317,14300,,,,,,
+873,University of Rochester,,,Yes,1,,,,,,,,317,87,UNIVERSITY OF ROCHESTER
+874,Hippocratic AI,,Yes,,1,Healthcare & Life Sciences,United States,,,318,3.5,"Andreessen Horowitz, General Catalyst, NVentures",,,
+875,Viatris,Yes,,,1,Pharmaceuticals,Pennsylvania,318,14299.9,,,,,,
+876,Citadel Americas Services,,,Yes,1,,,,,,,,319,86,CITADEL AMERICAS SERVICES LLC
+877,GoStudent,,Yes,,1,Consumer & Retail,Austria,,,319,3.5,"DN Capital, Left Lane Capital, Coatue Management",,,
+878,MasTec,Yes,,,1,Engineering & Construction,Florida,319,14299.2,,,,,,
+879,Cribl,,Yes,,1,Enterprise Tech,United States,,,320,3.5,"Institutional Venture Partners, CRV, Sequoia Capital",,,
+880,Paycom Payroll,,,Yes,1,,,,,,,,320,86,PAYCOM PAYROLL LLC
+881,Reliance,Yes,,,1,Metals,Arizona,320,14294.3,,,,,,
+882,Dish Network,,,Yes,1,,,,,,,,321,86,DISH NETWORK LLC
+883,Indigo Ag,,Yes,,1,Industrials,United States,,,321,3.5,"Activant Capital Group, Alaska Permanent Fund, Baillie Gifford & Co.",,,
+884,Western & Southern Financial Group,Yes,,,1,"Insurance: Life, Health (Mutual)",Ohio,321,14270.9,,,,,,
+885,Alaska Air Group,Yes,,,1,Airlines,Washington,322,14239,,,,,,
+886,Vultr,,Yes,,1,West Palm Beach,United States,,,322,3.5,AMD Ventures,,,
+887,Aledade,,Yes,,1,Healthcare & Life Sciences,United States,,,323,3.5,"Venrock, CVF Capital Partners, ARCH Venture Partners",,,
+888,BrightSpring Health Services,Yes,,,1,Health Care: Pharmacy and Other Services,Kentucky,323,14145,,,,,,
+889,CSX,Yes,,,1,Railroads,Florida,324,14092,,,,,,
+890,Mirakl,,Yes,,1,Consumer & Retail,France,,,324,3.5,"Elaia Partners, 83North, Felix Capital",,,
+891,Tata Technologies,,,Yes,1,,,,,,,,324,85,TATA TECHNOLOGIES INC
+892,Handshake,,Yes,,1,Enterprise Tech,United States,,,325,3.5,"Kleiner Perkins Caufield & Byers, Lightspeed Venture Partners, True Ventures",,,
+893,LKQ,Yes,,,1,Wholesalers: Diversified,Illinois,325,14046,,,,,,
+894,Samsung Electronics America,,,Yes,1,,,,,,,,325,84,SAMSUNG ELECTRONICS AMERICA INC
+895,ChargeBee Technologies,,Yes,,1,Financial Services,United States,,,326,3.5,"Insight Partners, Tiger Global Management, Accel",,,
+896,Labcorp Holdings,Yes,,,1,Health Care: Pharmacy and Other Services,North Carolina,326,13951.7,,,,,,
+897,The Options Clearing,,,Yes,1,,,,,,,,326,84,THE OPTIONS CLEARING CORPORATION
+898,Arthur J. Gallagher,Yes,,,1,Diversified Financials,Illinois,327,13942,,,,,,
+899,Comtrix Solutions,,,Yes,1,,,,,,,,327,84,COMTRIX SOLUTIONS INC
+900,Innovaccer,,Yes,,1,Healthcare & Life Sciences,United States,,,327,3.45,"M12, WestBridge Capital, Lightspeed Venture Partners",,,
+901,Coinbase,,,Yes,1,,,,,,,,328,84,COINBASE INC
+902,Unacademy,,Yes,,1,Consumer & Retail,India,,,328,3.44,"Blume Ventures, Nexus Venture Partners, Sequoia Capital India",,,
+903,Venture Global,Yes,,,1,Pipelines,Virginia,328,13769,,,,,,
+904,MoonPay,,Yes,,1,Financial Services,United States,,,329,3.4,"New Enterprise Associates, Coatue Management, Tiger Global Management",,,
+905,Trustees of Boston University,,,Yes,1,,,,,,,,329,84,TRUSTEES OF BOSTON UNIVERSITY
+906,ReliaQuest,,Yes,,1,Enterprise Tech,United States,,,330,3.4,"KKR, FTV Capital, Ten Eleven Ventures",,,
+907,Safeway,,,Yes,1,,,,,,,,330,84,SAFEWAY INC
+908,Sempra,Yes,,,1,Utilities: Gas and Electric,California,330,13702,,,,,,
+909,DaVita,Yes,,,1,Health Care: Medical Facilities,Colorado,331,13643.1,,,,,,
+910,Upstox,,Yes,,1,Financial Services,India,,,331,3.4,"Tiger Global Management, Kalaari Capital",,,
+911,Eversource Energy,Yes,,,1,Utilities: Gas and Electric,Massachusetts,332,13547.2,,,,,,
+912,Improbable,,Yes,,1,Media & Entertainment,United Kingdom,,,332,3.36,"Andreessen Horowitz, SoftBank Group, Temasek Holdings",,,
+913,PWC Us Consulting,,,Yes,1,,,,,,,,332,83,PWC US CONSULTING LLP
+914,Starburst,,Yes,,1,Enterprise Tech,United States,,,333,3.35,"Index Ventures, Coatue Management, Andreessen Horowitz",,,
+915,Zscaler,,,Yes,1,,,,,,,,333,83,ZSCALER INC
+916,Experis Us,,,Yes,1,,,,,,,,334,83,EXPERIS US LLC
+917,M&T Bank,Yes,,,1,Commercial Banks,New York,334,13228,,,,,,
+918,Youxia Motors,,Yes,,1,Industrials,China,,,334,3.35,"China Environmental Protection Industry, China Fortune Ocean",,,
+919,Henry Schein,Yes,,,1,Wholesalers: Health Care,New York,335,13184,,,,,,
+920,Persistent Systems Limited Dba Persistent Systems Limited USA Branch,,,Yes,1,,,,,,,,335,83,PERSISTENT SYSTEMS LIMITED DBA PERSISTENT SYSTEMS LIMITED USA BRANCH
+921,Spring Health,,Yes,,1,Healthcare & Life Sciences,United States,,,335,3.3,"Rethink Impact, Work-Bench, RRE Ventures",,,
+922,Db USA Core,,,Yes,1,,,,,,,,336,83,DB USA CORE CORPORATION
+923,GXO Logistics,Yes,,,1,Transportation and Logistics,Connecticut,336,13178,,,,,,
+924,Sila,,Yes,,1,Industrials,United States,,,336,3.3,"Bessemer Venture Partners, Sutter Hill Ventures, Matrix Partners",,,
+925,Ball,Yes,,,1,"Packaging, Containers",Colorado,337,13161,,,,,,
+926,Creditas,,Yes,,1,Financial Services,Brazil,,,337,3.3,"Kaszek Ventures, Amadeus Capital Partners, Quona Capital",,,
+927,Federal Home Loan Mortgage,,,Yes,1,,,,,,,,337,82,FEDERAL HOME LOAN MORTGAGE CORPORATION
+928,Annapurna Labs US,,,Yes,1,,,,,,,,338,82,ANNAPURNA LABS U S INC
+929,Cars24,,Yes,,1,Industrials,India,,,338,3.3,"Moore Strategic Ventures, DST Global, Sequoia Capital India",,,
+930,Unum Group,Yes,,,1,"Insurance: Life, Health (Stock)",Tennessee,338,13075.5,,,,,,
+931,Kurly,,Yes,,1,Consumer & Retail,South Korea,,,339,3.3,"Sequoia Capital China, DST Global, DST Global",,,
+932,Las Vegas Sands,Yes,,,1,"Hotels, Casinos, Resorts",Nevada,339,13017,,,,,,
+933,Moodys Investors Service,,,Yes,1,,,,,,,,339,82,MOODYS INVESTORS SERVICE INC
+934,Duke University,,,Yes,1,,,,,,,,340,82,DUKE UNIVERSITY
+935,Entergy,Yes,,,1,Utilities: Gas and Electric,Louisiana,340,12946.7,,,,,,
+936,Komodo Health,,Yes,,1,Healthcare & Life Sciences,United States,,,340,3.3,"Andreessen Horowitz, IA Ventures, Felicis Ventures",,,
+937,Fifth Third Bancorp,Yes,,,1,Commercial Banks,Ohio,341,12938,,,,,,
+938,Judi Health,,Yes,,1,Healthcare & Life Sciences,United States,,,341,3.25,"General Catalyst, B Capital",,,
+939,Addepar,,Yes,,1,Financial Services,United States,,,342,3.25,"8VC, D1 Capital Partners, Sway Ventures",,,
+940,Cincinnati Children's Hospital Medical Center,,,Yes,1,,,,,,,,342,82,CINCINNATI CHILDREN'S HOSPITAL MEDICAL CENTER
+941,Graybar Electric,Yes,,,1,Wholesalers: Diversified,Missouri,342,12875.6,,,,,,
+942,DXC Technology,Yes,,,1,Information Technology Services,Virginia,343,12871,,,,,,
+943,Lawrence Berkeley National Laboratory,,,Yes,1,,,,,,,,343,82,LAWRENCE BERKELEY NATIONAL LABORATORY
+944,Vercel,,Yes,,1,Enterprise Tech,United States,,,343,3.25,"CRV, Accel, Google Ventures",,,
+945,Alcoa,Yes,,,1,Metals,Pennsylvania,344,12831,,,,,,
+946,Black Forest Labs,,Yes,,1,Enterprise Tech,United States,,,344,3.25,"Salesforce Ventures, Andreessen Horowitz, AMP",,,
+947,The University of Arizona,,,Yes,1,,,,,,,,344,82,THE UNIVERSITY OF ARIZONA
+948,Assurant,Yes,,,1,Insurance: Property and Casualty (Stock),Georgia,345,12814.3,,,,,,
+949,Dadi Cinema,,Yes,,1,Media & Entertainment,China,,,345,3.24,Alibaba Pictures Group,,,
+950,Texas Tech University,,,Yes,1,,,,,,,,345,81,TEXAS TECH UNIVERSITY
+951,Aiven,,Yes,,1,Enterprise Tech,Finland,,,346,3.21,"Institutional Venture Partners, Atomico, Earlybird Venture Capital",,,
+952,Arcadis US,,,Yes,1,,,,,,,,346,80,ARCADIS INC; ARCADIS U S INC
+953,Ryder System,Yes,,,1,"Trucking, Truck Leasing",Florida,346,12665,,,,,,
+954,ApplyBoard,,Yes,,1,Consumer & Retail,Canada,,,347,3.2,"Artiman Ventures, Plug and Play Ventures, Anthos Capital",,,
+955,State University of New York at Stony Brook,,,Yes,1,,,,,,,,347,80,STATE UNIVERSITY OF NEW YORK AT STONY BROOK
+956,Cincinnati Financial,Yes,,,1,Insurance: Property and Casualty (Stock),Ohio,348,12631.5,,,,,,
+957,Eficens Systems,,,Yes,1,,,,,,,,348,80,EFICENS SYSTEMS INC
+958,Uala,,Yes,,1,Financial Services,Argentina,,,348,3.2,"Soros Fund Management, Ribbit Capital, Monashees+",,,
+959,Louisiana State University and A and M College,,,Yes,1,,,,,,,,349,80,LOUISIANA STATE UNIVERSITY AND A AND M COLLEGE
+960,Retool,,Yes,,1,Enterprise Tech,United States,,,349,3.2,Sequoia Capital,,,
+961,Community Health Systems,Yes,,,1,Health Care: Medical Facilities,Tennessee,350,12485,,,,,,
+962,Ironclad,,Yes,,1,Enterprise Tech,United States,,,350,3.2,"Accel, Sequoia Capital, Y Combinator",,,
+963,Samsung Semiconductor,,,Yes,1,,,,,,,,350,80,SAMSUNG SEMICONDUCTOR INC
+964,Cedar,,Yes,,1,Healthcare & Life Sciences,United States,,,351,3.2,"Thrive Capital, Founders Fund, Cocnord Health Partners",,,
+965,Flutterwave,,Yes,,1,Financial Services,United States,,,352,3.2,"Green Visor Capital, CRE Venture Capital, Greycroft",,,
+966,Henry Ford Health System dba Henry Ford Health,,,Yes,1,,,,,,,,352,79,HENRY FORD HEALTH SYSTEM D B A HENRY FORD HEALTH
+967,Huntington Ingalls Industries,Yes,,,1,Aerospace & Defense,Virginia,352,12484,,,,,,
+968,Children's Hospital,,,Yes,1,,,,,,,,353,79,CHILDREN'S HOSPITAL CORPORATION
+969,Thumbtack,,Yes,,1,Consumer & Retail,United States,,,353,3.2,"Tiger Global, Sequoia Capital, Google Capital",,,
+970,Blockstream,,Yes,,1,Financial Services,Canada,,,354,3.2,"AME Cloud Ventures, Future Perfect Ventures, Blockchain Capital",,,
+971,Lumen Technologies,Yes,,,1,Telecommunications,Louisiana,354,12402,,,,,,
+972,Montefiore Medical Center,,,Yes,1,,,,,,,,354,79,MONTEFIORE MEDICAL CENTER
+973,"Artech, Llc. Aka Artech Information Systems,",,,Yes,1,,,,,,,,355,79,"ARTECH, LLC. AKA ARTECH INFORMATION SYSTEMS, LLC"
+974,Eruditus Executive Education,,Yes,,1,Enterprise Tech,India,,,355,3.1,"Sequoia Capital India, Softbank, Bertelsmann India Investments",,,
+975,Ulta Beauty,Yes,,,1,Specialty Retailers: Other,Illinois,355,12392.8,,,,,,
+976,Crown Holdings,Yes,,,1,"Packaging, Containers",Pennsylvania,356,12365,,,,,,
+977,Tsmc Arizona,,,Yes,1,,,,,,,,356,79,TSMC ARIZONA CORPORATION
+978,Zetwerk,,Yes,,1,Industrials,India,,,356,3.1,"Peak XV Partners, Greenoaks, Kae Capital",,,
+979,Nuvemshop,,Yes,,1,Consumer & Retail,Brazil,,,357,3.1,"Kaszek Ventures, Qualcomm Ventures, Accel",,,
+980,AES,Yes,,,1,Utilities: Gas and Electric,Virginia,358,12233,,,,,,
+981,HighRadius,,Yes,,1,Financial Services,United States,,,358,3.1,"Susquehanna Growth Equity, Citi Ventures, ICONIQ Capital",,,
+982,Pioneer Consulting Services,,,Yes,1,,,,,,,,358,78,PIONEER CONSULTING LLC; PIONEER CONSULTING SERVICES LLC
+983,Georgia Institute of Technology,,,Yes,1,,,,,,,,359,78,GEORGIA INSTITUTE OF TECHNOLOGY
+984,NewLimit,,Yes,,1,Healthcare & Life Sciences,United States,,,359,3.1,"Abstract, Boost VC, Kleiner Perkins",,,
+985,Norfolk Southern,Yes,,,1,Railroads,Virginia,359,12180,,,,,,
+986,District of Columbia Public Schools,,,Yes,1,,,,,,,,360,78,DISTRICT OF COLUMBIA PUBLIC SCHOOLS
+987,Origin Quantum,,Yes,,1,Enterprise Tech,China,,,360,3.1,"CASVC Investment, China Internet Investment Fund, Hefei Hi-Tech Investment",,,
+988,Public Service Enterprise Group,Yes,,,1,Utilities: Gas and Electric,New Jersey,360,12168,,,,,,
+989,Ericsson,,,Yes,1,,,,,,,,361,78,ERICSSON INC
+990,Remote,,Yes,,1,Enterprise Tech,Netherlands,,,361,3,"Index Ventures, Sequoia Capital, General Catalyst",,,
+991,Carbon Health,,Yes,,1,Healthcare & Life Sciences,United States,,,362,3,"Brookfield Asset Management, Blackstone, Data Collective",,,
+992,EPAM Systems,,,Yes,1,,,,,,,,362,77,EPAM SYSTEMS INC
+993,Expand Energy,Yes,,,1,"Mining, Crude-Oil Production",Oklahoma,362,12124,,,,,,
+994,ActiveCampaign,,Yes,,1,Enterprise Tech,United States,,,363,3,"Silversmith Capital Partners, Susquehanna Growth Equity, Tiger Global Management",,,
+995,Hormel Foods,Yes,,,1,Food Consumer Products,Minnesota,363,12106.2,,,,,,
+996,Sapphire Software Solutions,,,Yes,1,,,,,,,,363,77,"SAPPHIRE SOFTWARE SOLUTIONS INC; SAPPHIRE SOFTWARE SOLUTIONS, INC."
+997,The Childrens Hospital of Philadelphia,,,Yes,1,,,,,,,,364,77,THE CHILDRENS HOSPITAL OF PHILADELPHIA
+998,Darden Restaurants,Yes,,,1,Food Services,Florida,364,12076.7,,,,,,
+999,Inxeption,,Yes,,1,Industrials,United States,,,364,3,"Coatue Management, BMO Capital, Schonfeld Strategic Advisors",,,
+1000,Lattice,,Yes,,1,Enterprise Tech,United States,,,365,3,"Khosla Ventures, Thrive Capital, Y Combinator",,,
+1001,Schneider Electric USA,,,Yes,1,,,,,,,,365,77,SCHNEIDER ELECTRIC USA INC
+1002,Cross River Bank,,Yes,,1,Financial Services,United States,,,366,3,"Battery Ventures, Andreessen Horowitz, Ribbit Capital",,,
+1003,Mosaic,Yes,,,1,Chemicals,Florida,366,12052.4,,,,,,
+1004,Strategic Systems,,,Yes,1,,,,,,,,366,77,STRATEGIC SYSTEMS INC
+1005,Hilton Worldwide Holdings,Yes,,,1,"Hotels, Casinos, Resorts",Virginia,367,12039,,,,,,
+1006,Niagara Bottling,,,Yes,1,,,,,,,,367,77,NIAGARA BOTTLING LLC
+1007,Outschool,,Yes,,1,Consumer & Retail,United States,,,367,3,"Uniion Square Ventures, Tiger Global Management, Lightspeed Venture Capital",,,
+1008,Air Products & Chemicals,Yes,,,1,Chemicals,Pennsylvania,368,12037.3,,,,,,
+1009,TradingView,,Yes,,1,Financial Services,United States,,,368,3,"Tiger Global Management, Insight Partners, Jump Capital",,,
+1010,Podium,,Yes,,1,Consumer & Retail,United States,,,369,3,"Accel, Summit Partners, Google Ventures",,,
+1011,Transunion,,,Yes,1,,,,,,,,369,77,TRANSUNION LLC
+1012,KK Group,,Yes,,1,Consumer & Retail,China,,,370,3,"Matrix Partners China, Bright Venture Capita, Shenzhen Capital Group",,,
+1013,Tredence,,,Yes,1,,,,,,,,370,77,TREDENCE INC
+1014,Electronic Arts,,,Yes,1,,,,,,,,371,76,ELECTRONIC ARTS INC
+1015,Sky Mavis,,Yes,,1,Media & Entertainment,Singapore,,,371,3,"Fabric Ventures, 500 Global, Standard Crypto",,,
+1016,Booz Allen Hamilton Holding,Yes,,,1,Information Technology Services,Virginia,372,11980,,,,,,
+1017,Robert Bosch,,,Yes,1,,,,,,,,372,76,ROBERT BOSCH LLC
+1018,Seismic,,Yes,,1,Enterprise Tech,United States,,,372,3,"Jackson Square Ventures, General Atlantic, Lightspeed Venture Partners",,,
+1019,ModelBest,,Yes,,1,Enterprise Tech,China,,,373,3,,,,
+1020,Valuemomentum,,,Yes,1,,,,,,,,373,75,VALUEMOMENTUM INC
+1021,Williams,Yes,,,1,Pipelines,Oklahoma,373,11950,,,,,,
+1022,Beaconfire Staffing Solutions,,,Yes,1,,,,,,,,374,75,BEACONFIRE STAFFING SOLUTIONS INC
+1023,Chipotle Mexican Grill,Yes,,,1,Food Services,California,374,11925.6,,,,,,
+1024,Sentry,,Yes,,1,Enterprise Tech,United States,,,374,3,"New Enterprise Associates, Accel, Bond",,,
+1025,Battelle Memorial Institute,,,Yes,1,,,,,,,,375,75,BATTELLE MEMORIAL INSTITUTE
+1026,CMR Surgical,,Yes,,1,Healthcare & Life Sciences,United Kingdom,,,375,3,"Cambridge Innovation Capital, LGT Capital Partners, Escala Capital",,,
+1027,Yum China Holdings,Yes,,,1,Food Services,Texas,375,11797,,,,,,
+1028,Lucid Software,,Yes,,1,Enterprise Tech,United States,,,376,3,"Spectrum Equity, ICONIQ Capital, Grayhawk Capital",,,
+1029,Oscar Health,Yes,,,1,Health Care: Insurance and Managed Care,New York,376,11701.4,,,,,,
+1030,X.ai,,,Yes,1,,,,,,,,376,75,X AI LLC; X.AI LLC
+1031,Age of Learning,,Yes,,1,Consumer & Retail,United States,,,377,3,Iconiq Capital,,,
+1032,Hershey,Yes,,,1,Food Consumer Products,Pennsylvania,377,11692.6,,,,,,
+1033,Burns and Mcdonnell Engineering,,,Yes,1,,,,,,,,378,74,BURNS AND MCDONNELL ENGINEERING COMPANY INC
+1034,Calendly,,Yes,,1,Enterprise Tech,United States,,,378,3,"ICONIQ Capital, OpenView Venture Partners",,,
+1035,Equitable Holdings,Yes,,,1,"Insurance: Life, Health (Stock)",New York,379,11665,,,,,,
+1036,Stord,,Yes,,1,Industrials,United States,,,379,3,"Dynamo VC, Susa Ventures, Founders Fund",,,
+1037,Avis Budget Group,Yes,,,1,"Automotive Retailing, Services",New Jersey,380,11652,,,,,,
+1038,Chapter,,Yes,,1,Healthcare & Life Sciences,United States,,,380,3,Coatue,,,
+1039,University of South Florida,,,Yes,1,,,,,,,,380,73,UNIVERSITY OF SOUTH FLORIDA
+1040,Conagra Brands,Yes,,,1,Food Consumer Products,Illinois,381,11612.8,,,,,,
+1041,Rbc Capital Markets,,,Yes,1,,,,,,,,381,73,RBC CAPITAL MARKETS LLC
+1042,Sigma Computing,,Yes,,1,Enterprise Tech,United States,,,381,3,"Sutter Hill Ventures, Snowflake Ventures, NewView Capital",,,
+1043,Baxter International,Yes,,,1,Medical Products and Equipment,Illinois,382,11596,,,,,,
+1044,Rapido,,Yes,,1,Industrials,India,,,382,3,"Nexus Venture Partners, Astarc Ventures, Shell Ventures",,,
+1045,Virginia Polytechnic Institute and State University dba Virginia Te,,,Yes,1,,,,,,,,382,73,VIRGINIA POLYTECHNIC INSTITUTE AND STATE UNIVERSITY D B A VIRGINIA TE
+1046,Burlington Stores,Yes,,,1,Specialty Retailers: Apparel,New Jersey,383,11566.9,,,,,,
+1047,Dream Security,,Yes,,1,Enterprise Tech,Israel,,,383,3,"Bain Capital Ventures, Aleph",,,
+1048,Mankind America,,,Yes,1,,,,,,,,383,72,MANKIND AMERICA LLC
+1049,Aptiv Us Services General Partnership dba Aptiv,,,Yes,1,,,,,,,,384,72,APTIV US SERVICES GENERAL PARTNERSHIP D B A APTIV; APTIV US SERVICES GENERAL PARTNERSHIP DBA APTIV
+1050,Caesars Entertainment,Yes,,,1,"Hotels, Casinos, Resorts",Nevada,384,11486,,,,,,
+1051,Claroty,,Yes,,1,Enterprise Tech,United States,,,384,3,"Bessemer Venture Partners, MoreVC, Team8",,,
+1052,Black and Veatch,,,Yes,1,,,,,,,,385,72,BLACK & VEATCH CORPORATION; BLACK AND VEATCH CORPORATION
+1053,Cato Networks,,Yes,,1,Enterprise Tech,Israel,,,385,3,"Aspect Ventures, SingTel Innov8, Greylock Partners",,,
+1054,Owens Corning,Yes,,,1,"Building Materials, Glass",Ohio,385,11279,,,,,,
+1055,Infogain,,,Yes,1,,,,,,,,386,72,INFOGAIN CORPORATION
+1056,KeyCorp,Yes,,,1,Commercial Banks,Ohio,386,11228,,,,,,
+1057,Sword Health,,Yes,,1,Healthcare & Life Sciences,United States,,,386,3,"Khosla Ventures, Green Innovations, Founders Fund",,,
+1058,Contentful,,Yes,,1,Enterprise Tech,Germany,,,387,3,"Balderton Capital, General Catalyst, Tiger Global Management",,,
+1059,Thrivent Financial,Yes,,,1,"Insurance: Life, Health (Mutual)",Minnesota,387,11179.1,,,,,,
+1060,Zillow,,,Yes,1,,,,,,,,387,72,ZILLOW INC
+1061,BlockFi,,Yes,,1,Financial Services,United States,,,388,3,"ConsenSys Ventures, Valar Ventures, PUC",,,
+1062,Westlake,Yes,,,1,Chemicals,Texas,388,11170,,,,,,
+1063,Cybersource,,,Yes,1,,,,,,,,389,71,CYBERSOURCE CORPORATION; CYBERSOURCE LTD
+1064,LaunchDarkly,,Yes,,1,Enterprise Tech,United States,,,389,3,"Uncork Capital, Threshold Ventures, Bloomberg Beta",,,
+1065,Westinghouse Air Brake,Yes,,,1,Industrial Machinery,Pennsylvania,389,11167,,,,,,
+1066,Astrazeneca Pharmaceuticals,,,Yes,1,,,,,,,,390,71,ASTRAZENECA PHARMACEUTICALS LP
+1067,Molson Coors Beverage,Yes,,,1,Beverages,Illinois,390,11140.8,,,,,,
+1068,Saviynt,,Yes,,1,Enterprise Tech,United States,,,390,3,KKR,,,
+1069,Lululemon athletica,Yes,,,1,Specialty Retailers: Apparel,Washington,391,11102.6,,,,,,
+1070,Wildlife Studios,,Yes,,1,Media & Entertainment,Brazil,,,391,3,"Benchmark, Bessemer Venture Partners",,,
+1071,Akkodis,,,Yes,1,,,,,,,,392,70,AKKODIS INC
+1072,FlixMobility,,Yes,,1,Industrials,Germany,,,392,3,"Holtzbrinck Ventures, Unternehmertum Venture Capital, General Atlantic",,,
+1073,FM,Yes,,,1,Insurance: Property and Casualty (Mutual),Rhode Island,392,11101.7,,,,,,
+1074,LINKERBOT,,Yes,,1,Industrials,China,,,393,3,"Ant Group, Bake Capital, Bank of China Asset Management",,,
+1075,Palantir Technologies,,,Yes,1,,,,,,,,393,70,PALANTIR TECHNOLOGIES INC
+1076,7-eleven,,,Yes,1,,,,,,,,394,70,7-ELEVEN INC
+1077,Expeditors Intl. of Washington,Yes,,,1,Transportation and Logistics,Washington,394,11069,,,,,,
+1078,Forter,,Yes,,1,Enterprise Tech,United States,,,394,3,"Sequoia Capital Israel, Scale Venture Partners, Commerce Ventures",,,
+1079,Epsilon Data Management,,,Yes,1,,,,,,,,395,70,EPSILON DATA MANAGEMENT LLC
+1080,K2 Space,,Yes,,1,Industrials,United States,,,395,3,"Redpoint Ventures, Alpine Space Ventures",,,
+1081,Quest Diagnostics,Yes,,,1,Health Care: Pharmacy and Other Services,New Jersey,395,11035,,,,,,
+1082,Replit,,Yes,,1,Enterprise Tech,United States,,,396,3,"Andreessen Horowitz, Bloomberg Beta, Reach Capital",,,
+1083,Andersons,Yes,,,1,Food Production,Ohio,397,11008.9,,,,,,
+1084,Beth Israel Deaconess Medical Center,,,Yes,1,,,,,,,,397,69,BETH ISRAEL DEACONESS MEDICAL CENTER INC
+1085,Zuoyebang,,Yes,,1,Consumer & Retail,China,,,397,3,"Sequoia Capital China, Xiang He Capital, GGV Capital",,,
+1086,Circle,,Yes,,1,Financial Services,United States,,,398,3,"General Catalyst, Digital Currency Group, Accel",,,
+1087,Gold.com,Yes,,,1,Internet Services and Retailing,New York,398,10978.6,,,,,,
+1088,Pacific Investment Management Company LLC Dba Pimco,,,Yes,1,,,,,,,,398,69,PACIFIC INVESTMENT MANAGEMENT COMPANY LLC DBA PIMCO
+1089,Phantom,,Yes,,1,Financial Services,United States,,,399,3,"Paradigm, Andreessen Horowitz, Jump Capital",,,
+1090,Toll Brothers,Yes,,,1,Homebuilders,Pennsylvania,399,10966.7,,,,,,
+1091,University of Georgia Oge,,,Yes,1,,,,,,,,399,69,UNIVERSITY OF GEORGIA OGE
+1092,International Flavors & Fragrances,Yes,,,1,Chemicals,New York,400,10890,,,,,,
+1093,Grow Therapy,,Yes,,1,Enterprise Tech,United States,,,400,3,"Goldman Sachs Alternatives, Sequoia Capital",,,
+1094,Pricewaterhousecoopers,,,Yes,1,,,,,,,,400,69,PRICEWATERHOUSECOOPERS LLP
+1095,"Avco Consulting,",,,Yes,1,,,,,,,,401,69,"AVCO CONSULTING INC; AVCO CONSULTING, INC."
+1096,Monad Labs,,Yes,,1,Financial Services,United States,,,401,3,"HTX Ventures, Electric Capital, Coinbase Ventures",,,
+1097,Welltower,Yes,,,1,Real Estate,Ohio,401,10838,,,,,,
+1098,Cornell University,,,Yes,1,,,,,,,,402,69,CORNELL UNIVERSITY
+1099,Jefferies Financial Group,Yes,,,1,Securities,New York,402,10823.7,,,,,,
+1100,Traveloka,,Yes,,1,Consumer & Retail,Indonesia,,,402,3,"Global Founders Capital, East Ventures, Expedia Inc.",,,
+1101,Autoliv,Yes,,,1,Motor Vehicles & Parts,Michigan,403,10815,,,,,,
+1102,LayerZero Labs,,Yes,,1,Enterprise Tech,United States,,,403,3,"Andreessen Horowitz, FTX Ventures, Tiger Global Management",,,
+1103,Zoom Communications,,,Yes,1,,,,,,,,403,69,ZOOM COMMUNICATIONS INC
+1104,Cedars Sinai Medical Center,,,Yes,1,,,,,,,,404,68,CEDARS SINAI MEDICAL CENTER; CEDARS-SINAI MEDICAL CENTER
+1105,Filevine,,Yes,,1,Enterprise Tech,United States,,,404,3,"Accel, Album VC, Signal Peak Ventures",,,
+1106,Mohawk Industries,Yes,,,1,"Home Equipment, Furnishings",Georgia,404,10785.4,,,,,,
+1107,Case Western Reserve University,,,Yes,1,,,,,,,,405,68,CASE WESTERN RESERVE UNIVERSITY
+1108,Delek US Holdings,Yes,,,1,Petroleum Refining,Tennessee,405,10722.9,,,,,,
+1109,Poolside,,Yes,,1,Enterprise Tech,United States,,,405,3,"Felicis, Redpoint Ventures, HSBC Venture Capital",,,
+1110,Fidelity National Information (FIS),Yes,,,1,Financial Data Services,Florida,406,10677,,,,,,
+1111,University of Kansas Medical Center,,,Yes,1,,,,,,,,406,68,UNIVERSITY OF KANSAS MEDICAL CENTER
+1112,Zhipu AI,,Yes,,1,Enterprise Tech,China,,,406,3,"Qiming Venture Partners, Legend Capital, Jiangmen Venture Capital",,,
+1113,Accendra Health,Yes,,,1,Health Care: Pharmacy and Other Services,Kentucky,407,10671.7,,,,,,
+1114,BGL Group,,Yes,,1,Insurance,United Kingdom,,,407,3,CPP Investment Board,,,
+1115,Quest Global Services-na,,,Yes,1,,,,,,,,407,68,QUEST GLOBAL SERVICES-NA INC
+1116,American Tower,Yes,,,1,Real Estate,Massachusetts,408,10644.6,,,,,,
+1117,Datadog,,,Yes,1,,,,,,,,408,67,DATADOG INC
+1118,SouChe Holdings,,Yes,,1,Industrials,China,,,408,3,"Morningside Ventures, Warburg Pincus, CreditEase Fintech Investment Fund",,,
+1119,Dpr Construction A General Partnership,,,Yes,1,,,,,,,,409,67,DPR CONSTRUCTION A GENERAL PARTNERSHIP
+1120,NVR,Yes,,,1,Homebuilders,Virginia,409,10443.3,,,,,,
+1121,Yixia,,Yes,,1,Media & Entertainment,China,,,409,3,"Sequoia Capital China, Sina Weibo, Kleiner Perkins Caufield & Byers, Redpoint Ventures",,,
+1122,Interactive Brokers Group,Yes,,,1,Securities,Connecticut,410,10424,,,,,,
+1123,Nord Security,,Yes,,1,Enterprise Tech,Netherlands,,,410,3,"General Catalyst, BaltCap, Novator Partners",,,
+1124,Spotify USA,,,Yes,1,,,,,,,,410,67,SPOTIFY USA INC
+1125,Credit Karma,,,Yes,1,,,,,,,,411,67,CREDIT KARMA LLC
+1126,Oshkosh,Yes,,,1,Construction and Farm Machinery,Wisconsin,411,10422.3,,,,,,
+1127,TERMINUS Technology,,Yes,,1,Industrials,China,,,411,2.96,"China Everbright Limited, IDG Capital, iFLYTEK",,,
+1128,Cintas,Yes,,,1,Diversified Outsourcing Services,Ohio,412,10340.2,,,,,,
+1129,Everpure,,,Yes,1,,,,,,,,412,67,EVERPURE INC
+1130,Kraken,,Yes,,1,Financial Services,United States,,,412,2.92,"Bnk To The Future, Trammell Ventures, SBI Investment",,,
+1131,Campbell’s,Yes,,,1,Food Consumer Products,New Jersey,413,10253,,,,,,
+1132,Galaxea AI,,Yes,,1,Industrials,China,,,413,2.9,"Beijing Financial Street Capital Operation Center, CICC Capital",,,
+1133,Louisiana Childrens Medical Center,,,Yes,1,,,,,,,,413,67,LOUISIANA CHILDRENS MEDICAL CENTER
+1134,Ansys,,,Yes,1,,,,,,,,414,66,ANSYS INC
+1135,Vertiv Holdings,Yes,,,1,"Electronics, Electrical Equip.",Ohio,414,10229.9,,,,,,
+1136,Workrise,,Yes,,1,Industrials,United States,,,414,2.9,"Founders Fund, Quantum Energy Partners, Bedrock Capital",,,
+1137,Global Payments,Yes,,,1,Financial Data Services,Georgia,415,10215.6,,,,,,
+1138,Spirit AI,,Yes,,1,Industrials,China,,,415,2.9,"Fortune Capital, Galaxy Yuanhui, Glacier Capital",,,
+1139,Baichuan AI,,Yes,,1,Enterprise Tech,China,,,416,2.9,"Shenzhen Capital Group, Shunwei Capital",,,
+1140,Constellation Brands,Yes,,,1,Beverages,New York,416,10208.7,,,,,,
+1141,New York City Department of Education,,,Yes,1,,,,,,,,416,66,NEW YORK CITY DEPARTMENT OF EDUCATION
+1142,AGCO,Yes,,,1,Construction and Farm Machinery,Georgia,417,10082,,,,,,
+1143,xsquare,,Yes,,1,Industrials,China,,,417,2.9,"CICC Capital, China Insurance Investment, China Mobile",,,
+1144,Gokin Solar,,Yes,,1,Industrials,China,,,418,2.88,"IDG Capital, Puluo Capital, Midea Capital",,,
+1145,Uchicago Argonne,,,Yes,1,,,,,,,,418,66,UCHICAGO ARGONNE LLC
+1146,Ace Hardware,Yes,,,1,Specialty Retailers: Other,Illinois,419,10043.6,,,,,,
+1147,BharatPe,,Yes,,1,Financial Services,India,,,419,2.85,"Insight Partners, Sequoia Capital India, BEENEXT",,,
+1148,Tata Elxsi,,,Yes,1,,,,,,,,419,66,TATA ELXSI LIMITED
+1149,Dana,Yes,,,1,Motor Vehicles & Parts,Ohio,420,9998,,,,,,
+1150,DriveWealth,,Yes,,1,Financial Services,United States,,,420,2.85,"Point72 Ventures, Route 66 Ventures, Accel",,,
+1151,Tavant Technologies,,,Yes,1,,,,,,,,420,66,TAVANT TECHNOLOGIES INC
+1152,Audible,,,Yes,1,,,,,,,,421,66,AUDIBLE INC
+1153,Biogen,Yes,,,1,Pharmaceuticals,Massachusetts,421,9890.6,,,,,,
+1154,Motive,,Yes,,1,Industrials,United States,,,421,2.85,"Google Ventures, Index Ventures, Scale Venture Partners",,,
+1155,Computer Sciences,,,Yes,1,,,,,,,,422,65,COMPUTER SCIENCES CORPORATION
+1156,Meicai,,Yes,,1,Consumer & Retail,China,,,422,2.8,"Tiger Global Management, Blue Lake Capital, ZhenFund",,,
+1157,News Corp.,Yes,,,1,Entertainment,New York,422,9845,,,,,,
+1158,Baylor College of Medicine,,,Yes,1,,,,,,,,423,65,BAYLOR COLLEGE OF MEDICINE
+1159,ICEYE,,Yes,,1,Enterprise Tech,Finland,,,423,2.8,,,,
+1160,New York University,,,Yes,1,,,,,,,,424,65,NEW YORK UNIVERSITY
+1161,Nutrabolt,,Yes,,1,Consumer & Retail,United States,,,424,2.79,MidOcean Partners,,,
+1162,WEC Energy Group,Yes,,,1,Utilities: Gas and Electric,Wisconsin,424,9800.1,,,,,,
+1163,Infra.Market,,Yes,,1,Industrials,India,,,425,2.78,"Accel, Tiger Global Management, Nexus Venture Partners",,,
+1164,Miracle Software Systems,,,Yes,1,,,,,,,,425,65,MIRACLE SOFTWARE SYSTEMS INC
+1165,VF,Yes,,,1,Apparel,Colorado,425,9749.2,,,,,,
+1166,Denken Solutions,,,Yes,1,,,,,,,,426,65,DENKEN SOLUTIONS INC
+1167,MasterClass,,Yes,,1,Media & Entertainment,United States,,,426,2.75,"Institutional Venture Partners, New Enterprise Associates, Javelin Venture Partners",,,
+1168,Seaboard,Yes,,,1,Food Production,Kansas,426,9746,,,,,,
+1169,Hightouch,,Yes,,1,Enterprise Tech,United States,,,427,2.75,"Sapphire Ventures, Bain Capital Ventures, Amplify Partners",,,
+1170,Icahn Enterprises,Yes,,,1,Diversified Financials,Florida,427,9658,,,,,,
+1171,Abridge,,Yes,,1,Enterprise Tech,United States,,,428,2.75,"Institutional Venture Partners, Spark Capital, Lightspeed Venture Partners",,,
+1172,Regions Financial,Yes,,,1,Commercial Banks,Alabama,428,9608,,,,,,
+1173,Genesis Corp Dba Genesis10,,,Yes,1,,,,,,,,429,65,GENESIS CORP DBA GENESIS10
+1174,Illumio,,Yes,,1,Enterprise Tech,United States,,,429,2.75,"Data Collective, Formation 8, General Catalyst Partners",,,
+1175,Thor Industries,Yes,,,1,Motor Vehicles & Parts,Indiana,429,9579.5,,,,,,
+1176,Cyient,,,Yes,1,,,,,,,,430,65,CYIENT INC
+1177,Garner,,Yes,,1,Consumer & Retail,United States,,,430,2.74,Enterprise Tech,,,
+1178,Celanese,Yes,,,1,Chemicals,Texas,431,9544,,,,,,
+1179,Eliassen Group,,,Yes,1,,,,,,,,431,65,ELIASSEN GROUP LLC
+1180,Transmit Security,,Yes,,1,Enterprise Tech,United States,,,431,2.74,"General Atlantic, Insight Partners, Vintage Investment Partners",,,
+1181,Proxima Fusion,,Yes,,1,Industrials,Germany,,,432,2.74,"Balderton Capital, Bayern Kapital, Brevan Howard Asset Management",,,
+1182,Virtusa Consulting Svcs Pvt,,,Yes,1,,,,,,,,432,64,VIRTUSA CONSULTING SVCS PVT LTD
+1183,AppsFlyer,,Yes,,1,Enterprise Tech,United States,,,433,2.7,"Magma Venture Partners, Pitango Venture Capital, Qumra Capital",,,
+1184,QVC Group,Yes,,,1,Internet Services and Retailing,Pennsylvania,433,9497,,,,,,
+1185,Squad Software,,,Yes,1,,,,,,,,433,64,SQUAD SOFTWARE INC
+1186,Kingston Technologies,,,Yes,1,,,,,,,,434,64,KINGSTON TECHNOLOGIES INC
+1187,TravelPerk,,Yes,,1,Enterprise Tech,Spain,,,434,2.7,"LocalGlobe, Kinnevik, Felix Capital",,,
+1188,Zoetis,Yes,,,1,Pharmaceuticals,New Jersey,434,9467,,,,,,
+1189,CenterPoint Energy,Yes,,,1,Utilities: Gas and Electric,Texas,435,9357,,,,,,
+1190,Dassault Systemes Americas,,,Yes,1,,,,,,,,435,64,DASSAULT SYSTEMES AMERICAS CORP
+1191,Nextiva,,Yes,,1,Enterprise Tech,United States,,,435,2.7,Goldman Sachs Asset Management,,,
+1192,Oregon Health & Science University,,,Yes,1,,,,,,,,436,64,OREGON HEALTH & SCIENCE UNIVERSITY; OREGON HEALTH AND SCIENCE UNIVERSITY
+1193,Thought Machine,,Yes,,1,Financial Services,United Kingdom,,,436,2.7,"British Patient Capital, SEB Venture Capital, IQ Capital",,,
+1194,Natsoft,,,Yes,1,,,,,,,,437,64,NATSOFT CORPORATION
+1195,Tridge,,Yes,,1,Industrials,South Korea,,,437,2.7,"Forest Partners, Softbank Ventures Asia",,,
+1196,APA,Yes,,,1,"Mining, Crude-Oil Production",Texas,438,9220,,,,,,
+1197,Capri USA Group,,,Yes,1,,,,,,,,438,64,CAPRI USA GROUP INC
+1198,Tradeshift,,Yes,,1,Enterprise Tech,United States,,,438,2.7,"Notion Capital, Scentan Ventures, Kite Ventures",,,
+1199,Old Republic International,Yes,,,1,Insurance: Property and Casualty (Stock),Illinois,439,9136.3,,,,,,
+1200,Sage It,,,Yes,1,,,,,,,,439,64,SAGE IT INC
+1201,Starling Bank,,Yes,,1,Financial Services,United Kingdom,,,439,2.69,"JTC Group, Qatar Investment Authority, Fidelity Investment",,,
+1202,BackBase,,Yes,,1,Financial Services,Netherlands,,,440,2.66,Motive Partners,,,
+1203,Comfort Systems USA,Yes,,,1,Engineering & Construction,Texas,440,9101.6,,,,,,
+1204,Experian Information Solutions,,,Yes,1,,,,,,,,440,63,EXPERIAN INFORMATION SOLUTIONS INC
+1205,JetBlue Airways,Yes,,,1,Airlines,New York,441,9062,,,,,,
+1206,Sakana AI,,Yes,,1,Enterprise Tech,Japan,,,441,2.64,"Lux Capital, Khosla Ventures, New Enterprise Associates",,,
+1207,Denver Public Schools District 1,,,Yes,1,,,,,,,,442,63,DENVER PUBLIC SCHOOLS DISTRICT 1
+1208,JumpCloud,,Yes,,1,Enterprise Tech,United States,,,442,2.62,"Foundry Group, General Atlantic, BlackRock",,,
+1209,PPL,Yes,,,1,Utilities: Gas and Electric,Pennsylvania,442,9042,,,,,,
+1210,Project44,,Yes,,1,Enterprise Tech,United States,,,443,2.62,"Emergence Capital Partners, 8VC, Chicago Ventures",,,
+1211,Xylem,Yes,,,1,Industrial Machinery,Washington,443,9035,,,,,,
+1212,Freenome,,Yes,,1,Healthcare & Life Sciences,United States,,,444,2.62,"Andreessen Horowitz, Data Collective, Roche Venture Fund",,,
+1213,Brown University,,,Yes,1,,,,,,,,445,63,BROWN UNIVERSITY
+1214,Packaging Corp. of America,Yes,,,1,"Packaging, Containers",Illinois,445,8989.3,,,,,,
+1215,Sourcegraph,,Yes,,1,Enterprise Tech,United States,,,445,2.62,"Redpoint Ventures, Goldcrest Capital, Insight Partners",,,
+1216,Incedo,,,Yes,1,,,,,,,,446,63,INCEDO INC
+1217,PVH,Yes,,,1,Apparel,New York,446,8950.2,,,,,,
+1218,TensTorrent,,Yes,,1,Enterprise Tech,Canada,,,446,2.6,"Eclipse Ventures, Fidelity Investments, Moore Capital Management",,,
+1219,Arup Laboratories,,,Yes,1,,,,,,,,447,63,ARUP LABORATORIES
+1220,Moglix,,Yes,,1,Industrials,Singapore,,,447,2.6,"Jungle Ventures, Accel, Venture Highway",,,
+1221,Ovintiv,Yes,,,1,"Mining, Crude-Oil Production",Colorado,447,8908,,,,,,
+1222,Avery Dennison,Yes,,,1,"Packaging, Containers",California,448,8855.5,,,,,,
+1223,Axonius,,Yes,,1,Enterprise Tech,United States,,,448,2.6,"Vertex Ventures Israel, Bessemer Venture Partners, Emerge",,,
+1224,Ubs Securities,,,Yes,1,,,,,,,,448,63,UBS SECURITIES LLC
+1225,Balyasny Asset Management,,,Yes,1,,,,,,,,449,63,BALYASNY ASSET MANAGEMENT L P
+1226,TransDigm Group,Yes,,,1,Aerospace & Defense,Ohio,449,8831,,,,,,
+1227,Unico,,Yes,,1,Enterprise Tech,Brazil,,,449,2.6,"Big Bets, General Atlantic, SOFTBANK Latin America Ventures",,,
+1228,Howard Hughes Medical Institute,,,Yes,1,,,,,,,,450,63,HOWARD HUGHES MEDICAL INSTITUTE
+1229,Quantexa,,Yes,,1,Enterprise Tech,United Kingdom,,,450,2.6,"AlbionVC, Dawn Capital, HSBC Venture Capital",,,
+1230,Sprouts Farmers Market,Yes,,,1,Food and Drug Stores,Arizona,450,8806.2,,,,,,
+1231,Clari,,Yes,,1,Enterprise Tech,United States,,,451,2.6,"Sequoia Capital, Bain Capital Ventures, enaya Capital",,,
+1232,Prologis,Yes,,,1,Real Estate,California,451,8790.1,,,,,,
+1233,Brookhaven National Laboratory,,,Yes,1,,,,,,,,452,62,BROOKHAVEN NATIONAL LABORATORY
+1234,Franklin Resources,Yes,,,1,Securities,California,452,8770.7,,,,,,
+1235,Plume,,Yes,,1,Industrials,United States,,,452,2.6,"Insight Partners, Jackson Square Ventures, Liberty Gloval Ventures",,,
+1236,Eastman Chemical,Yes,,,1,Chemicals,Tennessee,453,8752,,,,,,
+1237,ManoMano,,Yes,,1,Consumer & Retail,France,,,453,2.6,"General Atlantic, Piton Capital, Partech Partners",,,
+1238,ABM Industries,Yes,,,1,Diversified Outsourcing Services,Georgia,454,8745.9,,,,,,
+1239,Pendo,,Yes,,1,Enterprise Tech,United States,,,454,2.6,"Contour Venture Partners, Battery Ventures, Core Capital Partners",,,
+1240,Point72,,,Yes,1,,,,,,,,454,62,POINT72 L P
+1241,Deutsche Bank Securities,,,Yes,1,,,,,,,,455,62,DEUTSCHE BANK SECURITIES INC
+1242,JUST Egg,,Yes,,1,Consumer & Retail,United States,,,455,2.59,"Khosla Ventures, Horizons Ventures, Founders Fund",,,
+1243,NOV,Yes,,,1,"Oil and Gas Equipment, Services",Texas,455,8744,,,,,,
+1244,Factorial,,Yes,,1,Enterprise Tech,Spain,,,456,2.5,"K Fund, Creandum, CRV",,,
+1245,J.M. Smucker,Yes,,,1,Food Consumer Products,Ohio,456,8726.1,,,,,,
+1246,Celestial AI,,Yes,,1,Enterprise Tech,United States,,,457,2.5,"The Engine Accelerator, M Ventures, Tyche Partners",,,
+1247,CVS Rx Services,,,Yes,1,,,,,,,,457,62,CVS RX SERVICES INC
+1248,Securian Financial Group,Yes,,,1,"Insurance: Life, Health (Mutual)",Minnesota,457,8663.4,,,,,,
+1249,Aurora Operations,,,Yes,1,,,,,,,,458,62,AURORA OPERATIONS INC
+1250,EQT,Yes,,,1,"Mining, Crude-Oil Production",Pennsylvania,458,8644.2,,,,,,
+1251,Mews,,Yes,,1,Enterprise Tech,Netherlands,,,458,2.5,"Notion Capital, Revaia, Battery Ventures",,,
+1252,CACI International,Yes,,,1,Information Technology Services,Virginia,459,8627.8,,,,,,
+1253,Flow,,Yes,,1,Financial Services,United States,,,459,2.5,Andreessen Horowitz,,,
+1254,Vanderbilt University,,,Yes,1,,,,,,,,459,62,VANDERBILT UNIVERSITY
+1255,Aura,,Yes,,1,Consumer & Retail,United States,,,460,2.5,"Warburg Pincus, General Catalyst",,,
+1256,Graphic Packaging Holding,Yes,,,1,"Packaging, Containers",Georgia,460,8617,,,,,,
+1257,Advance Auto Parts,Yes,,,1,Specialty Retailers: Other,North Carolina,461,8601,,,,,,
+1258,Somatus,,Yes,,1,Healthcare & Life Sciences,United States,,,461,2.5,"The Blue Venture Fund, Flare Capital Partners, Longitude Capital",,,
+1259,Twilio,,,Yes,1,,,,,,,,461,62,TWILIO INC
+1260,Amazon Advertising,,,Yes,1,,,,,,,,462,62,AMAZON ADVERTISING LLC
+1261,Optimum Communications,Yes,,,1,Telecommunications,New York,462,8590.5,,,,,,
+1262,Sysdig,,Yes,,1,Enterprise Tech,United States,,,462,2.5,"Accel, Bain Capital Ventures, Insight Partners",,,
+1263,BYTON,,Yes,,1,Industrials,China,,,463,2.5,"FAW Group, Tencent Holdings, Tus Holdings",,,
+1264,Semiconductor Components Industries,,,Yes,1,,,,,,,,463,61,SEMICONDUCTOR COMPONENTS INDUSTRIES LLC
+1265,Sirius XM Holdings,Yes,,,1,Entertainment,New York,463,8558,,,,,,
+1266,CMS Energy,Yes,,,1,Utilities: Gas and Electric,Michigan,464,8539,,,,,,
+1267,Fetch,,Yes,,1,Consumer & Retail,United States,,,464,2.5,"Greycroft, Loeb.NYC, DST Global",,,
+1268,Guidewire Software,,,Yes,1,,,,,,,,464,61,GUIDEWIRE SOFTWARE INC
+1269,Fortinet,,,Yes,1,,,,,,,,465,61,FORTINET INC
+1270,Games24x7,,Yes,,1,Media & Entertainment,India,,,465,2.5,"Tiger Global Management, The Raine Group, Malabar Investments",,,
+1271,Hertz Global Holdings,Yes,,,1,"Automotive Retailing, Services",Florida,465,8504,,,,,,
+1272,Ameren,Yes,,,1,Utilities: Gas and Electric,Missouri,466,8470,,,,,,
+1273,Reddit,,,Yes,1,,,,,,,,466,61,REDDIT INC
+1274,Vista Global,,Yes,,1,Industrials,United Arab Emirates,,,466,2.5,Rhone Capital,,,
+1275,Rockwell Automation,Yes,,,1,"Electronics, Electrical Equip.",Wisconsin,467,8342,,,,,,
+1276,Uniphore,,Yes,,1,Enterprise Tech,United States,,,467,2.5,"Chiratae Ventures, March Capital Partners, National Grid Partners",,,
+1277,Immutable,,Yes,,1,Media & Entertainment,Australia,,,468,2.5,"Fabric Ventures, AirTree Ventures, Temasek",,,
+1278,Okta,,,Yes,1,,,,,,,,468,60,OKTA INC
+1279,Solventum,Yes,,,1,Medical Products and Equipment,Minnesota,468,8325,,,,,,
+1280,Monster Beverage,Yes,,,1,Beverages,California,469,8294.3,,,,,,
+1281,Varo Bank,,Yes,,1,Financial Services,United States,,,469,2.5,"Warburg Pincus, The Rise Fund, HarbourVest Partners",,,
+1282,Xoriant,,,Yes,1,,,,,,,,469,60,XORIANT CORPORATION
+1283,The Depository Trust and Clearing,,,Yes,1,,,,,,,,470,60,THE DEPOSITORY TRUST AND CLEARING CORPORATION
+1284,Lambda Labs,,Yes,,1,Enterprise Tech,United States,,,470,2.5,"1517 Fund, Gradient Ventures, Bloomberg Beta",,,
+1285,Nasdaq,Yes,,,1,Securities,New York,470,8262,,,,,,
+1286,Hitachi Digital Services,,,Yes,1,,,,,,,,471,60,HITACHI DIGITAL SERVICES LLC
+1287,Howmet Aerospace,Yes,,,1,Aerospace & Defense,Pennsylvania,471,8252,,,,,,
+1288,Temporal,,Yes,,1,Enterprise Tech,United States,,,471,2.5,"Amplify Partners, Addition, Madrona Venture Group",,,
+1289,Godaddy Com,,,Yes,1,,,,,,,,472,60,GODADDY COM LLC
+1290,Insight Enterprises,Yes,,,1,Information Technology Services,Arizona,472,8247.2,,,,,,
+1291,Side,,Yes,,1,Financial Services,United States,,,472,2.5,"Coatue Managemeny, Trinity Ventures, Matrix Partners",,,
+1292,Jetti Resources,,Yes,,1,Industrials,United States,,,473,2.5,"BMW i Ventures, BHP Ventures",,,
+1293,System Soft Technologies,,,Yes,1,,,,,,,,473,60,"SYSTEM SOFT TECHNOLOGIES LLC; SYSTEM SOFT TECHNOLOGIES, LLC"
+1294,Hibob,,Yes,,1,Enterprise Tech,United States,,,474,2.45,"Bessemer Venture Partners, Eight Roads Ventures, Battery Ventures",,,
+1295,Upmc Medical Education,,,Yes,1,,,,,,,,474,60,UPMC MEDICAL EDUCATION
+1296,Yum Brands,Yes,,,1,Food Services,Kentucky,474,8214,,,,,,
+1297,Fastenal,Yes,,,1,Wholesalers: Diversified,Minnesota,475,8200.5,,,,,,
+1298,Mobile Premier League,,Yes,,1,Media & Entertainment,India,,,475,2.45,"Sequoia Capital India, RTP Global, Go-Ventures",,,
+1299,National Institutes of Health Hhs,,,Yes,1,,,,,,,,475,60,NATIONAL INSTITUTES OF HEALTH HHS
+1300,CoinDCX,,Yes,,1,Financial Services,India,,,476,2.45,"Polychain Capital, Coinbase Ventures, Jump Capital",,,
+1301,Skyworks Solutions,,,Yes,1,,,,,,,,476,60,SKYWORKS SOLUTIONS INC
+1302,Collabera,,,Yes,1,,,,,,,,477,60,COLLABERA LLC
+1303,insitro,,Yes,,1,Healthcare & Life Sciences,United States,,,477,2.44,"Foresite Capital, ARCH Venture Partners, Third Rock Ventures",,,
+1304,Voya Financial,Yes,,,1,Diversified Financials,New York,477,8189,,,,,,
+1305,American Financial Group,Yes,,,1,Insurance: Property and Casualty (Stock),Ohio,478,8174,,,,,,
+1306,Uzum,,Yes,,1,Financial Services,Uzbekistan,,,478,2.43,FinSight Ventures,,,
+1307,Cgtz,,Yes,,1,Financial Services,China,,,479,2.41,"Shunwei Capital Partners, China Media Group, Guangzhou Huiyin Aofeng Equity Investment Fund",,,
+1308,Post Holdings,Yes,,,1,Food Consumer Products,Missouri,479,8158.1,,,,,,
+1309,Yash Technologies,,,Yes,1,,,,,,,,479,59,YASH TECHNOLOGIES INC
+1310,Mongodb,,,Yes,1,,,,,,,,480,59,MONGODB INC
+1311,Star Charge,,Yes,,1,Industrials,China,,,480,2.41,"Shunwei Capital Partners, China Media Group, Guangzhou Huiyin Aofeng Equity Investment Fund",,,
+1312,XPO,Yes,,,1,Transportation and Logistics,Connecticut,480,8157,,,,,,
+1313,DuPont,Yes,,,1,Chemicals,Delaware,481,8146,,,,,,
+1314,"Tek Leaders,",,,Yes,1,,,,,,,,481,59,"TEK LEADERS, INC."
+1315,Trumid,,Yes,,1,Financial Services,United States,,,481,2.4,"T. Rowe Price, Dragoneer Investment Group, BlackRock",,,
+1316,Gympass,,Yes,,1,Healthcare & Life Sciences,United States,,,482,2.4,"General Atlantic, SoftBank Group, Atomico",,,
+1317,Lyft,,,Yes,1,,,,,,,,482,59,LYFT INC
+1318,Sanmina,Yes,,,1,Semiconductors and Other Electronic Components,California,482,8128.4,,,,,,
+1319,Accelerant,,Yes,,1,Insurance,United Kingdom,,,483,2.4,"Deer Park Road, Altamont Capital Partners, Eldridge",,,
+1320,Medical College of Wisconsin,,,Yes,1,,,,,,,,483,59,MEDICAL COLLEGE OF WISCONSIN INC
+1321,Taylor Morrison Home,Yes,,,1,Homebuilders,Arizona,483,8121.5,,,,,,
+1322,Carbon,,Yes,,1,Industrials,United States,,,484,2.4,"Google Ventures, Sequoia Capital, Wakefield Group",,,
+1323,Dover,Yes,,,1,Industrial Machinery,Illinois,484,8092.6,,,,,,
+1324,Research Foundation for the State University of New York,,,Yes,1,,,,,,,,484,59,RESEARCH FOUNDATION FOR THE STATE UNIVERSITY OF NEW YORK
+1325,ABL Space Systems,,Yes,,1,Industrials,United States,,,485,2.4,"T. Rowe Price, Lockheed Martin Ventures, Fidelity Investment",,,
+1326,Citigroup Global Markets,,,Yes,1,,,,,,,,485,59,CITIGROUP GLOBAL MARKETS INC
+1327,Vulcan Materials,Yes,,,1,"Building Materials, Glass",Alabama,485,7941.1,,,,,,
+1328,APi Group,Yes,,,1,Engineering & Construction,Minnesota,486,7911,,,,,,
+1329,HoneyBook,,Yes,,1,Enterprise Tech,United States,,,486,2.4,"Norwest Venture Partners, Hillsven Capital, Aleph",,,
+1330,Microchip Technology,,,Yes,1,,,,,,,,486,59,MICROCHIP TECHNOLOGY INC
+1331,Illumina,,,Yes,1,,,,,,,,487,58,ILLUMINA INC
+1332,Paxos,,Yes,,1,Financial Services,United States,,,487,2.4,"Liberty City Ventures, RRE Ventures, Mithril Capital Management",,,
+1333,Roper Technologies,Yes,,,1,Industrial Machinery,Florida,487,7902.5,,,,,,
+1334,BitSight Technologies,,Yes,,1,Enterprise Tech,United States,,,488,2.4,"Menlo Ventures, GGV Capital, Flybridge Capital Partners",,,
+1335,KBR,Yes,,,1,Information Technology Services,Texas,488,7853,,,,,,
+1336,Cra International,,,Yes,1,,,,,,,,489,58,CRA INTERNATIONAL INC
+1337,PhysicsX,,Yes,,1,Enterprise Tech,United Kingdom,,,489,2.4,"Applied Materials, Atomico, General Catalyst",,,
+1338,Sonoco Products,Yes,,,1,"Packaging, Containers",South Carolina,489,7839.4,,,,,,
+1339,Cox Automotive Corporate Services,,,Yes,1,,,,,,,,490,58,COX AUTOMOTIVE CORPORATE SERVICES LLC
+1340,Ionic Digital,,Yes,,1,Enterprise Tech,United States,,,490,2.4,"Attestor, Citadel, Oaktree Capital Management",,,
+1341,Williams-Sonoma,Yes,,,1,Specialty Retailers: Other,California,490,7806.8,,,,,,
+1342,Commercial Metals,Yes,,,1,Metals,Texas,491,7798.5,,,,,,
+1343,ManyPets,,Yes,,1,Insurance,United Kingdom,,,491,2.35,"Octopus Ventures, Munich Re Ventures, CommerzVentures",,,
+1344,Evercore Partners Services East,,,Yes,1,,,,,,,,492,58,EVERCORE PARTNERS SERVICES EAST LLC
+1345,Moody’s,Yes,,,1,Financial Data Services,New York,492,7718,,,,,,
+1346,Rebellions,,Yes,,1,Industrials,South Korea,,,492,2.34,"WAED Ventures, Kakao Ventures, Samsung Ventures",,,
+1347,Continental Resources,Yes,,,1,"Mining, Crude-Oil Production",Oklahoma,493,7693.6,,,,,,
+1348,Riot Games,,,Yes,1,,,,,,,,493,58,RIOT GAMES INC
+1349,WEMAKEPRICE,,Yes,,1,Consumer & Retail,South Korea,,,493,2.34,"IMM Investment, NXC",,,
+1350,Ingersoll Rand,Yes,,,1,Industrial Machinery,North Carolina,494,7650.9,,,,,,
+1351,Voodoo,,Yes,,1,Media & Entertainment,France,,,494,2.31,"Tencent Holdings, Goldman Sachs",,,
+1352,Zifo Technologies,,,Yes,1,,,,,,,,494,58,ZIFO TECHNOLOGIES INC
+1353,Axtria,,,Yes,1,,,,,,,,495,57,AXTRIA INC
+1354,Core & Main,Yes,,,1,Wholesalers: Diversified,Missouri,495,7647,,,,,,
+1355,Divergent 3D,,Yes,,1,Industrials,United States,,,495,2.3,"Hedosophia, Horizons Ventures, Alumni Ventures Group",,,
+1356,Coterra Energy,Yes,,,1,"Mining, Crude-Oil Production",Texas,496,7645,,,,,,
+1357,Greenlight,,Yes,,1,Financial Services,United States,,,496,2.3,"Relay Ventures, TTV Capital, Canapi Ventures",,,
+1358,Apex,,Yes,,1,Industrials,United States,,,497,2.3,"Interlagos, 8VC, Point72 Ventures",,,
+1359,Primoris Services,Yes,,,1,Engineering & Construction,Texas,497,7574.9,,,,,,
+1360,Te Connectivity,,,Yes,1,,,,,,,,497,57,TE CONNECTIVITY CORPORATION
+1361,Masco,Yes,,,1,"Home Equipment, Furnishings",Michigan,498,7562,,,,,,
+1362,Uptake,,Yes,,1,Industrials,United States,,,498,2.3,"Revolution, New Enterprise Associates, Caterpillar",,,
+1363,Isar Aerospace,,Yes,,1,Industrials,Germany,,,499,2.3,"HV Capital, Island Green Capital Management, KfW Capital",,,
+1364,Ppd Development,,,Yes,1,,,,,,,,499,57,PPD DEVELOPMENT L P
+1365,Somnigroup International,Yes,,,1,"Home Equipment, Furnishings",Georgia,499,7476.5,,,,,,
+1366,MoMo,,Yes,,1,Financial Services,Vietnam,,,500,2.27,"Goodwater Capital, Warburg Pincus, GS Growth",,,
+1367,Resideo Technologies,Yes,,,1,"Electronics, Electrical Equip.",Arizona,500,7472,,,,,,
