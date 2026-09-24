@@ -1,0 +1,387 @@
+// Universe resolver: turns company_universe rows into scannable `companies`
+// rows by finding and VERIFYING each employer's job board. Works the backlog
+// down in bounded, time-budgeted batches (the jobs-fetch cron calls it every
+// tick; POST /api/admin/universe runs it on demand), so ~1.3k employers never
+// need to fit in one request.
+//
+// Per row, cheapest first:
+//   1. slug probe — name variants on Greenhouse / Lever / Ashby (probe.ts).
+//      Skipped when probed_at is set (the seed migration ships pre-probed rows).
+//   2. LLM guesses — one batched call proposes boards for the misses (incl.
+//      Workday, whose tenant/site can't be derived from the name). Every guess
+//      is verified against the live board before it's trusted, same trust model
+//      as the catalog resolver (catalog/resolve.ts).
+//   3. careers-page sniff — fetch the careers URL the model suggested and scan
+//      its HTML for a board link (workday.ts).
+// Hits insert a companies row (source 'universe'); misses back off
+// (next_resolve_at) and are retried a few times before staying unresolved.
+//
+// MUST run inside a user context (runWithUser(null, …)) — logAgentRun needs one.
+
+import Anthropic from "@anthropic-ai/sdk";
+import { extractJson } from "@/lib/claude";
+import { logAgentRun } from "@/lib/agent-runs";
+import { supabaseAdmin } from "@/lib/supabase";
+import { mapPool } from "@/lib/jobs/util";
+import { findBoard, probeBoard, LARGE_MIN_JOBS, type ProbeAts } from "@/lib/jobs/universe/probe";
+import type { Ats } from "@/lib/jobs/types";
+
+const MODEL = "claude-sonnet-4-6";
+const DEFAULT_LIMIT = 60;
+const PROBE_CONCURRENCY = 6;
+const LLM_BATCH = 25;
+// Retry schedule for rows nothing verified: 7d, 14d, 28d, then give up until
+// an operator resets them (or the list is re-seeded).
+const MAX_ATTEMPTS = 4;
+const BACKOFF_DAYS = [7, 14, 28];
+
+let _client: Anthropic | null = null;
+function client() {
+  if (_client) return _client;
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new Error("ANTHROPIC_API_KEY not set");
+  _client = new Anthropic({ apiKey: key });
+  return _client;
+}
+
+export interface UniverseRow {
+  id: string;
+  name: string;
+  org_type: string;
+  sectors: string[];
+  size_bucket: string | null;
+  resolve_attempts: number;
+  probed_at: string | null;
+}
+
+// A board guess to verify. Workday slugs are "tenant/wdN/site"; the model may
+// propose Workday before the catalog can scan it — such guesses simply fail
+// verification until a Workday verifier is registered.
+export type BoardAts = Ats | "workday";
+export interface BoardAttempt {
+  ats: BoardAts;
+  slug: string;
+}
+
+export interface VerifiedBoard extends BoardAttempt {
+  jobs: number;
+}
+
+// Verify one guess against the live board. Pluggable per ATS so Workday
+// (step 2) slots in without touching the batch loop.
+export type Verifier = (a: BoardAttempt, name: string) => Promise<number | null>;
+
+const probeVerifier: Verifier = async (a, name) =>
+  a.ats === "greenhouse" || a.ats === "lever" || a.ats === "ashby"
+    ? probeBoard(a.ats as ProbeAts, a.slug, name)
+    : null;
+
+const verifiers: Verifier[] = [probeVerifier];
+
+// Register an extra verifier (e.g. Workday). Idempotent per function.
+export function registerVerifier(v: Verifier) {
+  if (!verifiers.includes(v)) verifiers.push(v);
+}
+
+async function verify(a: BoardAttempt, row: UniverseRow): Promise<number | null> {
+  const minJobs = row.size_bucket === "large" ? LARGE_MIN_JOBS : 1;
+  for (const v of verifiers) {
+    const n = await v(a, row.name).catch(() => null);
+    if (n && n >= minJobs) return n;
+  }
+  return null;
+}
+
+// Extra discovery after the LLM guesses fail (careers-page sniffing, step 2).
+// Receives the model's careers URL hint; returns attempts to verify.
+export type Discoverer = (name: string, careersUrl: string | null) => Promise<BoardAttempt[]>;
+const discoverers: Discoverer[] = [];
+export function registerDiscoverer(d: Discoverer) {
+  if (!discoverers.includes(d)) discoverers.push(d);
+}
+
+// ── LLM guesses ──────────────────────────────────────────────────────────────
+
+const SYSTEM = `You locate the public job boards of well-known employers. For each numbered company, give up to 3 best guesses of the applicant-tracking-system board that hosts its CURRENT US job listings, plus its careers page URL.
+
+Board formats:
+- {"ats":"greenhouse","slug":"<board token>"} — boards.greenhouse.io/<slug>
+- {"ats":"lever","slug":"<site>"} — jobs.lever.co/<site>
+- {"ats":"ashby","slug":"<org>"} — jobs.ashbyhq.com/<org>
+- {"ats":"workday","slug":"<tenant>/<wdN>/<site>"} — https://<tenant>.<wdN>.myworkdayjobs.com/<site>, e.g. "nvidia/wd5/NVIDIAExternalCareerSite", "salesforce/wd12/External_Career_Site"
+
+Rules:
+- Large enterprises mostly use Workday; startups mostly Greenhouse, Lever or Ashby. Guess the one you believe is live today.
+- It is fine to be unsure — every guess is verified against the live board, so a wrong guess costs nothing. Omit a company entirely only if you have no idea.
+- "careers_url" is the company's own careers landing page (or null).
+
+Output strict JSON only, no prose:
+{ "companies": [ { "i": number, "boards": [ { "ats": string, "slug": string } ], "careers_url": string | null } ] }`;
+
+const ATS_SET = new Set<BoardAts>(["greenhouse", "lever", "ashby", "workday"]);
+
+export interface Guess {
+  boards: BoardAttempt[];
+  careersUrl: string | null;
+}
+
+export async function guessBoards(names: string[]): Promise<Map<number, Guess>> {
+  const out = new Map<number, Guess>();
+  if (!names.length) return out;
+  const userPrompt = names.map((n, i) => `[${i + 1}] ${n}`).join("\n");
+
+  const started = Date.now();
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 4000,
+      system: SYSTEM,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) if (block.type === "text") text += block.text;
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+  } finally {
+    await logAgentRun({
+      agent_type: "jobs:universe_resolve",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { companies: names.length },
+    });
+  }
+  if (outcome === "error") return out;
+
+  let parsed: { companies?: Array<{ i?: unknown; boards?: unknown; careers_url?: unknown }> } = {};
+  try {
+    parsed = JSON.parse(extractJson(text));
+  } catch {
+    return out;
+  }
+  for (const c of Array.isArray(parsed.companies) ? parsed.companies : []) {
+    const idx = typeof c.i === "number" ? c.i - 1 : NaN;
+    if (!(idx >= 0 && idx < names.length)) continue;
+    const boards: BoardAttempt[] = [];
+    for (const b of Array.isArray(c.boards) ? (c.boards as Array<Record<string, unknown>>) : []) {
+      const ats = b?.ats as BoardAts;
+      const slug = typeof b?.slug === "string" ? b.slug.trim() : "";
+      if (ATS_SET.has(ats) && slug && boards.length < 3) boards.push({ ats, slug });
+    }
+    const careersUrl =
+      typeof c.careers_url === "string" && /^https?:\/\//i.test(c.careers_url) ? c.careers_url : null;
+    out.set(idx, { boards, careersUrl });
+  }
+  return out;
+}
+
+// ── persistence ──────────────────────────────────────────────────────────────
+
+// Insert (or link) the catalog row for a verified board. An existing row on the
+// same board — seeded or LLM-resolved — is linked instead, keeping its
+// curated sectors (unioned) and size.
+export async function upsertUniverseCompany(row: UniverseRow, board: BoardAttempt): Promise<void> {
+  const sb = supabaseAdmin();
+  const { data: existing } = await sb
+    .from("companies")
+    .select("id, sectors, size_bucket")
+    .eq("ats", board.ats)
+    .eq("slug", board.slug)
+    .maybeSingle();
+  if (existing) {
+    const sectors = [...new Set([...((existing.sectors as string[]) ?? []), ...row.sectors])];
+    const { error } = await sb
+      .from("companies")
+      .update({
+        universe_id: row.id,
+        org_type: row.org_type,
+        sectors,
+        size_bucket: existing.size_bucket ?? row.size_bucket,
+        active: true,
+      })
+      .eq("id", existing.id as string);
+    if (error) throw new Error(`link company failed: ${error.message}`);
+    return;
+  }
+  const { error } = await sb.from("companies").insert({
+    name: row.name,
+    normalized: row.name.toLowerCase().trim(),
+    ats: board.ats,
+    slug: board.slug,
+    sectors: row.sectors,
+    size_bucket: row.size_bucket,
+    source: "universe",
+    verified_at: new Date().toISOString(),
+    universe_id: row.id,
+    org_type: row.org_type,
+  });
+  if (error) throw new Error(`insert company failed: ${error.message}`);
+}
+
+async function markResolved(row: UniverseRow, board: VerifiedBoard) {
+  const nowIso = new Date().toISOString();
+  await supabaseAdmin()
+    .from("company_universe")
+    .update({
+      resolve_status: "resolved",
+      resolved_at: nowIso,
+      resolve_note: `${board.ats}:${board.slug} (${board.jobs} jobs)`,
+      probed_at: row.probed_at ?? nowIso,
+      updated_at: nowIso,
+    })
+    .eq("id", row.id);
+}
+
+async function markMiss(row: UniverseRow, note: string) {
+  const attempts = row.resolve_attempts + 1;
+  const now = Date.now();
+  const days = BACKOFF_DAYS[Math.min(attempts - 1, BACKOFF_DAYS.length - 1)];
+  const nowIso = new Date(now).toISOString();
+  await supabaseAdmin()
+    .from("company_universe")
+    .update({
+      resolve_status: "unresolved",
+      resolve_attempts: attempts,
+      resolve_note: note,
+      probed_at: row.probed_at ?? nowIso,
+      // After the last attempt, park it (null next_resolve_at + attempts cap
+      // keeps it out of the queue).
+      next_resolve_at: attempts >= MAX_ATTEMPTS ? null : new Date(now + days * 86_400_000).toISOString(),
+      updated_at: nowIso,
+    })
+    .eq("id", row.id);
+}
+
+// ── batch ────────────────────────────────────────────────────────────────────
+
+export interface ResolveSummary {
+  considered: number;
+  resolved: number;
+  unresolved: number;
+  by_method: Record<string, number>;
+  errors: number;
+}
+
+// Rows due for a resolution attempt, strongest list signal first (Fortune
+// rank, then startup rank, then H-1B rank); staffing firms last.
+export async function loadDueRows(limit: number): Promise<UniverseRow[]> {
+  const sb = supabaseAdmin();
+  const { data, error } = await sb
+    .from("company_universe")
+    .select("id, name, org_type, sectors, size_bucket, resolve_attempts, probed_at, fortune_rank, startup_rank, h1b_rank")
+    .neq("resolve_status", "resolved")
+    .lt("resolve_attempts", MAX_ATTEMPTS)
+    .or(`next_resolve_at.is.null,next_resolve_at.lte.${new Date().toISOString()}`)
+    .order("resolve_attempts", { ascending: true })
+    .limit(Math.max(limit * 4, 200));
+  if (error) throw new Error(`load universe rows failed: ${error.message}`);
+  const rank = (r: Record<string, unknown>) =>
+    (r.org_type === "staffing" ? 10_000 : 0) +
+    Math.min(
+      (r.fortune_rank as number | null) ?? 9_999,
+      (r.startup_rank as number | null) ?? 9_999,
+      (r.h1b_rank as number | null) ?? 9_999,
+    );
+  return ((data ?? []) as Array<Record<string, unknown>>)
+    .sort((a, b) => rank(a) - rank(b))
+    .slice(0, limit)
+    .map((r) => ({
+      id: r.id as string,
+      name: r.name as string,
+      org_type: r.org_type as string,
+      sectors: (r.sectors as string[]) ?? [],
+      size_bucket: (r.size_bucket as string | null) ?? null,
+      resolve_attempts: (r.resolve_attempts as number) ?? 0,
+      probed_at: (r.probed_at as string | null) ?? null,
+    }));
+}
+
+export async function resolveUniverseBatch(opts?: {
+  limit?: number;
+  deadline?: number; // epoch ms; stop starting new work past this
+  useLlm?: boolean;
+}): Promise<ResolveSummary> {
+  const limit = opts?.limit ?? DEFAULT_LIMIT;
+  const deadline = opts?.deadline ?? Date.now() + 200_000;
+  const useLlm = opts?.useLlm ?? true;
+  const summary: ResolveSummary = { considered: 0, resolved: 0, unresolved: 0, by_method: {}, errors: 0 };
+  const rows = await loadDueRows(limit);
+  summary.considered = rows.length;
+  if (!rows.length) return summary;
+
+  const hit = async (row: UniverseRow, board: VerifiedBoard, method: string) => {
+    await upsertUniverseCompany(row, board);
+    await markResolved(row, board);
+    summary.resolved++;
+    summary.by_method[method] = (summary.by_method[method] ?? 0) + 1;
+  };
+
+  // 1. slug probe (rows not pre-probed).
+  const misses: UniverseRow[] = [];
+  await mapPool(rows, PROBE_CONCURRENCY, async (row) => {
+    if (Date.now() > deadline) return;
+    try {
+      if (!row.probed_at) {
+        const found = await findBoard(row.name, { minJobs: row.size_bucket === "large" ? LARGE_MIN_JOBS : 1 });
+        if (found) return hit(row, found, "probe");
+      }
+      misses.push(row);
+    } catch {
+      summary.errors++;
+    }
+  });
+
+  // 2 + 3. LLM guesses, then careers-page discovery, for the misses.
+  for (let i = 0; i < misses.length; i += LLM_BATCH) {
+    if (Date.now() > deadline) break;
+    const batch = misses.slice(i, i + LLM_BATCH);
+    const guesses = useLlm ? await guessBoards(batch.map((r) => r.name)) : new Map<number, Guess>();
+    await mapPool(batch, PROBE_CONCURRENCY, async (row) => {
+      const b = batch.indexOf(row);
+      try {
+        const g = guesses.get(b);
+        for (const attempt of g?.boards ?? []) {
+          const n = await verify(attempt, row);
+          if (n) return hit(row, { ...attempt, jobs: n }, `llm_${attempt.ats}`);
+        }
+        for (const d of discoverers) {
+          for (const attempt of await d(row.name, g?.careersUrl ?? null).catch(() => [])) {
+            const n = await verify(attempt, row);
+            if (n) return hit(row, { ...attempt, jobs: n }, `careers_${attempt.ats}`);
+          }
+        }
+        const tried = (g?.boards ?? []).map((a) => `${a.ats}:${a.slug}`).join(", ");
+        await markMiss(row, tried ? `no verified board (tried ${tried})` : "no verified board");
+        summary.unresolved++;
+      } catch {
+        summary.errors++;
+      }
+    });
+  }
+  return summary;
+}
+
+// Operator status for /api/admin/universe.
+export async function universeStatus() {
+  const sb = supabaseAdmin();
+  const { data: rows } = await sb.from("company_universe").select("resolve_status, org_type").limit(5000);
+  const status: Record<string, number> = {};
+  for (const r of rows ?? []) {
+    const k = `${r.resolve_status}:${r.org_type}`;
+    status[k] = (status[k] ?? 0) + 1;
+  }
+  const { data: comps } = await sb.from("companies").select("ats").not("universe_id", "is", null).limit(5000);
+  const boards: Record<string, number> = {};
+  for (const c of comps ?? []) boards[c.ats as string] = (boards[c.ats as string] ?? 0) + 1;
+  return { universe: rows?.length ?? 0, status, boards };
+}
