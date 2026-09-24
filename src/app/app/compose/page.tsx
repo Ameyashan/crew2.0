@@ -46,9 +46,9 @@ import {
   storyNudgeKey,
   isFirstTime,
   deskHeadline,
-  deskEarlierRuns,
-  fmtWhen,
+  deskRailSections,
 } from "@/components/paper/desk-logic";
+import { RunsRail } from "@/components/paper/runs-rail";
 import {
   runStatusChip,
   CHIP_TONE_COLORS,
@@ -66,7 +66,7 @@ import {
   PENDING_RESULTS_KEY,
   buildRunSteps,
   stepActivityPhrase,
-  runViewTitle,
+  liveRunTitle,
   ANGLE_PILLS,
   handoffCta,
   handoffQuestion,
@@ -200,8 +200,10 @@ function ComposeV3({ p, go }) {
 
   // Refresh the earlier-runs list whenever a live run finishes, so a completed
   // run shows up as a new row without a manual reload.
+  // Errored runs count too — their saved row flips to "needs you" in history.
   const doneCount = runs.filter((r) => r.stage === 'done').length;
-  useEffect(() => { loadHistory(); }, [doneCount]); // eslint-disable-line react-hooks/exhaustive-deps
+  const errorCount = runs.filter((r) => r.stage === 'error').length;
+  useEffect(() => { loadHistory(); }, [doneCount, errorCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const storyIsEmpty = deriveStoryIsEmpty(profile);
   const liveNonResume = runs.filter((run) => run.kind !== 'resume');
@@ -214,23 +216,13 @@ function ComposeV3({ p, go }) {
     ? runs.find((run) => run.id === focusedRunId) || null
     : null;
   const firstTime = isFirstTime(composeRuns.length, resumeRuns.length) && liveNonResume.length === 0;
-  // A run that's currently LIVE in the store (running, or reconnecting after a
-  // background+reload) is surfaced as the top-bar chip / focused card — so
-  // exclude its history row from "Earlier runs", otherwise the one run shows
-  // twice. Keyed by the server row id each live run carries. Two kinds of run
-  // in the store must NOT be excluded, or their rows vanish from the Desk with
-  // no other way back to them until a full reload:
-  //  - hydrated runs (reopened FROM "Earlier runs" / History; they stay in the
-  //    store after "Back to the Desk" so re-clicking refocuses them), and
-  //  - finished live runs (once done and unfocused, the top-bar chip is gone;
-  //    the history row is their only surface).
-  const liveRunIds = new Set(
-    runs
-      .filter((r) => !r.hydrated && r.stage !== 'done')
-      .flatMap((r) => [r.composeRunId, r.resumeGenerationId])
-      .filter(Boolean),
-  );
-  const earlier = deskEarlierRuns(composeRuns, resumeRuns, 4, liveRunIds);
+  // The runs rail: what's running now, what needs you, and history — every run
+  // one click away, however many are going at once (see deskRailSections).
+  const railSections = deskRailSections({ liveRuns: runs, composeRuns, resumeRuns, limit: 15 });
+  const railEmpty = !railSections.running.length && !railSections.attention.length && !railSections.earlier.length;
+  const liveCount = railSections.running.length;
+  const needsCount = railSections.attention.length;
+  const [railOpen, setRailOpen] = useState(false);
   // Prototype shows the Story nudge for signed-in accounts only.
   const showNudge = signedIn === true && !!nudgeKey && storyIsEmpty && !nudgeDismissed;
   const headline = deskHeadline(signedIn, firstTime, name);
@@ -241,6 +233,10 @@ function ComposeV3({ p, go }) {
   // resume_generations row (they have no parent compose run) so the click reopens
   // THAT tailored résumé rather than the generic Story page.
   async function openRun(row) {
+    // Already in the store (reopened before, or started this session)? Refocus
+    // it instead of hydrating a duplicate.
+    const existing = runs.find((r) => r.composeRunId === row.id || r.resumeGenerationId === row.id);
+    if (existing) { setFocusedRun(existing.id); return; }
     if (row.agent === 'resume') {
       try {
         const res = await fetch(`/api/resume/history/${row.id}`);
@@ -264,6 +260,24 @@ function ComposeV3({ p, go }) {
       }
     } catch { /* fall through to the list */ }
     go('history');
+  }
+
+  // Rail selection: live rows focus their store run; history rows reopen the
+  // saved run in place.
+  function selectRailRow(row) {
+    setRailOpen(false);
+    if (row.localId) { setFocusedRun(row.localId); return; }
+    if (row.row) openRun(row.row);
+  }
+  function isRailRowSelected(row) {
+    if (!focusedRun) return false;
+    if (row.localId) return row.localId === focusedRun.id;
+    const sid = focusedRun.composeRunId || focusedRun.resumeGenerationId;
+    return !!sid && sid === row.serverId;
+  }
+  function newRun() {
+    setRailOpen(false);
+    setFocusedRun(null);
   }
 
   // Seed the composer from a suggestion pill / first-time card.
@@ -370,51 +384,25 @@ function ComposeV3({ p, go }) {
   }
 
   const sidePad = isMobile ? 16 : 44;
+  // Signed-out visitors get one in-memory run and are locked to it (anon runs
+  // persist nothing), so they never see the rail. Hidden too until there's
+  // anything to list — a brand-new account gets the plain centered Desk.
+  const showRail = signedIn !== false && !railEmpty;
 
-  // ─── Run screen: a focused run takes over the whole Desk (prototype line 536):
-  // centered column, fadeUp entrance, steps that reveal one at a time. The
-  // composer/first-time/earlier-runs are hidden until "Back to the Desk". ───
-  if (focusedRun) {
-    return (
-      <div className="scroll" style={{
-        flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column',
-        background: TOKENS.paper, color: TOKENS.ink,
-      }}>
-        <style>{DESK_HOVER_CSS}</style>
-        <div key={focusedRun.id} style={{
-          flex: 1, maxWidth: 1100, margin: '0 auto', width: '100%', boxSizing: 'border-box',
-          padding: `40px ${sidePad}px 60px`, animation: 'fadeUp .4s ease',
-        }}>
-          {/* A signed-out visitor gets one run that lives only in memory (anon
-              runs persist nothing — see api/compose). Leaving the run screen
-              would strand it with no way back (the "crew running" chip is
-              signed-in only), so we lock them here: the only way forward is the
-              blur-gate's "sign in" — which stashes + replays the run unlocked. */}
-          {signedIn !== false && (
-            <button
-              type="button"
-              className="rv-back"
-              onClick={() => setFocusedRun(null)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 22,
-                background: 'transparent', border: 'none', cursor: 'pointer',
-                fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, color: TOKENS.muted, padding: 0,
-              }}
-            >← Back to the Desk</button>
-          )}
-          <RunCard p={p} run={focusedRun} go={go} storyIsEmpty={storyIsEmpty} signedIn={signedIn}/>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="scroll" style={{
-      flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column',
-      background: TOKENS.paper, color: TOKENS.ink, animation: 'fadeUp .4s ease',
+  // ─── Run view: the focused run fills the main pane (prototype line 536):
+  // centered column, fadeUp entrance, steps that reveal one at a time. ───
+  const runView = focusedRun ? (
+    <div key={focusedRun.id} style={{
+      flex: 1, maxWidth: 1100, margin: '0 auto', width: '100%', boxSizing: 'border-box',
+      padding: `${isMobile ? 20 : 40}px ${sidePad}px 60px`, animation: 'fadeUp .4s ease',
     }}>
-      <style>{DESK_HOVER_CSS}</style>
+      <RunCard p={p} run={focusedRun} go={go} storyIsEmpty={storyIsEmpty} signedIn={signedIn}/>
+    </div>
+  ) : null;
 
+  // ─── Desk: headline + composer, and the first-time cards for new accounts ───
+  const deskView = (
+    <>
       {/* ─── hero: headline + composer + nudge, centered in the leftover space ─── */}
       <div style={{
         flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -459,10 +447,6 @@ function ComposeV3({ p, go }) {
         )}
       </div>
 
-      {/* Live runs no longer stack under the composer — an active run takes over
-          the whole screen (see the focusedRun branch above). The top-bar
-          "crew running" chip reopens it. */}
-
       {/* ─── first-time: "Things your crew can do" 3-card grid (no runs yet) ─── */}
       {firstTime && (
         <div style={{
@@ -506,61 +490,52 @@ function ComposeV3({ p, go }) {
         </div>
       )}
 
-      {/* ─── earlier runs: first few from history, → the repurposed history page ─── */}
-      {earlier.length > 0 && (
-        <div style={{
-          padding: `0 ${sidePad}px ${isMobile ? 32 : 44}px`, maxWidth: 1060, margin: '0 auto',
-          width: '100%', boxSizing: 'border-box',
-        }}>
-          <div style={{
-            fontFamily: PAPER_FONTS_V2.sans, fontSize: 11, fontWeight: 500, letterSpacing: '.12em',
-            textTransform: 'uppercase', color: TOKENS.faint, marginBottom: 14,
-          }}>Earlier runs</div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {earlier.map((row) => (
-              <div key={row.key} className="dk-row" onClick={() => openRun(row)} style={{
-                display: 'flex', alignItems: 'center', gap: 16, padding: '15px 8px', margin: '0 -8px',
-                borderTop: `1px solid ${TOKENS.lineRow}`, cursor: 'pointer', borderRadius: 8,
-                transition: 'background .15s', flexWrap: 'wrap',
-              }}>
-                <div style={{
-                  flex: 1, minWidth: 0, fontFamily: PAPER_FONTS_V2.serif, fontSize: 16, lineHeight: 1.3, color: TOKENS.inkSoft,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>{row.title}</div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {row.chips.map((c, i) => {
-                    const tone = EARLIER_CHIP_TONE[c.tone] || EARLIER_CHIP_TONE.done;
-                    return (
-                      <span key={i} style={{
-                        fontFamily: PAPER_FONTS_V2.mono, fontSize: 10.5, fontWeight: 500,
-                        color: tone.color, background: tone.bg, borderRadius: 5, padding: '4px 8px', whiteSpace: 'nowrap',
-                      }}>{c.label}</span>
-                    );
-                  })}
-                </div>
-                <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, color: TOKENS.faint2, whiteSpace: 'nowrap' }}>
-                  {fmtWhen(row.created_at)}
-                </div>
-                <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 13, color: TOKENS.faint }}>→</span>
-              </div>
-            ))}
-            <div style={{ borderTop: `1px solid ${TOKENS.lineRow}` }} />
-          </div>
-        </div>
+    </>
+  );
+
+  return (
+    <div style={{
+      flex: 1, minHeight: 0, display: 'flex',
+      background: TOKENS.paper, color: TOKENS.ink,
+    }}>
+      <style>{DESK_HOVER_CSS}</style>
+      {showRail && (
+        <RunsRail
+          sections={railSections}
+          isSelected={isRailRowSelected}
+          onSelect={selectRailRow}
+          onNew={newRun}
+          newActive={!focusedRun}
+          isMobile={isMobile}
+          open={railOpen}
+          onClose={() => setRailOpen(false)}
+        />
       )}
+      <div key={focusedRun ? focusedRun.id : 'desk'} className="scroll" style={{
+        flex: 1, minWidth: 0, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column',
+        animation: focusedRun ? undefined : 'fadeUp .4s ease',
+      }}>
+        {/* Phones: the rail is a drawer; this opens it. */}
+        {showRail && isMobile && (
+          <div style={{ padding: '12px 16px 0', display: 'flex' }}>
+            <button type="button" onClick={() => setRailOpen(true)} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+              fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, color: TOKENS.muted2,
+              background: TOKENS.card, border: `1px solid ${TOKENS.lineSoft}`,
+              borderRadius: RADII.pill, padding: '7px 13px',
+            }}>
+              <span aria-hidden style={{ fontSize: 13, lineHeight: 1 }}>☰</span>
+              Runs
+              {liveCount > 0 && <span style={{ color: TOKENS.amber }}>· {liveCount} live</span>}
+              {needsCount > 0 && <span style={{ color: TOKENS.amber }}>· {needsCount} need{needsCount === 1 ? 's' : ''} you</span>}
+            </button>
+          </div>
+        )}
+        {focusedRun ? runView : deskView}
+      </div>
     </div>
   );
 }
-
-// Earlier-runs chip colours per abstract tone (kept out of desk-logic since it's
-// presentation, not a rule). Error rows use the amber-family bg — red-on-amber
-// stays inside the token palette (no off-token pink).
-const EARLIER_CHIP_TONE = {
-  done:       { color: TOKENS.green, bg: TOKENS.greenBg },
-  progress:   { color: TOKENS.amber, bg: TOKENS.amberBg },
-  attention:  { color: TOKENS.amber, bg: TOKENS.amberBg },
-  error:      { color: TOKENS.red,   bg: TOKENS.amberBg },
-};
 
 /* ─────────────────────── one run, all its lifecycle stages ─────────────────────── */
 // Prototype lines 534–799: header + status chip, vertical steps list, pull-review
@@ -682,17 +657,7 @@ function RunCard({ p, run, go, storyIsEmpty, signedIn }) {
     questionCount: Array.isArray(run.applicationQuestions) ? run.applicationQuestions.length : null,
   });
 
-  const title = run.kind === 'resume'
-    ? ([parsed?.role, parsed?.company].filter(Boolean).join(' · ') || 'Tailored résumé')
-    : runViewTitle({
-        kind: run.kind === 'job' ? 'job' : 'person',
-        role: run.kind === 'job' ? (jobParsed?.role ?? run.screenshotRole ?? null) : null,
-        company: run.kind === 'job'
-          ? (jobParsed?.company ?? run.screenshotCompany ?? null)
-          : (stepPerson?.company ?? null),
-        personName: run.kind === 'job' ? null : (stepPerson?.name ?? null),
-        fallback: jobHost(run.input) || run.intent || run.input,
-      });
+  const title = liveRunTitle(run);
 
   // Resume Darzi was opted in, but the resolved kind is a person — there's no
   // JD to tailor against. Warn and continue with the rest of the crew.

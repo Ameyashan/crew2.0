@@ -263,3 +263,87 @@ test("fmtWhen renders deterministic relative times against an injected now", () 
   assert.equal(fmtWhen("2026-07-03T12:00:00Z", now), "1d ago");
   assert.equal(fmtWhen("2026-06-29T12:00:00Z", now), "5d ago");
 });
+
+// ── Runs rail ────────────────────────────────────────────────────────────────
+import { deskRailSections, type RailLiveRun } from "./desk-logic.ts";
+
+function live(over: Partial<RailLiveRun> & { id: string }): RailLiveRun {
+  return { kind: "job", stage: "working", input: "https://stripe.com/jobs/1", createdAt: 1000, ...over };
+}
+
+test("deskRailSections: two concurrent runs both show under running, newest first", () => {
+  const s = deskRailSections({
+    liveRuns: [
+      live({ id: "a", createdAt: 1000, composeRunId: "srv-a" }),
+      live({ id: "b", createdAt: 2000, input: "https://ramp.com/careers/pm", composeRunId: "srv-b" }),
+    ],
+    composeRuns: [],
+    resumeRuns: [],
+  });
+  assert.deepEqual(s.running.map((r) => r.localId), ["b", "a"]);
+  assert.equal(s.running[0].title, "Apply — ramp.com");
+  assert.equal(s.running[0].status, "running");
+  assert.equal(s.attention.length, 0);
+});
+
+test("deskRailSections: live run's history row is not duplicated in earlier", () => {
+  const s = deskRailSections({
+    liveRuns: [live({ id: "a", composeRunId: "srv-a" })],
+    composeRuns: [
+      { id: "srv-a", created_at: "2026-01-02T00:00:00Z", kind: "job", outcome: "in_flight" },
+      { id: "srv-old", created_at: "2026-01-01T00:00:00Z", kind: "job", outcome: "complete", input: "figma.com" },
+    ],
+    resumeRuns: [],
+  });
+  assert.equal(s.running.length, 1);
+  assert.deepEqual(s.earlier.map((r) => r.serverId), ["srv-old"]);
+  assert.equal(s.earlier[0].status, "ready");
+  assert.equal(s.earlier[0].title, "Apply — figma.com");
+});
+
+test("deskRailSections: a just-finished run stays in earlier until history catches up", () => {
+  const done = live({ id: "a", stage: "done", composeRunId: "srv-a", progress: { resume: 100 } });
+  const before = deskRailSections({ liveRuns: [done], composeRuns: [], resumeRuns: [] });
+  assert.equal(before.running.length, 0);
+  assert.deepEqual(before.earlier.map((r) => r.localId), ["a"]);
+  assert.equal(before.earlier[0].status, "ready");
+
+  const after = deskRailSections({
+    liveRuns: [done],
+    composeRuns: [{ id: "srv-a", created_at: "2026-01-02T00:00:00Z", kind: "job", outcome: "complete" }],
+    resumeRuns: [],
+  });
+  assert.deepEqual(after.earlier.map((r) => r.source), ["history"]);
+});
+
+test("deskRailSections: errored runs go to attention; hydrated runs are history-only", () => {
+  const s = deskRailSections({
+    liveRuns: [
+      live({ id: "e", stage: "error", composeRunId: "srv-e" }),
+      live({ id: "h", stage: "done", hydrated: true, composeRunId: "srv-h" }),
+    ],
+    composeRuns: [{ id: "srv-h", created_at: "2026-01-01T00:00:00Z", kind: "job", outcome: "complete" }],
+    resumeRuns: [],
+  });
+  assert.deepEqual(s.attention.map((r) => r.localId), ["e"]);
+  assert.equal(s.attention[0].status, "needs-you");
+  assert.deepEqual(s.earlier.map((r) => r.serverId), ["srv-h"]);
+});
+
+test("deskRailSections: step count follows selected agents and captions the active one", () => {
+  const s = deskRailSections({
+    liveRuns: [
+      live({
+        id: "a",
+        selectedAgents: ["resume", "person", "email"],
+        progress: { resume: 100, person: 40 },
+        activity: { person: "Scanning the team page" },
+      }),
+    ],
+    composeRuns: [],
+    resumeRuns: [],
+  });
+  assert.equal(s.running[0].stepsDone, 1);
+  assert.equal(s.running[0].stepsTotal, 3);
+  assert.equal(s.running[0].caption, "Scanning the team page");
+});

@@ -772,3 +772,50 @@ export function parsePendingRun(raw: string | null | undefined): PendingRun | nu
     at: typeof o.at === "number" ? o.at : 0,
   };
 }
+
+// ── Live-run title ───────────────────────────────────────────────────────────
+// One title per store run, shared by the run card header and the Desk's runs
+// rail so the two never disagree. Only REAL parses/people feed it: a job parse
+// counts once the server stamped `unparsed: false`; person names come from the
+// researched person, never the local parse preview.
+function hostOf(source: string | null | undefined): string {
+  const s = (source || "").trim();
+  // Only link-shaped input has a host; free text ("design leads at Razorpay")
+  // would otherwise come back percent-encoded from the browser's URL parser.
+  if (!s || /\s/.test(s) || !s.includes(".")) return "";
+  try {
+    return new URL(s.match(/^https?:\/\//) ? s : `https://${s}`).hostname.replace(/^www\./, "");
+  } catch {
+    return s;
+  }
+}
+
+type Named = { name?: string | null; company?: string | null } | null | undefined;
+export type LiveRunTitleInput = {
+  kind: string;
+  input?: string | null;
+  intent?: string | null;
+  parsed?: { unparsed?: boolean; role?: string | null; company?: string | null } | null;
+  person?: Named;
+  contacts?: { hiring_manager?: { person?: Named } | null; poster?: { person?: Named } | null } | null;
+  screenshotRole?: string | null;
+  screenshotCompany?: string | null;
+};
+
+export function liveRunTitle(run: LiveRunTitleInput): string {
+  const parsed = run.parsed;
+  if (run.kind === "resume") {
+    return [parsed?.role, parsed?.company].filter(Boolean).join(" · ") || "Tailored résumé";
+  }
+  const isJob = run.kind === "job";
+  const jobParsed = isJob && parsed && parsed.unparsed === false ? parsed : null;
+  const person =
+    run.person || run.contacts?.hiring_manager?.person || run.contacts?.poster?.person || null;
+  return runViewTitle({
+    kind: isJob ? "job" : "person",
+    role: isJob ? (jobParsed?.role ?? run.screenshotRole ?? null) : null,
+    company: isJob ? (jobParsed?.company ?? run.screenshotCompany ?? null) : (person?.company ?? null),
+    personName: isJob ? null : (person?.name ?? null),
+    fallback: hostOf(run.input) || run.intent || run.input,
+  });
+}

@@ -584,3 +584,30 @@ test("gate copy: signed-out + tense-neutral (fires mid-run, not only when done)"
   assert.equal(GATE_BUTTON_LABEL, "Continue with Google");
   assert.ok(GATE_FOOTNOTE.startsWith("Free"));
 });
+
+import { liveRunTitle } from "./run-view-logic.ts";
+
+test("liveRunTitle: job uses the real parse only, else the link host", () => {
+  assert.equal(
+    liveRunTitle({ kind: "job", input: "https://www.stripe.com/jobs/1", parsed: { unparsed: true, role: "Fake" } }),
+    "Apply — stripe.com",
+  );
+  assert.equal(
+    liveRunTitle({ kind: "job", input: "x", parsed: { unparsed: false, role: "PM", company: "Ramp" } }),
+    "Apply — PM, Ramp",
+  );
+});
+
+test("liveRunTitle: person runs use the researched person; résumé runs role · company", () => {
+  assert.equal(
+    liveRunTitle({ kind: "person", input: "anika", contacts: { poster: { person: { name: "Anika", company: "Plaid" } } } }),
+    "Reach — Anika, Plaid",
+  );
+  assert.equal(liveRunTitle({ kind: "resume", parsed: { role: "SWE", company: "Figma" } }), "SWE · Figma");
+  assert.equal(liveRunTitle({ kind: "resume" }), "Tailored résumé");
+  // Free text is used as-is, never parsed as a URL host.
+  assert.equal(
+    liveRunTitle({ kind: "person", input: "design leads at Razorpay" }),
+    "Find — design leads at Razorpay",
+  );
+});

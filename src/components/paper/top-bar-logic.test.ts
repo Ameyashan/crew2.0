@@ -69,7 +69,7 @@ test("crewChip: green 'crew running' while anything is working/parsing", () => {
     { stage: "working", kind: "job" },
   ];
   const chip = crewChip(runs);
-  assert.deepEqual(chip, { tone: "active", label: "crew running", target: "/app/compose" });
+  assert.deepEqual(chip, { tone: "active", label: "crew running", target: "/app/compose", count: 1 });
 });
 
 test("crewChip: parsing counts as active too", () => {
@@ -78,7 +78,7 @@ test("crewChip: parsing counts as active too", () => {
 
 test("crewChip: amber 'needs you' when only errored runs remain", () => {
   const chip = crewChip([{ stage: "error", kind: "job" }]);
-  assert.deepEqual(chip, { tone: "attention", label: "needs you", target: "/app/compose" });
+  assert.deepEqual(chip, { tone: "attention", label: "needs you", target: "/app/compose", count: 1 });
 });
 
 test("crewChip: resume-only focus targets /app/resume", () => {
@@ -104,4 +104,21 @@ test("crewChip: active runs win over errored ones for tone and target", () => {
   assert.equal(chip?.tone, "active");
   // Focus is the active (job) run, so compose — the errored resume is ignored for routing.
   assert.equal(chip?.target, "/app/compose");
+});
+
+test("crewChip: parallel runs show a count instead of collapsing into one", () => {
+  const chip = crewChip([
+    { stage: "working", kind: "job" },
+    { stage: "parsing", kind: "job" },
+    { stage: "error", kind: "job" },
+  ]);
+  assert.equal(chip?.label, "2 running");
+  assert.equal(chip?.count, 2);
+  assert.equal(
+    crewChip([
+      { stage: "error", kind: "job" },
+      { stage: "error", kind: "person" },
+    ])?.label,
+    "2 need you",
+  );
 });

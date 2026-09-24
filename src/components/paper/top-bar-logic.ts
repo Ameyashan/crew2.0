@@ -44,21 +44,23 @@ export function avatarInitial(displayName: string): string {
 
 // Live-runs chip model. Mirrors the old sidebar's activeRuns/attentionRuns
 // logic: green "crew running" while anything is working, amber "needs you" when
-// something errored, and null when there's nothing to surface. `target` follows
-// the runs that need eyes — resume-only focus lands on /app/resume, otherwise
-// /app/compose (which shows the richest progress).
+// something errored, and null when there's nothing to surface. With more than
+// one run in the same state the label carries the count ("2 running") so
+// parallel runs aren't collapsed into one. `target` follows the runs that need
+// eyes — resume-only focus lands on /app/resume, otherwise /app/compose (which
+// shows the richest progress).
 export type RunLite = { stage: string; kind: string };
 export function crewChip(
   runs: RunLite[],
-): { tone: "active" | "attention"; label: string; target: string } | null {
+): { tone: "active" | "attention"; label: string; target: string; count: number } | null {
   const active = runs.filter((r) => r.stage === "working" || r.stage === "parsing");
   const attention = runs.filter((r) => r.stage === "error");
   const focus = active.length ? active : attention;
   if (!focus.length) return null;
   const target = focus.every((r) => r.kind === "resume") ? "/app/resume" : "/app/compose";
-  return {
-    tone: active.length ? "active" : "attention",
-    label: active.length ? "crew running" : "needs you",
-    target,
-  };
+  const count = focus.length;
+  const label = active.length
+    ? count > 1 ? `${count} running` : "crew running"
+    : count > 1 ? `${count} need you` : "needs you";
+  return { tone: active.length ? "active" : "attention", label, target, count };
 }
