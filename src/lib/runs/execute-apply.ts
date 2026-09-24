@@ -92,7 +92,7 @@ export async function runPipeline(composeRunId: string, sink: RunSink): Promise<
   const sb = supabaseAdmin();
   const { data: row, error: loadErr } = await sb
     .from("compose_runs")
-    .select("id, user_id, anon_id, payload, outcome")
+    .select("id, user_id, anon_id, payload, outcome, resume_generation_id")
     .eq("id", composeRunId)
     .maybeSingle();
   if (loadErr || !row) {
@@ -139,6 +139,23 @@ export async function runPipeline(composeRunId: string, sink: RunSink): Promise<
     if (prior && Array.isArray(prior.drafts)) collectedDrafts.push(...(prior.drafts as unknown[]));
 
     let resumeGenerationId: string | null = null;
+    // The résumé row an earlier attempt at this run created (set on the run row
+    // as soon as the tailor starts — see recordResumeRow). A worker re-drive
+    // reuses it rather than inserting a second, orphaned résumé.
+    let priorResumeRowId: string | null = (row.resume_generation_id as string | null) ?? null;
+    const recordResumeRow = async (id: string) => {
+      if (!userId || id === priorResumeRowId) return;
+      priorResumeRowId = id;
+      try {
+        await sb
+          .from("compose_runs")
+          .update({ resume_generation_id: id })
+          .eq("id", composeRunId)
+          .eq("outcome", "in_flight");
+      } catch (e) {
+        console.error("[compose_runs] resume row link failed", e);
+      }
+    };
     let personId: string | null = null;
     let draftId: string | null = null;
     let runOutcome: "complete" | "error" | "needs_disambiguation" = "error";
@@ -310,8 +327,9 @@ export async function runPipeline(composeRunId: string, sink: RunSink): Promise<
               };
           let resume: TailoredResume | null = null;
           try {
-            for await (const evt of runResumeTailorStreamPersisted(tailorInput)) {
+            for await (const evt of runResumeTailorStreamPersisted(tailorInput, { reuseId: priorResumeRowId })) {
               if (evt.type === "step" && evt.id === "tailor" && evt.status === "done") resume = evt.data.resume;
+              if (evt.type === "resume_run") await recordResumeRow(evt.id);
               if (evt.type === "saved") resumeGenerationId = evt.id;
               if (evt.type === "error") {
                 send({ type: "step", id: "resume", status: "error", message: evt.message });
@@ -494,8 +512,9 @@ export async function runPipeline(composeRunId: string, sink: RunSink): Promise<
         send({ type: "step", id: "resume", status: "start" });
         let resume: TailoredResume | null = null;
         try {
-          for await (const evt of runResumeTailorStreamPersisted({ job_url, job_posting: pastedPosting ?? undefined, page_count: resumePages })) {
+          for await (const evt of runResumeTailorStreamPersisted({ job_url, job_posting: pastedPosting ?? undefined, page_count: resumePages }, { reuseId: priorResumeRowId })) {
             if (evt.type === "step" && evt.id === "tailor" && evt.status === "done") resume = evt.data.resume;
+            if (evt.type === "resume_run") await recordResumeRow(evt.id);
             if (evt.type === "saved") resumeGenerationId = evt.id;
             if (evt.type === "error") {
               send({ type: "step", id: "resume", status: "error", message: evt.message });

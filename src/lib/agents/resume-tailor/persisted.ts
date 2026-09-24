@@ -18,8 +18,14 @@ export type PersistedTailorEvent =
 //
 // Must run inside runWithUser(). Consumers may bail out of the loop early
 // (e.g. on an `error` event) — the `finally` still finalizes the row.
+//
+// `reuseId`: a row this caller created on an earlier attempt (a job compose run
+// re-driven by the cron worker after its first executor died). The row is reset
+// and reused instead of inserting another, so a re-drive never strands the
+// first attempt's row as a second, orphaned résumé in history.
 export async function* runResumeTailorStreamPersisted(
   input: ResumeTailorInput,
+  opts: { reuseId?: string | null } = {},
 ): AsyncGenerator<PersistedTailorEvent> {
   const sb = supabaseAdmin();
   // Anonymous (blur-gate) runs persist nothing: no resume_generations row, no
@@ -28,7 +34,27 @@ export async function* runResumeTailorStreamPersisted(
   const userId = maybeUserId();
 
   let generationId: string | null = null;
-  if (userId) {
+  if (userId && opts.reuseId) {
+    try {
+      const { data, error } = await sb
+        .from("resume_generations")
+        .update({
+          status: "in_flight",
+          error: null,
+          completed_at: null,
+          heartbeat_at: new Date().toISOString(),
+        })
+        .eq("id", opts.reuseId)
+        .eq("user_id", userId)
+        .select("id")
+        .maybeSingle();
+      if (error) throw error;
+      generationId = data?.id ?? null;
+    } catch (e) {
+      console.error("[resume_generations] reuse failed", e);
+    }
+  }
+  if (userId && !generationId) {
     try {
       const { data, error } = await sb
         .from("resume_generations")
@@ -39,6 +65,7 @@ export async function* runResumeTailorStreamPersisted(
           regenerate_notes: input.regenerate_notes?.trim() || null,
           page_count: input.page_count,
           status: "in_flight",
+          heartbeat_at: new Date().toISOString(),
         })
         .select("id")
         .single();
