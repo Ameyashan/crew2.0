@@ -11,6 +11,7 @@ import {
   isFirstTime,
   deskHeadline,
   deskRunTitle,
+  linkLabel,
   deskRunChips,
   deskEarlierRuns,
   dropLinkedResumeRuns,
@@ -156,7 +157,7 @@ test("deskRunTitle picks the right label per agent/kind", () => {
   );
   assert.equal(
     deskRunTitle("compose", { kind: "person", input: "linkedin.com/in/maya" }),
-    "linkedin.com",
+    "Maya",
   );
   assert.equal(deskRunTitle("resume", { target_role: "PM, Payments" }), "PM, Payments");
   assert.equal(deskRunTitle("resume", { status: "in_flight" }), "Tailoring…");
@@ -174,13 +175,79 @@ test("deskRunTitle titles job rows from the joined résumé and the job host, no
     deskRunTitle("compose", { kind: "job", resume_generation: { target_company: "Acme" } }),
     "Acme",
   );
-  // With neither role nor company, fall back to the job link's host before the
-  // last-resort literal — so distinct applications don't all collapse to one title.
+  // With neither role nor company, fall back to the job link before the
+  // last-resort literal — so distinct applications don't all collapse to one
+  // title. ATS boards name the company in their path.
   assert.equal(
     deskRunTitle("compose", { kind: "job", input: "https://jobs.lever.co/acme/123" }),
-    "jobs.lever.co",
+    "Acme",
+  );
+  assert.equal(
+    deskRunTitle("compose", { kind: "job", input: "https://stripe.com/jobs/listing/123" }),
+    "stripe.com",
   );
   assert.equal(deskRunTitle("compose", { kind: "job" }), "Job application");
+});
+
+test("deskRunTitle reads role and company together", () => {
+  assert.equal(
+    deskRunTitle("compose", {
+      id: "1", created_at: "",
+      kind: "job",
+      resume_generation: { target_role: "Product Manager, Tech", target_company: "Stripe" },
+    }),
+    "Product Manager, Tech · Stripe",
+  );
+  // A role that already names the company isn't repeated.
+  assert.equal(
+    deskRunTitle("compose", {
+      id: "1", created_at: "",
+      kind: "job",
+      resume_generation: { target_role: "Stripe PM", target_company: "stripe" },
+    }),
+    "Stripe PM",
+  );
+  assert.equal(
+    deskRunTitle("resume", { id: "1", created_at: "", target_role: "SWE", target_company: "Figma" }),
+    "SWE · Figma",
+  );
+  assert.equal(
+    deskRunTitle("compose", { id: "1", created_at: "", kind: "person", person: { name: "Anika Mehta", company: "Plaid" } }),
+    "Anika Mehta · Plaid",
+  );
+});
+
+test("deskRunTitle names untitled résumés from their job link", () => {
+  assert.equal(
+    deskRunTitle("resume", { id: "1", created_at: "", job_url: "https://job-boards.greenhouse.io/figma/jobs/55" }),
+    "Figma",
+  );
+  assert.equal(deskRunTitle("resume", { id: "1", created_at: "", job_url: "ramp.com/careers" }), "ramp.com");
+});
+
+test("deskRunTitle decodes percent-encoded free text instead of showing it raw", () => {
+  assert.equal(
+    deskRunTitle("compose", { id: "1", created_at: "", kind: "person", input: "can%20you%20find%20PMs%20at%20Ramp" }),
+    "Can you find PMs at Ramp",
+  );
+  assert.equal(
+    deskRunTitle("compose", { id: "1", created_at: "", kind: "job", input: "find me   pm roles" }),
+    "Find me pm roles",
+  );
+  // A malformed escape keeps the text rather than throwing.
+  assert.equal(
+    deskRunTitle("compose", { id: "1", created_at: "", kind: "person", input: "100%%20sure" }),
+    "100% sure",
+  );
+});
+
+test("linkLabel: LinkedIn profiles name the person, ATS boards the company", () => {
+  assert.equal(linkLabel("https://www.linkedin.com/in/maya-shah-1a2b3c4d/"), "Maya Shah");
+  assert.equal(linkLabel("https://ats.rippling.com/acme-corp/jobs/123"), "Acme Corp");
+  assert.equal(linkLabel("https://jobs.ashbyhq.com/linear/abc"), "Linear");
+  assert.equal(linkLabel("https://www.stripe.com/jobs/1"), "stripe.com");
+  assert.equal(linkLabel("design leads at Razorpay"), "");
+  assert.equal(linkLabel(""), "");
 });
 
 test("deskRunChips maps outcomes/status to labelled tones", () => {
@@ -265,7 +332,7 @@ test("fmtWhen renders deterministic relative times against an injected now", () 
 });
 
 // ── Runs rail ────────────────────────────────────────────────────────────────
-import { deskRailSections, type RailLiveRun } from "./desk-logic.ts";
+import { deskRailSections, liveRailTitle, railRowMeta, type RailLiveRun, type RailRow } from "./desk-logic.ts";
 
 function live(over: Partial<RailLiveRun> & { id: string }): RailLiveRun {
   return { kind: "job", stage: "working", input: "https://stripe.com/jobs/1", createdAt: 1000, ...over };
@@ -281,7 +348,8 @@ test("deskRailSections: two concurrent runs both show under running, newest firs
     resumeRuns: [],
   });
   assert.deepEqual(s.running.map((r) => r.localId), ["b", "a"]);
-  assert.equal(s.running[0].title, "Apply — ramp.com");
+  assert.equal(s.running[0].title, "ramp.com");
+  assert.equal(s.running[0].kindLabel, "Application");
   assert.equal(s.running[0].status, "running");
   assert.equal(s.attention.length, 0);
 });
@@ -298,7 +366,8 @@ test("deskRailSections: live run's history row is not duplicated in earlier", ()
   assert.equal(s.running.length, 1);
   assert.deepEqual(s.earlier.map((r) => r.serverId), ["srv-old"]);
   assert.equal(s.earlier[0].status, "ready");
-  assert.equal(s.earlier[0].title, "Apply — figma.com");
+  assert.equal(s.earlier[0].title, "figma.com");
+  assert.equal(s.earlier[0].kindLabel, "Application");
 });
 
 test("deskRailSections: a just-finished run stays in earlier until history catches up", () => {
@@ -346,4 +415,39 @@ test("deskRailSections: step count follows selected agents and captions the acti
   assert.equal(s.running[0].stepsDone, 1);
   assert.equal(s.running[0].stepsTotal, 3);
   assert.equal(s.running[0].caption, "Scanning the team page");
+});
+
+test("liveRailTitle: live rows lead with the subject, not the verb", () => {
+  assert.equal(
+    liveRailTitle({ kind: "job", input: "https://stripe.com/jobs/1", parsed: { unparsed: false, role: "PM", company: "Ramp" } }),
+    "PM · Ramp",
+  );
+  // The local parse preview is a guess — fall back to the link.
+  assert.equal(
+    liveRailTitle({ kind: "job", input: "https://www.stripe.com/jobs/1", parsed: { unparsed: true, role: "Fake" } }),
+    "stripe.com",
+  );
+  assert.equal(
+    liveRailTitle({ kind: "person", input: "anika", contacts: { poster: { person: { name: "Anika", company: "Plaid" } } } }),
+    "Anika · Plaid",
+  );
+  assert.equal(liveRailTitle({ kind: "person", input: "design leads at Razorpay" }), "Design leads at Razorpay");
+  assert.equal(liveRailTitle({ kind: "resume", parsed: { role: "SWE", company: "Figma" } }), "SWE · Figma");
+  assert.equal(liveRailTitle({ kind: "resume" }), "Tailored résumé");
+});
+
+test("railRowMeta: kind, then status or caption, then when", () => {
+  const now = Date.parse("2026-07-04T12:00:00Z");
+  const base: RailRow = {
+    key: "h:1", source: "history", title: "PM · Ramp", kindLabel: "Application",
+    status: "ready", createdAt: "2026-07-04T09:00:00Z",
+  };
+  assert.equal(railRowMeta(base, now), "Application · 3h ago");
+  assert.equal(railRowMeta({ ...base, kindLabel: "Résumé", caption: "ATS 82" }, now), "Résumé · ATS 82 · 3h ago");
+  assert.equal(railRowMeta({ ...base, status: "needs-you" }, now), "Application · needs you · 3h ago");
+  assert.equal(
+    railRowMeta({ ...base, source: "live", status: "running", caption: "Scanning the team page" }, now),
+    "Scanning the team page",
+  );
+  assert.equal(railRowMeta({ ...base, source: "live", status: "running" }, now), "Working…");
 });
