@@ -190,6 +190,11 @@ export const FOLD_INTO: Record<string, string> = {
   "samsung electronics america": "Samsung",
   "samsung semiconductor": "Samsung",
   "ascendion inc formerly known as collabera": "Ascendion",
+  // Same employer, same careers board, listed twice under different names.
+  "laboratory corporation of america": "Labcorp Holdings",
+  "fis management services": "Fidelity National Information (FIS)",
+  "general hosp corp dba mass general hosp": "Mass General Brigham",
+  "brigham and womens hospital": "Mass General Brigham",
   collabera: "Ascendion",
 };
 
@@ -230,7 +235,6 @@ export const RENAME: Record<string, string> = {
   "adp technology services": "ADP",
   mathworks: "MathWorks",
   "cox automotive corporate services": "Cox Automotive",
-  "fis management services": "FIS",
   "dfs corporate services": "Discover Financial Services",
   "htc global services": "HTC Global Services",
   "globallogic": "GlobalLogic",
@@ -247,7 +251,6 @@ export const RENAME: Record<string, string> = {
   "relx inc dba lexisnexis": "LexisNexis",
   "nordstrom inc dba nordstrom": "Nordstrom",
   "pacific investment management company llc dba pimco": "PIMCO",
-  "general hosp corp dba mass general hosp": "Massachusetts General Hospital",
   "henry ford health system dba henry ford health": "Henry Ford Health",
   yahoo: "Yahoo",
   "rbc capital markets": "RBC Capital Markets",

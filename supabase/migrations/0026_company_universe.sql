@@ -65,6 +65,9 @@ alter table companies add column if not exists universe_id uuid references compa
 alter table companies add column if not exists org_type text not null default 'company'
   check (org_type in ('company','staffing','academic','hospital'));
 create index if not exists companies_universe_idx on companies(universe_id);
+-- One catalog row per board regardless of slug casing ("Ramp" vs "ramp" on
+-- Ashby): two rows would fetch the same board twice and fight over its jobs.
+create unique index if not exists companies_ats_slug_ci_idx on companies(ats, lower(slug));
 
 -- 'universe' = inserted from the curated list (seed migration or resolver).
 alter table companies drop constraint if exists companies_source_check;

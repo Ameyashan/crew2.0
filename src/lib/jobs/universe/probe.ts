@@ -36,6 +36,19 @@ async function getJson(url: string): Promise<unknown | null> {
   }
 }
 
+// The one stored form of a board slug, so the same board can't enter the
+// catalog twice under different casing ("Ramp" / "ramp"): Greenhouse, Lever
+// and Ashby tokens are case-insensitive → lowercase; Workday lowercases the
+// tenant and wdN but keeps the site as published.
+export function canonicalSlug(ats: string, slug: string): string {
+  const s = slug.trim();
+  if (ats === "workday") {
+    const m = s.match(/^([^/]+)\/([^/]+)\/(.+)$/);
+    return m ? `${m[1].toLowerCase()}/${m[2].toLowerCase()}/${m[3]}` : s;
+  }
+  return s.toLowerCase();
+}
+
 // Words that rarely appear in a board slug ("Palantir Technologies" → palantir).
 const DROP_WORDS = new Set([
   "the", "technologies", "technology", "systems", "labs", "holdings", "group", "company",
@@ -54,25 +67,52 @@ export function slugVariants(name: string): string[] {
     .filter(Boolean);
   if (!words.length) return [];
   const core = words.filter((w) => !DROP_WORDS.has(w));
+  // "AT&T" → "att", "M&T Bank" → "mtbank": the ampersand simply dropped.
+  const amp = name
+    .toLowerCase()
+    .replace(/[’'&]/g, "")
+    .replace(/[^a-z0-9]+/g, "");
   const out = [
     words.join(""),
     words.join("-"),
     core.join(""),
     core.join("-"),
     words.join("_"),
+    amp,
   ];
   return [...new Set(out)].filter((s) => s.length >= 2);
 }
 
+// Words a company adds to or drops from its name without becoming a
+// different company ("Scale" / "Scale AI", "Lucid USA" / "Lucid Motors").
+const DESCRIPTORS = new Set([
+  "ai", "io", "hq", "health", "bank", "security", "motors", "aerospace", "enterprise", "careers",
+  "digital", "biosciences", "bio", "card", "software", "private", "se", "usa", "us", "films",
+  "therapeutics", "robotics", "energy", "capital", "financial", "global", "app", "3d",
+]);
+
 // Does a board-reported display name refer to the same company? Compare the
-// normalized token sequences: equal, or one is a whole-token prefix of the
-// other ("Databricks" vs "Databricks Inc", "Ramp" vs "Ramp Business").
+// core words (corporate suffixes and filler like "technologies" dropped):
+// equal, or one extends the other only by descriptor words ("Scale AI" =
+// "Scale", "Sword Health" = "Sword"). "Relativity Space" ≠ "Relativity" and
+// "Figure Lending" ≠ "Figure": a prefix alone is not the same company.
 export function sameCompanyName(a: string, b: string): boolean {
-  const ta = normalizeEmployerName(a).split(" ").filter(Boolean);
-  const tb = normalizeEmployerName(b).split(" ").filter(Boolean);
-  if (!ta.length || !tb.length) return false;
-  const [short, long] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
-  return short.every((w, i) => long[i] === w) || ta.join("") === tb.join("");
+  const core = (s: string) =>
+    normalizeEmployerName(s)
+      .split(" ")
+      .filter((w) => w && !DROP_WORDS.has(w));
+  const ca = core(a);
+  const cb = core(b);
+  if (!ca.length || !cb.length) return false;
+  if (ca.join("") === cb.join("")) return true;
+  const [short, long] = ca.length <= cb.length ? [ca, cb] : [cb, ca];
+  if (!short.every((w, i) => long[i] === w)) {
+    // Also tolerate a descriptor on BOTH sides ("Abnormal Security" / "Abnormal AI").
+    const sa = ca.filter((w) => !DESCRIPTORS.has(w)).join("");
+    const sb = cb.filter((w) => !DESCRIPTORS.has(w)).join("");
+    return !!sa && sa === sb;
+  }
+  return long.slice(short.length).every((w) => DESCRIPTORS.has(w));
 }
 
 // The token a posting must mention for a Lever/Ashby board to count as this
@@ -127,6 +167,44 @@ export async function probeBoard(ats: ProbeAts, slug: string, name: string): Pro
 // almost always a name collision ("Post Holdings" → ashby:post, 4 jobs), so
 // large employers must clear a higher job-count bar.
 export const LARGE_MIN_JOBS = 20;
+
+const GENERIC = new Set([
+  "global", "national", "american", "united", "general", "first", "international", "health", "energy",
+  "financial", "capital", "group", "systems", "services", "technologies", "technology", "solutions",
+  "performance", "food", "foods", "insurance", "bank", "partners", "industries", "brands", "mutual",
+]);
+
+// Does a live Workday board belong to `name`? Trusted outright when the
+// tenant is the company's name (a slug variant) or a distinctive name word
+// ("microchiphr" ⊃ "microchip", "stellantis"). Otherwise the board's own text
+// (sidebar branding + a posting, see workday.ts: workdayEvidence) must name
+// the company: its first two words, or its single distinctive word.
+// Fold accents ("Mondelēz") and "&" ("Procter & Gamble") so names and board
+// text compare on the same footing.
+const fold = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/&/g, " and ");
+
+export function workdayBelongsTo(tenant: string, evidence: string, name: string): boolean {
+  const t = tenant.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (slugVariants(name).some((v) => v.replace(/[^a-z0-9]/g, "") === t)) return true;
+  const words = normalizeEmployerName(fold(name))
+    .split(" ")
+    .filter((w) => w && !DROP_WORDS.has(w));
+  const distinctive = words.filter((w) => w.length >= 5 && !GENERIC.has(w));
+  // Tenant contains a distinctive word ("microchiphr") or is a 4+ char
+  // prefix of one ("citi" → "citigroup").
+  if (distinctive.some((w) => t.startsWith(w) || t.endsWith(w) || (t.length >= 4 && w.startsWith(t)))) return true;
+  const hay = ` ${fold(evidence).replace(/[^a-z0-9]+/g, " ")} `;
+  const phrase = words.slice(0, 2).join(" ");
+  if (words.length >= 2 && hay.includes(` ${phrase} `)) return true;
+  // Single-word names ("RTX", "Walmart") must appear as a whole word.
+  if (words.length === 1 && words[0].length >= 3 && hay.includes(` ${words[0]} `)) return true;
+  return distinctive.some((w) => hay.includes(` ${w} `));
+}
 
 // Try every slug variant on each ATS (ATS-major order) and return the first
 // verified board with at least `minJobs` postings, or null.

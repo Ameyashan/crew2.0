@@ -244,8 +244,50 @@ export async function workdayJobCount(slug: string): Promise<number | null> {
   }
 }
 
+// Ownership evidence for discovery: Workday tenant names collide across
+// employers ("pfg" is Pattison Food Group, not Performance Food Group), so a
+// live board alone doesn't prove it's the company we want. Returns the site's
+// sidebar branding text plus one posting's title + description, for a name
+// check (probe.ts: workdayBelongsTo). Null when the board isn't live.
+export async function workdayEvidence(slug: string): Promise<{ total: number; text: string } | null> {
+  const s = parseWorkdaySlug(slug);
+  if (!s) return null;
+  const base = `${workdayHost(s)}/wday/cxs/${s.tenant}/${s.site}`;
+  let list: WdListResponse;
+  try {
+    list = await wdFetch<WdListResponse>(`${base}/jobs`, { appliedFacets: {}, limit: 1, offset: 0, searchText: "" });
+  } catch {
+    return null;
+  }
+  const total = list.total ?? 0;
+  if (total <= 0) return null;
+  const parts: string[] = [];
+  try {
+    const side = await wdFetch<Array<{ altText?: string; text?: string }>>(`${base}/sidebar`);
+    for (const item of Array.isArray(side) ? side : []) parts.push(item.altText ?? "", item.text ?? "");
+  } catch {
+    // sidebar is optional
+  }
+  const path = list.jobPostings?.[0]?.externalPath;
+  if (path) {
+    try {
+      const d = await wdFetch<WdDetail>(`${base}${path}`);
+      parts.push(d.jobPostingInfo?.title ?? "", d.jobPostingInfo?.jobDescription ?? "");
+    } catch {
+      // detail is optional
+    }
+  }
+  const text = parts
+    .join(" ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/gi, "&") // "P&amp;G" must survive as "P&G" for the name check
+    .replace(/&[a-z#0-9]+;/gi, " ");
+  return { total, text };
+}
+
 interface WdDetail {
   jobPostingInfo?: {
+    title?: string;
     jobDescription?: string;
     location?: string;
     additionalLocations?: string[];

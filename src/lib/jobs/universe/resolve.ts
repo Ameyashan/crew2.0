@@ -23,9 +23,17 @@ import { extractJson } from "@/lib/claude";
 import { logAgentRun } from "@/lib/agent-runs";
 import { supabaseAdmin } from "@/lib/supabase";
 import { mapPool } from "@/lib/jobs/util";
-import { findBoard, probeBoard, LARGE_MIN_JOBS, type ProbeAts } from "@/lib/jobs/universe/probe";
+import {
+  canonicalSlug,
+  findBoard,
+  probeBoard,
+  workdayBelongsTo,
+  LARGE_MIN_JOBS,
+  type ProbeAts,
+} from "@/lib/jobs/universe/probe";
+import { selectAll } from "@/lib/jobs/paging";
 import { discoverFromCareersPage } from "@/lib/jobs/universe/careers";
-import { workdayJobCount } from "@/lib/jobs/sources/workday";
+import { parseWorkdaySlug, workdayEvidence } from "@/lib/jobs/sources/workday";
 import type { Ats } from "@/lib/jobs/types";
 
 const MODEL = "claude-sonnet-4-6";
@@ -67,16 +75,20 @@ export interface VerifiedBoard extends BoardAttempt {
 }
 
 // Verify one guess against the live board; returns its job count or null.
-// Greenhouse/Lever/Ashby also check the board names this company (probe.ts);
-// Workday tenant/site pairs are specific enough that a live board from a
-// model guess or the company's own careers page is trusted. Large employers
-// must clear LARGE_MIN_JOBS either way.
+// Every ATS must also show the board is THIS company's: Greenhouse/Lever/Ashby
+// via board name / posting text (probe.ts), Workday via tenant name or the
+// site's own branding + a posting (workdayBelongsTo) — tenant names collide
+// across employers. Large employers must clear LARGE_MIN_JOBS either way.
 export async function verifyAttempt(a: BoardAttempt, row: Pick<UniverseRow, "name" | "size_bucket">): Promise<number | null> {
   const minJobs = row.size_bucket === "large" ? LARGE_MIN_JOBS : 1;
-  const n =
-    a.ats === "workday"
-      ? await workdayJobCount(a.slug)
-      : await probeBoard(a.ats as ProbeAts, a.slug, row.name).catch(() => null);
+  let n: number | null;
+  if (a.ats === "workday") {
+    const ev = await workdayEvidence(a.slug);
+    const tenant = parseWorkdaySlug(a.slug)?.tenant ?? "";
+    n = ev && workdayBelongsTo(tenant, ev.text, row.name) ? ev.total : null;
+  } else {
+    n = await probeBoard(a.ats as ProbeAts, a.slug, row.name).catch(() => null);
+  }
   return n && n >= minJobs ? n : null;
 }
 
@@ -105,9 +117,12 @@ export interface Guess {
   careersUrl: string | null;
 }
 
-export async function guessBoards(names: string[]): Promise<Map<number, Guess>> {
+// ok=false when the model call failed or returned garbage — callers must not
+// count that against the rows (an API outage would otherwise burn their
+// retry budget and park them for weeks).
+export async function guessBoards(names: string[]): Promise<{ ok: boolean; guesses: Map<number, Guess> }> {
   const out = new Map<number, Guess>();
-  if (!names.length) return out;
+  if (!names.length) return { ok: true, guesses: out };
   const userPrompt = names.map((n, i) => `[${i + 1}] ${n}`).join("\n");
 
   const started = Date.now();
@@ -141,13 +156,13 @@ export async function guessBoards(names: string[]): Promise<Map<number, Guess>> 
       meta: { companies: names.length },
     });
   }
-  if (outcome === "error") return out;
+  if (outcome === "error") return { ok: false, guesses: out };
 
   let parsed: { companies?: Array<{ i?: unknown; boards?: unknown; careers_url?: unknown }> } = {};
   try {
     parsed = JSON.parse(extractJson(text));
   } catch {
-    return out;
+    return { ok: false, guesses: out };
   }
   for (const c of Array.isArray(parsed.companies) ? parsed.companies : []) {
     const idx = typeof c.i === "number" ? c.i - 1 : NaN;
@@ -162,22 +177,34 @@ export async function guessBoards(names: string[]): Promise<Map<number, Guess>> 
       typeof c.careers_url === "string" && /^https?:\/\//i.test(c.careers_url) ? c.careers_url : null;
     out.set(idx, { boards, careersUrl });
   }
-  return out;
+  return { ok: true, guesses: out };
 }
 
 // ── persistence ──────────────────────────────────────────────────────────────
 
+// Thrown when a verified board already belongs to a different universe
+// employer — the two rows are the same company under two names (fold them in
+// classify.ts) or one guess is wrong; either way, don't steal the board.
+export class BoardOwnedError extends Error {}
+
+const likeEscape = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
+
 // Insert (or link) the catalog row for a verified board. An existing row on the
-// same board — seeded or LLM-resolved — is linked instead, keeping its
-// curated sectors (unioned) and size.
+// same board (matched case-insensitively) — seeded or LLM-resolved — is linked
+// instead, keeping its curated sectors (unioned) and size, and its fetch
+// failure count reset (it may have been deactivated as dead).
 export async function upsertUniverseCompany(row: UniverseRow, board: BoardAttempt): Promise<void> {
   const sb = supabaseAdmin();
+  const slug = canonicalSlug(board.ats, board.slug);
   const { data: existing } = await sb
     .from("companies")
-    .select("id, sectors, size_bucket")
+    .select("id, sectors, size_bucket, universe_id, name")
     .eq("ats", board.ats)
-    .eq("slug", board.slug)
+    .ilike("slug", likeEscape(slug))
     .maybeSingle();
+  if (existing?.universe_id && existing.universe_id !== row.id) {
+    throw new BoardOwnedError(`board ${board.ats}:${slug} already belongs to ${existing.name as string}`);
+  }
   if (existing) {
     const sectors = [...new Set([...((existing.sectors as string[]) ?? []), ...row.sectors])];
     const { error } = await sb
@@ -188,6 +215,8 @@ export async function upsertUniverseCompany(row: UniverseRow, board: BoardAttemp
         sectors,
         size_bucket: existing.size_bucket ?? row.size_bucket,
         active: true,
+        fetch_failures: 0,
+        fetch_error: null,
       })
       .eq("id", existing.id as string);
     if (error) throw new Error(`link company failed: ${error.message}`);
@@ -197,7 +226,7 @@ export async function upsertUniverseCompany(row: UniverseRow, board: BoardAttemp
     name: row.name,
     normalized: row.name.toLowerCase().trim(),
     ats: board.ats,
-    slug: board.slug,
+    slug,
     sectors: row.sectors,
     size_bucket: row.size_bucket,
     source: "universe",
@@ -299,8 +328,17 @@ export async function resolveUniverseBatch(opts?: {
   summary.considered = rows.length;
   if (!rows.length) return summary;
 
+  // Link the verified board; a link failure (board owned by another
+  // employer, insert error) is recorded as a miss so the row backs off
+  // instead of retrying every tick.
   const hit = async (row: UniverseRow, board: VerifiedBoard, method: string) => {
-    await upsertUniverseCompany(row, board);
+    try {
+      await upsertUniverseCompany(row, board);
+    } catch (e) {
+      await markMiss(row, `verified ${board.ats}:${board.slug} but could not link: ${e instanceof Error ? e.message : String(e)}`);
+      summary.unresolved++;
+      return;
+    }
     await markResolved(row, board);
     summary.resolved++;
     summary.by_method[method] = (summary.by_method[method] ?? 0) + 1;
@@ -325,7 +363,13 @@ export async function resolveUniverseBatch(opts?: {
   for (let i = 0; i < misses.length; i += LLM_BATCH) {
     if (Date.now() > deadline) break;
     const batch = misses.slice(i, i + LLM_BATCH);
-    const guesses = useLlm ? await guessBoards(batch.map((r) => r.name)) : new Map<number, Guess>();
+    const llm = useLlm ? await guessBoards(batch.map((r) => r.name)) : { ok: true, guesses: new Map<number, Guess>() };
+    if (!llm.ok) {
+      // Model unavailable: leave these rows untouched for the next tick.
+      summary.errors += batch.length;
+      continue;
+    }
+    const guesses = llm.guesses;
     await mapPool(batch, PROBE_CONCURRENCY, async (row) => {
       const b = batch.indexOf(row);
       try {
@@ -352,14 +396,18 @@ export async function resolveUniverseBatch(opts?: {
 // Operator status for /api/admin/universe.
 export async function universeStatus() {
   const sb = supabaseAdmin();
-  const { data: rows } = await sb.from("company_universe").select("resolve_status, org_type").limit(5000);
+  const rows = await selectAll<{ resolve_status: string; org_type: string }>((from, to) =>
+    sb.from("company_universe").select("resolve_status, org_type").order("id").range(from, to),
+  );
   const status: Record<string, number> = {};
-  for (const r of rows ?? []) {
+  for (const r of rows) {
     const k = `${r.resolve_status}:${r.org_type}`;
     status[k] = (status[k] ?? 0) + 1;
   }
-  const { data: comps } = await sb.from("companies").select("ats").not("universe_id", "is", null).limit(5000);
+  const comps = await selectAll<{ ats: string }>((from, to) =>
+    sb.from("companies").select("ats").not("universe_id", "is", null).order("id").range(from, to),
+  );
   const boards: Record<string, number> = {};
-  for (const c of comps ?? []) boards[c.ats as string] = (boards[c.ats as string] ?? 0) + 1;
-  return { universe: rows?.length ?? 0, status, boards };
+  for (const c of comps) boards[c.ats] = (boards[c.ats] ?? 0) + 1;
+  return { universe: rows.length, status, boards };
 }

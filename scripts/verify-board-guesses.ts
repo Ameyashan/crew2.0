@@ -3,6 +3,9 @@
 // universe plan: Workday + non-obvious slugs).
 //
 //   node scripts/verify-board-guesses.ts path/to/guesses.json [more.json …]
+//   node scripts/verify-board-guesses.ts --recheck
+//       re-verify every board already in the file under the current trust
+//       rules (after tightening them) and drop the ones that now fail.
 //
 // Guess file shape (keyed by universe match_key):
 //   { "<match_key>": { "boards": [{ "ats": "workday", "slug": "tenant/wd5/Site" }, …],
@@ -15,13 +18,13 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { buildUniverse, parseUniverseCsv } from "../src/lib/jobs/universe/classify.ts";
-import { probeBoard, LARGE_MIN_JOBS, type ProbeAts } from "../src/lib/jobs/universe/probe.ts";
-import { workdayJobCount, parseWorkdaySlug } from "../src/lib/jobs/sources/workday.ts";
+import { probeBoard, workdayBelongsTo, LARGE_MIN_JOBS, type ProbeAts } from "../src/lib/jobs/universe/probe.ts";
+import { workdayEvidence, parseWorkdaySlug } from "../src/lib/jobs/sources/workday.ts";
 import { discoverFromCareersPage } from "../src/lib/jobs/universe/careers.ts";
 
 const CSV_PATH = new URL("../data/company-universe.csv", import.meta.url);
 const BOARDS_PATH = new URL("../data/company-universe-boards.json", import.meta.url);
-const CONCURRENCY = 10;
+const CONCURRENCY = 5;
 
 interface Attempt {
   ats: string;
@@ -43,15 +46,46 @@ async function verify(raw: Attempt, name: string, minJobs: number): Promise<numb
   }
   const a = { ...raw, slug };
   let n: number | null = null;
-  if (a.ats === "workday") n = parseWorkdaySlug(a.slug) ? await workdayJobCount(a.slug) : null;
+  if (a.ats === "workday") {
+    const wd = parseWorkdaySlug(a.slug);
+    const ev = wd ? await workdayEvidence(a.slug) : null;
+    n = wd && ev && workdayBelongsTo(wd.tenant, ev.text, name) ? ev.total : null;
+  }
   else if (a.ats === "greenhouse" || a.ats === "lever" || a.ats === "ashby")
     n = await probeBoard(a.ats as ProbeAts, a.slug, name).catch(() => null);
   return n && n >= minJobs ? n : null;
 }
 
+async function recheckAll() {
+  const universe = buildUniverse(parseUniverseCsv(readFileSync(CSV_PATH, "utf8")));
+  const byKey = new Map(universe.map((e) => [e.match_key, e]));
+  const boards = JSON.parse(readFileSync(BOARDS_PATH, "utf8"));
+  const todo = Object.entries(boards.results as Record<string, { ats: string | null; slug: string | null }>).filter(
+    ([k, r]) => !!r.ats && !!r.slug && byKey.has(k),
+  );
+  console.log(`rechecking ${todo.length} boards`);
+  const dropped: string[] = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < todo.length) {
+      const [key, r] = todo[next++];
+      const e = byKey.get(key)!;
+      const n = await verify({ ats: r.ats!, slug: r.slug! }, e.name, e.size_bucket === "large" ? LARGE_MIN_JOBS : 1);
+      if (!n) {
+        dropped.push(`${e.name} → ${r.slug}`);
+        boards.results[key] = { ...boards.results[key], ats: null, slug: null, jobs: 0 };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  writeFileSync(BOARDS_PATH, JSON.stringify(boards, null, 1) + "\n");
+  console.log(`dropped ${dropped.length}:\n  ${dropped.join("\n  ")}`);
+}
+
 async function main() {
+  if (process.argv.includes("--recheck")) return recheckAll();
   const files = process.argv.slice(2);
-  if (!files.length) throw new Error("usage: verify-board-guesses.ts guesses.json …");
+  if (!files.length) throw new Error("usage: verify-board-guesses.ts guesses.json … | --recheck");
   const guesses: Record<string, Guess> = {};
   for (const f of files) Object.assign(guesses, JSON.parse(readFileSync(f, "utf8")));
 
