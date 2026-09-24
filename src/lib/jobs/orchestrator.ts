@@ -95,35 +95,54 @@ export async function fetchAllListings(opts?: { companyIds?: string[] }): Promis
       const existing = new Set((existingRows ?? []).map((r) => r.external_job_id as string));
 
       if (normalized.length) {
-        const rows = normalized.map((n) => ({
-          company_id: t.company_id,
-          ats: n.ats,
-          external_job_id: n.external_job_id,
-          title: n.title,
-          company: n.company,
-          location_raw: n.location_raw,
-          city: n.city,
-          region: n.region,
-          country: n.country,
-          remote_type: n.remote_type,
-          compensation: n.compensation,
-          posted_date: n.posted_date,
-          posted_date_approx: n.posted_date_approx,
-          url: n.url,
-          source: n.ats,
-          raw_json: n.raw_json,
-          last_seen_at: runTs,
-          is_active: true,
-          updated_at: runTs,
-        }));
+        const rows = normalized.map((n) => {
+          const base = {
+            company_id: t.company_id,
+            ats: n.ats,
+            external_job_id: n.external_job_id,
+            title: n.title,
+            company: n.company,
+            compensation: n.compensation,
+            url: n.url,
+            source: n.ats,
+            last_seen_at: runTs,
+            is_active: true,
+            updated_at: runTs,
+          };
+          // A Workday row we already have may be hydrated (JD, real start
+          // date, full locations — see hydrate.ts); the listing only carries
+          // a summary, so refreshing must not overwrite those columns.
+          if (n.ats === "workday" && existing.has(n.external_job_id)) return base;
+          return {
+            ...base,
+            location_raw: n.location_raw,
+            city: n.city,
+            region: n.region,
+            country: n.country,
+            remote_type: n.remote_type,
+            posted_date: n.posted_date,
+            posted_date_approx: n.posted_date_approx,
+            raw_json: n.raw_json,
+          };
+        });
 
-        const { data: upserted, error: upErr } = await sb
-          .from("jobs")
-          .upsert(rows, { onConflict: "ats,external_job_id" })
-          .select("id, external_job_id");
-        if (upErr) throw new Error(upErr.message);
+        // Upsert full and summary-only rows separately: a bulk upsert NULLs
+        // any column a row omits (supabase-js defaultToNull), which would wipe
+        // the hydrated columns the summary rows deliberately leave out.
+        const full = rows.filter((r) => "raw_json" in r);
+        const summary = rows.filter((r) => !("raw_json" in r));
+        const upserted: Array<{ id: unknown; external_job_id: unknown }> = [];
+        for (const batch of [full, summary]) {
+          if (!batch.length) continue;
+          const { data, error: upErr } = await sb
+            .from("jobs")
+            .upsert(batch, { onConflict: "ats,external_job_id" })
+            .select("id, external_job_id");
+          if (upErr) throw new Error(upErr.message);
+          upserted.push(...(data ?? []));
+        }
 
-        for (const r of upserted ?? []) {
+        for (const r of upserted) {
           if (existing.has(r.external_job_id as string)) {
             result.updated++;
           } else {
