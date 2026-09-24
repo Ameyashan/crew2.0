@@ -32,7 +32,16 @@ interface Guess {
   careers_url?: string | null;
 }
 
-async function verify(a: Attempt, name: string, minJobs: number): Promise<number | null> {
+async function verify(raw: Attempt, name: string, minJobs: number): Promise<number | null> {
+  // Guesses copied from URLs may arrive percent-encoded ("Acme%20Inc"); the
+  // probes encode the slug themselves.
+  let slug = raw.slug;
+  try {
+    slug = decodeURIComponent(raw.slug);
+  } catch {
+    // keep as-is
+  }
+  const a = { ...raw, slug };
   let n: number | null = null;
   if (a.ats === "workday") n = parseWorkdaySlug(a.slug) ? await workdayJobCount(a.slug) : null;
   else if (a.ats === "greenhouse" || a.ats === "lever" || a.ats === "ashby")
