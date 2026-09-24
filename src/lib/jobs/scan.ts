@@ -351,9 +351,129 @@ export interface UserScanSummary {
   reason?: "no_preferences" | "no_companies";
 }
 
-// On-demand per-user refresh: coverage -> targeted fetch -> enrich -> select +
-// score. Bounded and best-effort; a hiccup in any growth step still lets us
-// score whatever the catalog already holds. MUST run inside a user context.
+// Enrich the candidates that aren't yet (their visa / size chips are the ones
+// the user will see — the global enrichment drain can't keep up with ~100k
+// jobs), then re-apply the filters that depend on enrichment.
+export async function enrichCandidates(sb: SupabaseClient, jobs: Job[], prefs: ScanPrefs): Promise<Job[]> {
+  const pending = jobs.filter((j) => !j.enriched_at).map((j) => j.id);
+  if (pending.length) {
+    try {
+      await enrichJobs({ jobIds: pending, limit: pending.length });
+      const { data } = await sb
+        .from("jobs")
+        .select("id, visa_confidence, visa_evidence, company_size, enriched_at")
+        .in("id", pending);
+      const byId = new Map((data ?? []).map((r) => [r.id as string, r]));
+      for (const j of jobs) {
+        const r = byId.get(j.id);
+        if (r) Object.assign(j, r);
+      }
+    } catch (e) {
+      console.error("[jobs/scan] candidate enrichment failed", e);
+    }
+  }
+  return jobs.filter((j) => matchesVisaNeed(j, prefs.visa_required) && matchesSize(j, prefs.company_sizes));
+}
+
+// Select → enrich → score for one user. MUST run inside runWithUser(uid).
+export async function scoreUser(sb: SupabaseClient, uid: string, companyIds?: string[]): Promise<UserScanSummary> {
+  const { prefs, pins, follows, currentRole } = await loadScanPrefs(sb, uid);
+  if (!hasScanSignal(prefs, pins, follows, currentRole)) {
+    return { candidates: 0, scored: 0, skipped: 0, reason: "no_preferences" };
+  }
+  const selected = await selectCandidateJobs(sb, prefs, pins, companyIds, follows, currentRole);
+  const candidates = await enrichCandidates(sb, selected, prefs);
+  if (!candidates.length) return { candidates: 0, scored: 0, skipped: 0 };
+  const summary = await scoreJobsForUser({
+    jobs: candidates,
+    roleMode: prefs.role_mode,
+    targetRoles: prefs.target_roles,
+    visaRequired: prefs.visa_required,
+  });
+  return { candidates: candidates.length, ...summary };
+}
+
+export interface DueUsersSummary {
+  scored_users: number;
+  remaining: number; // due users left for a later call (deadline hit)
+  per_user: Array<Record<string, unknown>>;
+}
+
+// Score onboarded users whose last scan predates `staleBefore`, oldest first,
+// until `deadline`. The daily jobs-scan passes its own start time (everyone
+// is due); jobs-fetch ticks pass ~20h ago to pick up whoever the daily run
+// couldn't fit. Each user runs in their own context (logAgentRun bills them).
+export async function scoreDueUsers(opts: {
+  staleBefore: string;
+  deadline: number;
+  onlyUser?: string;
+  runAs: <T>(uid: string, fn: () => Promise<T>) => Promise<T>;
+}): Promise<DueUsersSummary> {
+  const sb = supabaseAdmin();
+  let users: string[];
+  if (opts.onlyUser) {
+    users = [opts.onlyUser];
+  } else {
+    const { data } = await sb.from("user_profile").select("user_id").not("onboarded_at", "is", null);
+    users = (data ?? []).map((r) => r.user_id as string);
+  }
+  const { data: state } = await sb.from("job_scan_state").select("user_id, last_scanned_at");
+  const last = new Map((state ?? []).map((r) => [r.user_id as string, r.last_scanned_at as string]));
+  const due = users
+    .filter((u) => opts.onlyUser || !last.has(u) || last.get(u)! < opts.staleBefore)
+    .sort((a, b) => (last.get(a) ?? "").localeCompare(last.get(b) ?? ""));
+
+  const out: DueUsersSummary = { scored_users: 0, remaining: 0, per_user: [] };
+  for (let i = 0; i < due.length; i++) {
+    if (Date.now() > opts.deadline) {
+      out.remaining = due.length - i;
+      break;
+    }
+    const uid = due[i];
+    // Claim first: the daily scan and a jobs-fetch tick can overlap, and two
+    // runs scoring the same user would pay for the LLM pass twice.
+    if (!opts.onlyUser && !(await claimUser(sb, uid, opts.staleBefore))) continue;
+    try {
+      const summary = await opts.runAs(uid, () => scoreUser(sb, uid));
+      out.per_user.push({ user_id: uid, ...summary });
+      out.scored_users++;
+    } catch (e) {
+      out.per_user.push({ user_id: uid, error: e instanceof Error ? e.message : String(e) });
+      // Release the claim so the next tick retries instead of waiting a day.
+      const prev = last.get(uid);
+      if (prev) await sb.from("job_scan_state").update({ last_scanned_at: prev }).eq("user_id", uid);
+      else await sb.from("job_scan_state").delete().eq("user_id", uid);
+    }
+  }
+  return out;
+}
+
+// Atomically take a user for scoring: insert their cursor row, or advance it
+// only if it's still older than `staleBefore`. False = another run has them.
+async function claimUser(sb: SupabaseClient, uid: string, staleBefore: string): Promise<boolean> {
+  const now = new Date().toISOString();
+  const { data: inserted } = await sb
+    .from("job_scan_state")
+    .upsert({ user_id: uid, last_scanned_at: now }, { onConflict: "user_id", ignoreDuplicates: true })
+    .select("user_id");
+  if (inserted?.length) return true;
+  const { data: advanced } = await sb
+    .from("job_scan_state")
+    .update({ last_scanned_at: now })
+    .eq("user_id", uid)
+    .lt("last_scanned_at", staleBefore)
+    .select("user_id");
+  return !!advanced?.length;
+}
+
+// On-demand per-user refresh ("Refresh" on the feed): coverage → a bounded
+// fetch of the user's stalest boards → select + enrich + score. Bounded and
+// best-effort; a hiccup in any growth step still lets us score whatever the
+// catalog already holds. MUST run inside a user context.
+const REFRESH_FETCH_LIMIT = 25; // boards per refresh
+const REFRESH_STALE_MS = 2 * 3_600_000; // skip boards fetched in the last 2h
+const REFRESH_FETCH_BUDGET_MS = 100_000;
+
 export async function runUserScan(uid: string): Promise<UserScanSummary> {
   const sb = supabaseAdmin();
   const { prefs, pins, follows, currentRole } = await loadScanPrefs(sb, uid);
@@ -376,26 +496,18 @@ export async function runUserScan(uid: string): Promise<UserScanSummary> {
     return { candidates: 0, scored: 0, skipped: 0, reason: "no_companies" };
   }
 
-  // Fetch listings for just this user's companies, then enrich (both best-effort).
+  // Refresh this user's stalest boards within a budget — sectors can span
+  // hundreds of universe boards, which the jobs-fetch cron keeps fresh anyway.
   try {
-    await fetchAllListings({ companyIds });
+    await fetchAllListings({
+      companyIds,
+      staleBefore: new Date(Date.now() - REFRESH_STALE_MS).toISOString(),
+      limit: REFRESH_FETCH_LIMIT,
+      deadline: Date.now() + REFRESH_FETCH_BUDGET_MS,
+    });
   } catch (e) {
     console.error("[jobs/refresh] fetch failed", e);
   }
-  try {
-    await enrichJobs({ limit: 80 });
-  } catch (e) {
-    console.error("[jobs/refresh] enrich failed", e);
-  }
 
-  const candidates = await selectCandidateJobs(sb, prefs, pins, companyIds, follows, currentRole);
-  if (!candidates.length) return { candidates: 0, scored: 0, skipped: 0 };
-
-  const summary = await scoreJobsForUser({
-    jobs: candidates,
-    roleMode: prefs.role_mode,
-    targetRoles: prefs.target_roles,
-    visaRequired: prefs.visa_required,
-  });
-  return { candidates: candidates.length, ...summary };
+  return scoreUser(sb, uid, companyIds);
 }

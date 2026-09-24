@@ -53,6 +53,8 @@ export interface FetchResult {
   updated: number;
   newJobIds: string[];
   errors: Array<{ company: string; ats: Ats; slug: string; error: string }>;
+  attempted?: number; // boards fetched this call
+  skipped?: number; // boards left for the next call (deadline hit)
 }
 
 // ── Catalog resolution (M2) ──────────────────────────────────────────────────

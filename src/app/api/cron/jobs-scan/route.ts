@@ -4,33 +4,26 @@ import { withUser } from "@/lib/auth";
 import { runWithUser } from "@/lib/user-context";
 import { ensureCatalogCoverage } from "@/lib/jobs/catalog";
 import { fetchAllListings } from "@/lib/jobs/orchestrator";
-import { enrichJobs } from "@/lib/jobs/enrich";
-import { scoreJobsForUser } from "@/lib/jobs/score";
-import { loadScanPrefs, selectCandidateJobs, strArray, extractPins, hasScanSignal } from "@/lib/jobs/scan";
+import { scoreDueUsers, strArray, extractPins } from "@/lib/jobs/scan";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// The daily scan: grow catalog -> fetch -> enrich (all global, once) -> per-user
-// select + score. Mirrors src/app/api/cron/daily-digest/route.ts. Idempotent:
-// every upsert dedupes and scoring skips already-scored jobs, so re-running the
-// same day is safe and cheap. Candidate selection + scan-prefs loading are shared
-// with the on-demand per-user refresh (see src/lib/jobs/scan.ts).
+// The daily scan: grow catalog → catch up stale boards → per-user select +
+// enrich + score. Board fetching, discovery and the global enrichment drain
+// run continuously in /api/cron/jobs-fetch (every 10 min), so this run only
+// tops up boards that tick hasn't reached and spends the rest of its budget on
+// scoring — oldest-scanned users first, until the deadline; anyone left over
+// is picked up by jobs-fetch ticks. Idempotent: upserts dedupe and scoring
+// skips already-scored jobs. Selection/scoring is shared with the on-demand
+// refresh (src/lib/jobs/scan.ts).
 
-async function scoreUserScan(sb: SupabaseClient, uid: string) {
-  const { prefs, pins, follows, currentRole } = await loadScanPrefs(sb, uid);
-  if (!hasScanSignal(prefs, pins, follows, currentRole)) return { candidates: 0, scored: 0, skipped: 0 };
-  const candidates = await selectCandidateJobs(sb, prefs, pins, undefined, follows, currentRole);
-  if (!candidates.length) return { candidates: 0, scored: 0, skipped: 0 };
-  const summary = await scoreJobsForUser({
-    jobs: candidates,
-    roleMode: prefs.role_mode,
-    targetRoles: prefs.target_roles,
-    visaRequired: prefs.visa_required,
-  });
-  return { candidates: candidates.length, ...summary };
-}
+const COVERAGE_BUDGET_MS = 45_000;
+const FETCH_BUDGET_MS = 60_000;
+const SCORE_DEADLINE_MS = 270_000;
+// Boards the fetch cron hasn't refreshed in this long get topped up here.
+const STALE_MS = 20 * 3_600_000;
 
 async function gatherDemand(sb: SupabaseClient, userIds?: string[]) {
   const sectors = new Set<string>();
@@ -50,52 +43,55 @@ async function gatherDemand(sb: SupabaseClient, userIds?: string[]) {
 }
 
 async function runScan(opts: { onlyUser?: string }): Promise<Response> {
+  const started = Date.now();
   const sb = supabaseAdmin();
   const onlyUser = opts.onlyUser;
 
-  // 1. grow catalog for current demand (best-effort)
+  // 1. grow catalog for current demand (best-effort, bounded)
   let coverageAdded = 0;
   try {
     const demand = await gatherDemand(sb, onlyUser ? [onlyUser] : undefined);
-    const cov = await ensureCatalogCoverage({
-      sectors: demand.sectors,
-      companyNames: demand.companies,
-      maxValidate: onlyUser ? 12 : 40,
-    });
-    coverageAdded = cov.added.length;
+    const cov = await Promise.race([
+      ensureCatalogCoverage({
+        sectors: demand.sectors,
+        companyNames: demand.companies,
+        maxValidate: onlyUser ? 12 : 40,
+      }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), COVERAGE_BUDGET_MS)),
+    ]);
+    coverageAdded = cov?.added.length ?? 0;
   } catch (e) {
     console.error("[jobs-scan] coverage failed", e);
   }
 
-  // 2. fetch + 3. enrich (global, once)
-  const fetched = await fetchAllListings();
-  const enriched = await enrichJobs({ limit: 80 });
+  // 2. top up boards the fetch cron hasn't reached (bounded)
+  const fetched = await fetchAllListings({
+    staleBefore: new Date(Date.now() - STALE_MS).toISOString(),
+    deadline: Date.now() + FETCH_BUDGET_MS,
+  }).catch((e) => {
+    console.error("[jobs-scan] fetch failed", e);
+    return null;
+  });
 
-  // 4. per-user select + score
-  let users: string[];
-  if (onlyUser) {
-    users = [onlyUser];
-  } else {
-    const { data } = await sb.from("user_profile").select("user_id").not("onboarded_at", "is", null);
-    users = (data ?? []).map((r) => r.user_id as string);
-  }
-
-  const per_user: Array<Record<string, unknown>> = [];
-  for (const uid of users) {
-    try {
-      const summary = await runWithUser(uid, () => scoreUserScan(sb, uid));
-      per_user.push({ user_id: uid, ...summary });
-    } catch (e) {
-      per_user.push({ user_id: uid, error: e instanceof Error ? e.message : String(e) });
-    }
-  }
+  // 3. per-user select + enrich + score, oldest-scanned first, until the deadline
+  const scoring = await scoreDueUsers({
+    staleBefore: new Date(started).toISOString(),
+    deadline: started + SCORE_DEADLINE_MS,
+    onlyUser,
+    runAs: (uid, fn) => runWithUser(uid, fn),
+  });
 
   return Response.json({
     ok: true,
     coverage_added: coverageAdded,
-    fetched: { inserted: fetched.inserted, updated: fetched.updated, errors: fetched.errors.length },
-    enriched,
-    per_user,
+    fetched: fetched && {
+      attempted: fetched.attempted,
+      inserted: fetched.inserted,
+      updated: fetched.updated,
+      errors: fetched.errors.length,
+      skipped: fetched.skipped,
+    },
+    ...scoring,
   });
 }
 

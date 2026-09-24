@@ -58,41 +58,105 @@ export async function fetchBoardResult(ats: Ats, slug: string, companyName?: str
   return { jobs: await fetchBoard(ats, slug, companyName), complete: true };
 }
 
-// `companyIds` scopes the fetch to a subset of the catalog (used by the on-demand
-// per-user refresh); omit it for the full daily scan. An empty array is a no-op.
-export async function fetchAllListings(opts?: { companyIds?: string[] }): Promise<FetchResult> {
+// A board that fails this many fetches in a row is deactivated (the company
+// probably moved ATS); a universe employer is sent back to the resolver.
+const MAX_CONSECUTIVE_FAILURES = 5;
+const PAGE = 1000; // PostgREST max rows per request
+const ID_CHUNK = 150; // ids per `in.(…)` filter, to keep request URLs short
+
+// Every external_job_id we hold for a company, paged past the 1k row cap (a
+// large board accumulates thousands of historical rows).
+async function existingJobIds(sb: ReturnType<typeof supabaseAdmin>, companyId: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await sb
+      .from("jobs")
+      .select("external_job_id")
+      .eq("company_id", companyId)
+      .order("id")
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`load existing jobs failed: ${error.message}`);
+    for (const r of data ?? []) ids.add(r.external_job_id as string);
+    if (!data || data.length < PAGE) return ids;
+  }
+}
+
+export interface FetchOptions {
+  // Scope to a subset of the catalog (the on-demand per-user refresh). An
+  // empty array is a no-op.
+  companyIds?: string[];
+  // Only boards not fetched since this ISO time; most-stale first.
+  staleBefore?: string;
+  // Max boards to attempt this call.
+  limit?: number;
+  // Epoch ms: stop starting new boards past this (in-flight ones finish), so a
+  // cron tick fits its function budget; the rest wait for the next tick.
+  deadline?: number;
+}
+
+// Fetch, normalize and upsert boards. With no options this walks the whole
+// active catalog; the jobs-fetch cron instead drains it in stale-first,
+// time-budgeted slices (see src/app/api/cron/jobs-fetch).
+export async function fetchAllListings(opts?: FetchOptions): Promise<FetchResult> {
   const sb = supabaseAdmin();
   const runTs = new Date().toISOString();
 
   const scope = opts?.companyIds;
   if (scope && scope.length === 0) {
-    return { inserted: 0, updated: 0, newJobIds: [], errors: [] };
+    return { inserted: 0, updated: 0, newJobIds: [], errors: [], attempted: 0, skipped: 0 };
   }
 
-  let companiesQ = sb.from("companies").select("id, name, ats, slug").eq("active", true);
-  if (scope) companiesQ = companiesQ.in("id", scope);
-  const { data: companies, error } = await companiesQ;
-  if (error) throw new Error(`load companies failed: ${error.message}`);
+  // Scoped ids go in the URL (`in.(…)`), so query them in chunks; merge and
+  // re-sort most-stale first before applying the limit.
+  const loadSlice = async (ids?: string[]) => {
+    let q = sb
+      .from("companies")
+      .select("id, name, ats, slug, universe_id, fetch_failures, last_fetched_at")
+      .eq("active", true);
+    if (ids) q = q.in("id", ids);
+    if (opts?.staleBefore) q = q.or(`last_fetched_at.is.null,last_fetched_at.lt.${opts.staleBefore}`);
+    q = q.order("last_fetched_at", { ascending: true, nullsFirst: true });
+    if (opts?.limit) q = q.limit(opts.limit);
+    const { data, error } = await q;
+    if (error) throw new Error(`load companies failed: ${error.message}`);
+    return data ?? [];
+  };
+  let companies: Array<Record<string, unknown>>;
+  if (scope) {
+    const slices: string[][] = [];
+    for (let i = 0; i < scope.length; i += ID_CHUNK) slices.push(scope.slice(i, i + ID_CHUNK));
+    companies = (await Promise.all(slices.map(loadSlice)))
+      .flat()
+      .sort((a, b) => String(a.last_fetched_at ?? "").localeCompare(String(b.last_fetched_at ?? "")));
+    if (opts?.limit) companies = companies.slice(0, opts.limit);
+  } else {
+    companies = await loadSlice();
+  }
 
-  const targets: BoardTarget[] = (companies ?? []).map((c) => ({
-    company_id: c.id as string,
-    name: c.name as string,
-    ats: c.ats as Ats,
-    slug: c.slug as string,
-  }));
+  const targets: Array<BoardTarget & { universe_id: string | null; fetch_failures: number }> = (companies ?? []).map(
+    (c) => ({
+      company_id: c.id as string,
+      name: c.name as string,
+      ats: c.ats as Ats,
+      slug: c.slug as string,
+      universe_id: (c.universe_id as string | null) ?? null,
+      fetch_failures: (c.fetch_failures as number | null) ?? 0,
+    }),
+  );
 
-  const result: FetchResult = { inserted: 0, updated: 0, newJobIds: [], errors: [] };
+  const result: FetchResult = { inserted: 0, updated: 0, newJobIds: [], errors: [], attempted: 0, skipped: 0 };
 
   await mapPool(targets, CONCURRENCY, async (t) => {
+    if (opts?.deadline && Date.now() > opts.deadline) {
+      result.skipped = (result.skipped ?? 0) + 1;
+      return;
+    }
+    result.attempted = (result.attempted ?? 0) + 1;
     try {
       const { jobs: normalized, complete } = await fetchBoardResult(t.ats, t.slug, t.name);
 
       // Pre-existing ids for this company -> accurate new-vs-seen classification.
-      const { data: existingRows } = await sb
-        .from("jobs")
-        .select("external_job_id")
-        .eq("company_id", t.company_id);
-      const existing = new Set((existingRows ?? []).map((r) => r.external_job_id as string));
+      const existing = await existingJobIds(sb, t.company_id);
 
       if (normalized.length) {
         const rows = normalized.map((n) => {
@@ -161,15 +225,56 @@ export async function fetchAllListings(opts?: { companyIds?: string[] }): Promis
         .eq("company_id", t.company_id)
         .eq("is_active", true)
         .lt("last_seen_at", staleBefore);
+
+      await sb
+        .from("companies")
+        .update({ last_fetched_at: new Date().toISOString(), fetch_error: null, fetch_failures: 0 })
+        .eq("id", t.company_id);
     } catch (e) {
-      result.errors.push({
-        company: t.name,
-        ats: t.ats,
-        slug: t.slug,
-        error: e instanceof Error ? e.message : String(e),
-      });
+      const message = e instanceof Error ? e.message : String(e);
+      result.errors.push({ company: t.name, ats: t.ats, slug: t.slug, error: message });
+      await recordFailure(sb, t, message).catch(() => undefined);
     }
   });
 
   return result;
+}
+
+// Stamp the failure (last_fetched_at too, so a dead board doesn't hog the
+// stale-first queue). Past MAX_CONSECUTIVE_FAILURES the board is deactivated —
+// its jobs age out through normal stale-out — and a universe employer goes
+// back to the resolver to find where it moved.
+async function recordFailure(
+  sb: ReturnType<typeof supabaseAdmin>,
+  t: { company_id: string; universe_id: string | null; fetch_failures: number },
+  message: string,
+) {
+  const failures = t.fetch_failures + 1;
+  const dead = failures >= MAX_CONSECUTIVE_FAILURES;
+  const nowIso = new Date().toISOString();
+  await sb
+    .from("companies")
+    .update({
+      last_fetched_at: nowIso,
+      fetch_error: message.slice(0, 500),
+      fetch_failures: failures,
+      ...(dead ? { active: false } : {}),
+    })
+    .eq("id", t.company_id);
+  if (dead) {
+    await sb.from("jobs").update({ is_active: false, updated_at: nowIso }).eq("company_id", t.company_id).eq("is_active", true);
+    if (t.universe_id) {
+      await sb
+        .from("company_universe")
+        .update({
+          resolve_status: "pending",
+          resolve_attempts: 0,
+          probed_at: null,
+          next_resolve_at: null,
+          resolve_note: `board went dead after ${failures} failed fetches: ${message.slice(0, 200)}`,
+          updated_at: nowIso,
+        })
+        .eq("id", t.universe_id);
+    }
+  }
 }
