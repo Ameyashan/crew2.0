@@ -7,7 +7,7 @@
 // the side effects (reading storage, fetching), these functions own the rules.
 
 import { RUN_STATUS_LABEL, runStatusState, type RunStatusState } from "./run-status.ts";
-import { liveRunTitle, type LiveRunTitleInput } from "./run-view-logic.ts";
+import type { LiveRunTitleInput } from "./run-view-logic.ts";
 
 // ── Composer suggestion pills ────────────────────────────────────────────────
 // The three pills under the composer. Each just seeds the paste box with a
@@ -165,10 +165,11 @@ export type ComposeRunRow = {
   kind?: string;
   outcome?: string | null;
   input?: string | null;
+  intent?: string | null;
   // The id of the resume_generations row a job run created (if any). Used to
   // drop that generation from the merged list — see dropLinkedResumeRuns.
   resume_generation_id?: string | null;
-  person?: { name?: string | null } | null;
+  person?: { name?: string | null; company?: string | null } | null;
   // The tailored résumé joined by the history list (compose_runs → resume_generations).
   // Gives a job row its real role/company without shipping the full `output` blob.
   resume_generation?: { target_role?: string | null; target_company?: string | null } | null;
@@ -181,43 +182,139 @@ export type ResumeRunRow = {
   id: string;
   created_at: string;
   target_role?: string | null;
+  target_company?: string | null;
+  job_url?: string | null;
   status?: string | null;
   ats_score?: number | null;
 };
 export type RunRow = ComposeRunRow & ResumeRunRow;
 
-function personHost(s: string | null | undefined): string {
-  const t = (s || "").trim();
+// ── Run titles ───────────────────────────────────────────────────────────────
+// A title names the run's subject — the role and company, the person, or what
+// was asked — so rows can be told apart at a glance. Raw inputs are tidied
+// before they're shown: percent-encoded text is decoded, ATS links name the
+// company in their path, and LinkedIn profile links name the person.
+
+// Hosts whose first path segment is the hiring company's slug
+// (jobs.lever.co/acme/…, boards.greenhouse.io/acme/…).
+const ATS_SLUG_HOSTS = [
+  "lever.co",
+  "greenhouse.io",
+  "ashbyhq.com",
+  "rippling.com",
+  "workable.com",
+  "breezy.hr",
+  "recruitee.com",
+  "smartrecruiters.com",
+  "bamboohr.com",
+  "teamtailor.com",
+  "wellfound.com",
+];
+
+// Decode percent-encoded text ("can%20you%20find") and collapse whitespace.
+// A malformed escape keeps the text as typed rather than throwing.
+export function tidyText(s: string | null | undefined): string {
+  let t = (s || "").trim();
   if (!t) return "";
-  try {
-    return new URL(t.match(/^https?:\/\//) ? t : `https://${t}`).hostname.replace(/^www\./, "");
-  } catch {
-    return t;
+  if (/%[0-9a-f]{2}/i.test(t)) {
+    try {
+      t = decodeURIComponent(t);
+    } catch {
+      t = t.replace(/%20/gi, " ");
+    }
   }
+  return t.replace(/\s+/g, " ").trim();
+}
+
+// "acme-corp" / "acme_corp" → "Acme Corp".
+function prettySlug(slug: string): string {
+  return tidyText(slug)
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function asUrl(s: string): URL | null {
+  const t = s.trim();
+  // Only link-shaped input has a host; free text would otherwise come back
+  // percent-encoded from the URL parser.
+  if (!t || /\s/.test(t) || !t.includes(".")) return null;
+  try {
+    return new URL(/^https?:\/\//i.test(t) ? t : `https://${t}`);
+  } catch {
+    return null;
+  }
+}
+
+// The most readable name a link offers: a LinkedIn profile's person, an ATS
+// board's company, else the bare host ("stripe.com").
+export function linkLabel(s: string | null | undefined): string {
+  const url = asUrl(tidyText(s));
+  if (!url) return "";
+  const host = url.hostname.replace(/^www\./, "").toLowerCase();
+  const parts = url.pathname.split("/").filter(Boolean);
+  if (host.endsWith("linkedin.com") && parts[0] === "in" && parts[1]) {
+    // Drop LinkedIn's trailing id hash ("maya-shah-1a2b3c4d").
+    return prettySlug(parts[1].replace(/-[0-9a-f]{6,}$/i, "").replace(/-\d+$/, ""));
+  }
+  if (ATS_SLUG_HOSTS.some((h) => host === h || host.endsWith(`.${h}`)) && parts[0]) {
+    const slug = parts[0].toLowerCase() === "jobs" && parts[1] ? parts[1] : parts[0];
+    if (!/^\d+$/.test(slug)) return prettySlug(slug);
+  }
+  return host;
+}
+
+// Free text the user typed, cleaned up for a title: decoded, first letter
+// capitalised. Link-shaped input is named by linkLabel instead.
+function requestLabel(s: string | null | undefined): string {
+  const t = tidyText(s);
+  if (!t || asUrl(t)) return "";
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+// "Product Manager · Stripe"; either half alone when the other is missing.
+export function roleAtCompany(role?: string | null, company?: string | null): string {
+  const r = tidyText(role);
+  const c = tidyText(company);
+  if (r && c && !r.toLowerCase().includes(c.toLowerCase())) return `${r} · ${c}`;
+  return r || c;
 }
 
 export function deskRunTitle(agent: "compose" | "resume", row: RunRow): string {
   if (agent === "resume") {
-    return row?.target_role || (row?.status === "in_flight" ? "Tailoring…" : "Tailored resume");
+    return (
+      roleAtCompany(row?.target_role, row?.target_company) ||
+      linkLabel(row?.job_url) ||
+      (row?.status === "in_flight" ? "Tailoring…" : "Tailored resume")
+    );
   }
   if (row?.kind === "job") {
     // `output` is only present on the detail fetch; the history list instead
     // joins the tailored résumé, so read the role/company from either source
-    // before falling back to the job link's host — anything but a row of
+    // before falling back to the job link — anything but a row of
     // indistinguishable "Job application" entries.
     const parsed = row?.output?.parsed;
     const gen = row?.resume_generation;
     return (
-      parsed?.target_role ||
-      parsed?.role ||
-      gen?.target_role ||
-      parsed?.target_company ||
-      gen?.target_company ||
-      personHost(row?.input) ||
+      roleAtCompany(
+        parsed?.target_role || parsed?.role || gen?.target_role,
+        parsed?.target_company || gen?.target_company,
+      ) ||
+      linkLabel(row?.input) ||
+      requestLabel(row?.input) ||
+      requestLabel(row?.intent) ||
       "Job application"
     );
   }
-  return row?.person?.name || row?.output?.person?.name || personHost(row?.input) || row?.input || "Outreach";
+  const person = row?.person || row?.output?.person;
+  return (
+    roleAtCompany(person?.name, row?.person?.company) ||
+    linkLabel(row?.input) ||
+    requestLabel(row?.input) ||
+    requestLabel(row?.intent) ||
+    "Outreach"
+  );
 }
 
 export function deskRunChips(agent: "compose" | "resume", row: RunRow): EarlierChip[] {
@@ -352,7 +449,10 @@ export type RailRow = {
   // Server id(s) this row stands for — lets the page mark a reopened history
   // run as selected.
   serverId?: string | null;
+  // What the run is about ("Product Manager · Stripe", "Anika Mehta") — the
+  // row's headline. The kind of run rides on the smaller line underneath.
   title: string;
+  kindLabel: RailKindLabel;
   status: RunStatusState;
   caption?: string | null;
   stepsDone?: number;
@@ -361,6 +461,46 @@ export type RailRow = {
 };
 
 export type RailSections = { running: RailRow[]; attention: RailRow[]; earlier: RailRow[] };
+
+export type RailKindLabel = "Application" | "Outreach" | "Résumé";
+
+function railKindLabel(kind: string | null | undefined, agent?: "compose" | "resume"): RailKindLabel {
+  if (agent === "resume" || kind === "resume") return "Résumé";
+  return kind === "job" ? "Application" : "Outreach";
+}
+
+// The rail's subject line for a run in the store — same rules as the history
+// titles (deskRunTitle), read from the live run's fields.
+export function liveRailTitle(run: LiveRunTitleInput): string {
+  const parsed = run.parsed;
+  if (run.kind === "resume") return roleAtCompany(parsed?.role, parsed?.company) || "Tailored résumé";
+  const fallback = linkLabel(run.input) || requestLabel(run.input) || requestLabel(run.intent);
+  if (run.kind === "job") {
+    // Only a real parse names the role; the local preview can be a guess.
+    const real = parsed && parsed.unparsed === false ? parsed : null;
+    return (
+      roleAtCompany(real?.role ?? run.screenshotRole, real?.company ?? run.screenshotCompany) ||
+      fallback ||
+      "Job application"
+    );
+  }
+  const person =
+    run.person || run.contacts?.hiring_manager?.person || run.contacts?.poster?.person || null;
+  return roleAtCompany(person?.name, person?.company) || fallback || "Outreach";
+}
+
+// The small line under a rail row's title: what kind of run it is, then the
+// live step caption, a decision it's waiting on, or when it ran.
+export function railRowMeta(row: RailRow, now: number = Date.now()): string {
+  const live = row.source === "live" && (row.status === "running" || row.status === "reconnecting");
+  if (live) return row.caption || (row.status === "reconnecting" ? "Reconnecting…" : "Working…");
+  const parts: string[] = [row.kindLabel];
+  if (row.status === "needs-you") parts.push("needs you");
+  else if (row.caption) parts.push(row.caption);
+  const when = fmtWhen(row.createdAt, now);
+  if (when) parts.push(when);
+  return parts.join(" · ");
+}
 
 function liveSteps(run: RailLiveRun): { done: number; total: number; caption: string | null } {
   const all = RAIL_AGENT_KEYS[run.kind] || RAIL_AGENT_KEYS.person;
@@ -389,20 +529,14 @@ function liveRow(run: RailLiveRun): RailRow {
     source: "live",
     localId: run.id,
     serverId: run.composeRunId || run.resumeGenerationId || null,
-    title: liveRunTitle(run),
+    title: liveRailTitle(run),
+    kindLabel: railKindLabel(run.kind),
     status: runStatusState({ stage: run.stage, reconnecting: run.reconnecting }),
     caption: steps.caption,
     stepsDone: steps.done,
     stepsTotal: steps.total,
     createdAt: new Date(run.createdAt || Date.now()).toISOString(),
   };
-}
-
-// History titles get the same verb prefix live runs carry (runViewTitle), so
-// the rail reads as one list: "Apply — …", "Reach — …", "Résumé — …".
-function historyRailTitle(row: EarlierRow): string {
-  if (row.agent === "resume") return `Résumé — ${row.title}`;
-  return `${row.kind === "job" ? "Apply" : "Reach"} — ${row.title}`;
 }
 
 function historyRow(row: EarlierRow): RailRow {
@@ -414,7 +548,8 @@ function historyRow(row: EarlierRow): RailRow {
     source: "history",
     row,
     serverId: row.id,
-    title: historyRailTitle(row),
+    title: row.title,
+    kindLabel: railKindLabel(row.kind, row.agent),
     status,
     caption: chip && chip.tone === "done" && chip.label !== RUN_STATUS_LABEL.ready ? chip.label : null,
     createdAt: row.created_at,
