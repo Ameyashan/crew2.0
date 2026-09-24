@@ -1,67 +1,9 @@
 /* Injected on ATS pages. Everything is prefixed jga- to avoid colliding with
    the host page's styles. */
 .jga-filled {
-  outline: 2px solid #3d8b58 !important;
+  outline: 2px solid #3d7a4f !important;
   outline-offset: 1px;
   border-radius: 3px;
 }
 
-#jga-panel {
-  position: fixed;
-  bottom: 18px;
-  right: 18px;
-  z-index: 2147483646;
-  max-width: 320px;
-  background: #1d1c1a;
-  color: #faf8f5;
-  border-radius: 12px;
-  padding: 13px 16px;
-  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
-}
-#jga-panel .jga-title {
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-#jga-panel .jga-body {
-  color: #cfc9bf;
-  font-size: 12.5px;
-}
-#jga-panel .jga-body ul {
-  margin: 6px 0 0;
-  padding-left: 16px;
-}
-#jga-panel .jga-actions {
-  margin-top: 10px;
-  display: flex;
-  gap: 8px;
-}
-#jga-panel button,
-#jga-panel a.jga-btn {
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: none;
-  background: #faf8f5;
-  color: #1d1c1a;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  text-decoration: none;
-  display: inline-block;
-}
-#jga-panel button.jga-ghost {
-  background: transparent;
-  color: #cfc9bf;
-  border: 1px solid #4a4741;
-}
-#jga-panel .jga-close {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  background: none;
-  border: none;
-  color: #8a857d;
-  font-size: 15px;
-  cursor: pointer;
-  padding: 0;
-}
+/* The review panel is styled inside its shadow root (src/content/panel.ts). */
