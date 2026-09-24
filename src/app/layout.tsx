@@ -1,73 +1,88 @@
 import type { Metadata, Viewport } from "next";
 import { GoogleAnalytics } from "@next/third-parties/google";
-import {
-  Bricolage_Grotesque,
-  Caveat,
-  DM_Serif_Display,
-  Geist,
-  Geist_Mono,
-  IBM_Plex_Mono,
-  Instrument_Serif,
-  JetBrains_Mono,
-  Newsreader,
-  Noto_Sans_Devanagari,
-  Space_Grotesk,
-} from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { SITE_URL, SITE_NAME, SITE_TAGLINE, SITE_DESCRIPTION } from "@/lib/site";
 
-const bricolage = Bricolage_Grotesque({
+// Self-hosted fonts (vendored woff2/ttf in src/app/fonts). These were
+// next/font/google, but that downloads from Google's servers at BUILD time, and
+// one flaky fetch fails the whole Vercel deploy (Turbopack surfaces it as
+// "Can't resolve '@vercel/turbopack-next/internal/font/google/font'"). The CSS
+// variable names are unchanged, so everything downstream (globals.css,
+// components/paper/fonts.ts) is untouched. Latin subsets, same weights as
+// before; the variable-font files carry their full weight range.
+const bricolage = localFont({
   variable: "--font-bricolage",
-  subsets: ["latin"],
+  src: "./fonts/bricolage-grotesque.woff2",
+  weight: "200 800",
   display: "swap",
 });
-const newsreader = Newsreader({
+const newsreader = localFont({
   variable: "--font-newsreader",
-  subsets: ["latin"],
+  src: "./fonts/newsreader.woff2",
+  weight: "200 800",
   display: "swap",
-  weight: ["400", "500", "600"],
 });
-const dmSerif = DM_Serif_Display({
+const dmSerif = localFont({
   variable: "--font-dm-serif",
-  subsets: ["latin"],
-  display: "swap",
+  src: "./fonts/dm-serif-display.woff2",
   weight: "400",
+  display: "swap",
 });
-const instrumentSerif = Instrument_Serif({
+const instrumentSerif = localFont({
   variable: "--font-instrument-serif",
-  subsets: ["latin"],
-  display: "swap",
+  src: "./fonts/instrument-serif.woff2",
   weight: "400",
+  display: "swap",
 });
-const spaceGrotesk = Space_Grotesk({
+const spaceGrotesk = localFont({
   variable: "--font-space-grotesk",
-  subsets: ["latin"],
+  src: "./fonts/space-grotesk.woff2",
+  weight: "300 700",
   display: "swap",
 });
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
-const jetbrains = JetBrains_Mono({
+const geistSans = localFont({
+  variable: "--font-geist-sans",
+  src: "./fonts/geist.woff2",
+  weight: "100 900",
+  display: "swap",
+});
+const geistMono = localFont({
+  variable: "--font-geist-mono",
+  src: "./fonts/geist-mono.woff2",
+  weight: "100 900",
+  display: "swap",
+});
+const jetbrains = localFont({
   variable: "--font-jetbrains-mono",
-  subsets: ["latin"],
+  src: "./fonts/jetbrains-mono.woff2",
+  weight: "100 800",
   display: "swap",
 });
-// IBM Plex Mono powers the new "paper" reskin's uppercase mono labels/chips.
-// Added alongside the existing fonts (nothing removed) per the reskin plan.
-const ibmPlexMono = IBM_Plex_Mono({
+// IBM Plex Mono powers the "paper" reskin's uppercase mono labels/chips.
+const ibmPlexMono = localFont({
   variable: "--font-ibm-plex-mono",
-  subsets: ["latin"],
+  src: [
+    { path: "./fonts/ibm-plex-mono-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-500.woff2", weight: "500", style: "normal" },
+  ],
   display: "swap",
-  weight: ["400", "500"],
 });
-const notoDevan = Noto_Sans_Devanagari({
+// Full (unsubset) files so Devanagari and Latin glyphs both stay covered
+// without unicode-range splitting, which next/font/local can't express.
+const notoDevan = localFont({
   variable: "--font-noto-devan",
-  subsets: ["devanagari", "latin"],
+  src: [
+    { path: "./fonts/noto-sans-devanagari-400.ttf", weight: "400", style: "normal" },
+    { path: "./fonts/noto-sans-devanagari-500.ttf", weight: "500", style: "normal" },
+    { path: "./fonts/noto-sans-devanagari-700.ttf", weight: "700", style: "normal" },
+  ],
   display: "swap",
-  weight: ["400", "500", "700"],
 });
-const caveat = Caveat({
+const caveat = localFont({
   variable: "--font-caveat",
-  subsets: ["latin"],
+  src: "./fonts/caveat.woff2",
+  weight: "400 700",
   display: "swap",
 });
 
