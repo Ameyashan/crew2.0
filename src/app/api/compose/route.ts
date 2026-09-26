@@ -88,6 +88,11 @@ async function parseInput(req: NextRequest): Promise<ParsedInput | { error: stri
   const body = await req.json().catch(() => ({}));
   // Warm-intro ask (JSON only — started from a "people you know" card).
   const warmIntro = parseWarmIntroTarget(body?.warm_intro) ?? undefined;
+  // Job context (JSON only — "Draft outreach" from a job's contact list):
+  // anchors research on the company and the drafts on the role.
+  const jc = body?.job_context && typeof body.job_context === "object" ? body.job_context : null;
+  const clip = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 200) : null);
+  const jobContext = jc && clip(jc.company) ? { role: clip(jc.role), company: clip(jc.company) } : undefined;
   return {
     input: {
       text: (body?.text ?? "").toString(),
@@ -97,6 +102,7 @@ async function parseInput(req: NextRequest): Promise<ParsedInput | { error: stri
         typeof body?.provided_email === "string" && body.provided_email.trim() ? body.provided_email.trim() : undefined,
       agents: parseAgents(body?.agents),
       warm_intro: warmIntro,
+      job_context: jobContext,
     },
     screenshot_id: typeof body?.screenshot_id === "string" && body.screenshot_id.trim() ? body.screenshot_id.trim() : undefined,
   };
@@ -152,6 +158,7 @@ export async function POST(req: NextRequest) {
     screenshot_id,
     agents: input.agents,
     warm_intro: input.warm_intro,
+    job_context: input.job_context,
   };
 
   const nowIso = new Date().toISOString();

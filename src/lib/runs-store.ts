@@ -137,6 +137,9 @@ export type Run = {
   // are forwarded to /api/compose on every (re)launch.
   warmIntro?: { company: string; role?: string | null; team?: string | null; job_url?: string | null } | null;
   initialPicked?: { name?: string; role?: string | null; company?: string | null; linkedin?: string | null } | null;
+  // Person runs started from a job's "Who to reach out to" list: the role +
+  // company the outreach is about (anchors research and the drafts).
+  jobContext?: { role?: string | null; company?: string | null } | null;
   // The compose_runs row id reported back by the server once the stream starts.
   // Used by the history page to dedupe and to hydrate the right run.
   composeRunId?: string | null;
@@ -405,6 +408,7 @@ export function startRun(
     // Warm-intro ask: `picked` is the connection, `warmIntro` the target.
     picked?: Run["initialPicked"];
     warmIntro?: Run["warmIntro"];
+    jobContext?: Run["jobContext"];
   },
 ): string | null {
   const text = (input || "").trim();
@@ -433,6 +437,7 @@ export function startRun(
     selectedAgents: Array.isArray(opts?.selectedAgents) ? [...opts.selectedAgents] : undefined,
     warmIntro: opts?.warmIntro ?? null,
     initialPicked: opts?.picked ?? null,
+    jobContext: opts?.jobContext ?? null,
   };
 
   // newest on top
@@ -1878,6 +1883,7 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
         screenshot_id: run.screenshotId || undefined,
         agents: run.selectedAgents || undefined,
         warm_intro: run.warmIntro || undefined,
+        job_context: run.jobContext || undefined,
       }),
       signal,
     });

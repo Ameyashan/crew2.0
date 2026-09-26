@@ -184,3 +184,47 @@ claim only what's true, and never mail-merge.
   - Connections: `connectionsAt(names)` in `src/lib/connections/store.ts`.
   - Compose: `startRun(text, { kind: "person", picked, intent })` + `setFocusedRun` then `router.push("/app/compose")` (see `AskForIntroButton`); the job page's existing "Interested — run the crew" button runs the full apply flow (`/api/compose/apply`).
 - The job page already shows `PeopleYouKnow` with warm-intro buttons (step 3); step 5 adds the *cold* side for when you don't know anyone, plus role-typed ≤300-char LinkedIn notes per career-ops `modes/contacto.md`.
+
+---
+
+## Step 5 — Find the right person for a job ✅
+
+**Why:** career-ops `modes/contacto.md` finds the hiring manager / recruiter /
+a peer for a job and drafts a ≤300-char LinkedIn note tuned to each. We do the
+same on the job page, combining every people source Jugaadu has: your
+connections (step 2), Claude web search, Apollo, and the existing Compose
+pipeline for full outreach.
+
+### What landed
+
+| File | What |
+|------|------|
+| `src/components/jobs/WhoToContact.tsx` | Job page card "WHO TO REACH OUT TO". On click (never automatic): lists people with a kind label (likely hiring manager / recruiter / on the team / you know them), sources (web · apollo · connections), the note with a `n/300` counter, **Copy note**, and **Draft outreach →** (Compose person run with the job as `job_context`) or **Ask for intro →** for someone you know (step 3's warm-intro run). Refresh after an hour. |
+| `src/app/api/jobs/[id]/contacts/route.ts` | `GET` cached result · `POST` compute (returns the cache if < 1 h old; 25 fresh lookups/user/day → 429). |
+| `src/lib/jobs/contacts.ts` | `findJobContacts()`: connections at the employer (all its names) → `sourceJobContacts()` (web) → Apollo (needs the domain the web step returns) → merge/dedupe (LinkedIn handle, then name) → flag anyone you know → `writeContactNotes()` → cache in `job_contacts`. |
+| `src/lib/jobs/contacts-logic.ts` | Pure: `roleCore()` (title family for Apollo's title filter), `mergeContacts`, `sortContacts` (known people first, then HM, recruiter, peer), `clampNote` (hard 300-char cut at a sentence/word boundary). Tested. |
+| `src/lib/claude.ts` | `sourceJobContacts()` (web_search, ≤6 uses; typed kinds; current-employer + no-fabrication rules copied from `sourceHiringManagers`; returns `company_domain`) and `writeContactNotes()` (one batched call; per-kind tone; cold-outreach + anti-AI guides; clamped). |
+| `src/lib/apollo.ts` | `searchPeopleApollo()` → `POST /mixed_people/api_search` (**0 credits**; first name + obfuscated last name + title only) and `revealPersonApollo(id)` → `POST /people/match {id}` (**1 credit**; full name + LinkedIn). Capped at `APOLLO_REVEAL_CAP = 3` per lookup: ≤2 managers (title family + manager/director/head seniority) + 1 recruiter. Both logged to `agent_runs`. |
+| `src/app/api/compose/route.ts`, `execute-person.ts`, `runs-store.ts` | Person runs accept `job_context {role, company}` (JSON body → `compose_runs.payload`), so "Draft outreach" anchors research on the company and the drafts on the role, exactly like the apply flow. |
+| `supabase/migrations/0035_job_contacts.sql` | Cache table (PK user+job, cascade on job delete, owner-only RLS). |
+| `src/lib/analytics/events.ts` | `job_contacts_found {count, apollo}`, `job_contact_action {action, kind}`. |
+
+### Database state
+
+- `0035_job_contacts` **applied** to `ccikbznbrjpruwiqzxib`.
+
+### Cost per lookup (worst case)
+
+One Sonnet web-search call (≤6 searches) + one Sonnet notes call + 2 free Apollo searches + ≤3 Apollo reveals. Cached per user+job; 25 fresh lookups per user per day.
+
+### Not verified here
+
+- No `ANTHROPIC_API_KEY` / `APOLLO_API_KEY` in this container, so the live lookup wasn't run. The Apollo request/response shapes follow Apollo's docs for `mixed_people/api_search` (0 credits, obfuscated last names) and `people/match` by `id`. If Apollo's plan blocks the search endpoint, the card still works from web + connections (`apollo` is reported on the DTO). **Worth a manual check after deploy:** open a Goldman / JPMorgan job → Find people → notes ≤300 chars → Draft outreach opens a Desk run.
+
+---
+
+## Wrap-up (all five steps)
+
+- **Migrations applied:** 0033 (enterprise ATS + Goldman/JPMorgan boards + `resolver_version`), 0034 (`connections`), 0035 (`job_contacts`).
+- **After deploy:** the jobs-fetch cron retries the 676 unplaced employers with the new job systems (≈60 per tick). Watch `/api/admin/universe` for resolved counts by ATS, and the `tracker_company_untrackable` events for what's still missing.
+- **Still untrackable by design:** Wayfair (PerimeterX CAPTCHA), SuccessFactors tenants behind Cloudflare, Phenom-only sites. Candidates for a later step: an aggregator fallback (Google Jobs via SerpApi / JSearch) for names with no board.

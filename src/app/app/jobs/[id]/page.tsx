@@ -10,6 +10,7 @@ import { CompanyLogo } from "@/components/paper/CompanyLogo";
 import { FollowButton } from "@/components/paper/FollowButton";
 import { PeopleYouKnow } from "@/components/jobs/PeopleYouKnow";
 import { AskForIntroButton } from "@/components/jobs/AskForIntroButton";
+import { WhoToContact } from "@/components/jobs/WhoToContact";
 import {
   postedAgo,
   compDisplay,
@@ -307,6 +308,10 @@ export default function JobDetailPage() {
             />
           );
 
+          const contactsCard = (
+            <WhoToContact jobId={job.job_id} role={job.title} company={job.company} jobUrl={job.url} />
+          );
+
           const jdCard = (
             <div
               style={{
@@ -502,6 +507,7 @@ export default function JobDetailPage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 22 }}>
                   {whyCard}
                   {peopleCard}
+                  {contactsCard}
                   {jdCard}
                   {crewPitch}
                 </div>
@@ -535,6 +541,7 @@ export default function JobDetailPage() {
                       {actions}
                     </div>
                     {peopleCard}
+                    {contactsCard}
                   </div>
                 </div>
               )}

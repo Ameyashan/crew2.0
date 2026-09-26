@@ -10,6 +10,7 @@ import {
 } from "@/lib/writing/anti-ai";
 import { coldOutreachGuide } from "@/lib/writing/cold-outreach";
 import { warmIntroGuide, type WarmIntroTarget } from "@/lib/writing/warm-intro";
+import { clampNote, CONTACT_NOTE_MAX } from "@/lib/jobs/contacts-logic";
 
 const MODEL = "claude-sonnet-4-6";
 
@@ -1329,6 +1330,224 @@ export async function sourceHiringManagers(
     raw: text,
   };
 }
+
+// ---------- SOURCE JOB CONTACTS (find the right person for a job) ----------
+// Wider sibling of sourceHiringManagers for the job page's "Who to reach out
+// to" card (borrowed from career-ops modes/contacto.md): the likely hiring
+// manager, a recruiter / talent partner for the org, and a future teammate —
+// each typed, so the note we write can fit the person. Also returns the
+// employer's primary web domain, which the Apollo search needs.
+
+export type ContactKind = "hiring_manager" | "recruiter" | "peer";
+
+export interface JobContactCandidate extends IdentifyCandidate {
+  kind: ContactKind;
+}
+
+export interface SourceJobContactsResult {
+  candidates: JobContactCandidate[];
+  company_domain: string | null;
+}
+
+const SOURCE_CONTACTS_SYSTEM = `You are a sourcing researcher. Given a job posting's role and company, find the real people a candidate should contact about it, in three kinds:
+- "hiring_manager": the person who most likely manages this role (team lead, engineering/product manager, director, founder at a small company).
+- "recruiter": a recruiter or talent-acquisition partner at this company who covers this kind of role (technical recruiter for engineering, etc.).
+- "peer": someone currently doing this role or a close sibling role on the same team, who could tell the candidate what the work is like.
+
+Search the way a candidate would: "site:linkedin.com/in [team] [role] [company]", "[company] head of [team]", "[company] technical recruiter", "[company] talent acquisition [function]", plus the company's team/about pages.
+
+CURRENT EMPLOYMENT IS MANDATORY: only people who CURRENTLY work at the named company. Exclude anyone who has left. Never blend two people who share a name. NEVER fabricate — only people you found evidence for. Return at most 2 per kind, best first; an empty list is fine.
+
+"why" is one short factual line ("Leads the payments platform team, which this role joins").
+"company_domain" is the employer's primary website domain (e.g. "goldmansachs.com"), or null if unsure.
+
+Output strict JSON only, no prose:
+{ "company_domain": string|null, "candidates": [ { "kind": "hiring_manager"|"recruiter"|"peer", "name": string, "role": string|null, "company": string|null, "location": string|null, "linkedin": string|null, "why": string|null } ] }`;
+
+const CONTACT_KINDS = new Set<ContactKind>(["hiring_manager", "recruiter", "peer"]);
+
+export async function sourceJobContacts(input: {
+  role: string;
+  company: string;
+  location?: string | null;
+  jd_excerpt?: string | null;
+}): Promise<SourceJobContactsResult> {
+  const started = Date.now();
+  const userPrompt = [
+    `Company: ${input.company}`,
+    `Role: ${input.role}`,
+    input.location && `Location: ${input.location}`,
+    input.jd_excerpt && `From the job description (for the team name):\n${input.jd_excerpt}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 1800,
+      system: SOURCE_CONTACTS_SYSTEM,
+      tools: [
+        {
+          type: "web_search_20250305",
+          name: "web_search",
+          max_uses: 6,
+        } as unknown as Anthropic.Messages.Tool,
+      ],
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") text += block.text;
+    }
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: "jobs:source_contacts",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { company: input.company, role: input.role },
+    });
+  }
+
+  let parsed: { company_domain?: unknown; candidates?: Array<Record<string, unknown>> } = {};
+  try {
+    parsed = JSON.parse(extractJson(text));
+  } catch {
+    parsed = {};
+  }
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const candidates: JobContactCandidate[] = [];
+  for (const c of Array.isArray(parsed.candidates) ? parsed.candidates : []) {
+    const name = str(c.name);
+    const kind = c.kind as ContactKind;
+    if (!name || !CONTACT_KINDS.has(kind)) continue;
+    candidates.push({
+      kind,
+      name,
+      role: str(c.role),
+      company: str(c.company),
+      location: str(c.location),
+      linkedin: str(c.linkedin),
+      why: str(c.why),
+    });
+  }
+  const domain = str(parsed.company_domain)?.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "") ?? null;
+  return { candidates: candidates.slice(0, 6), company_domain: domain && /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain) ? domain : null };
+}
+
+// ---------- CONTACT NOTES (≤300-char LinkedIn connection notes) ----------
+// One batched call writes a short connection-request note per contact, tuned
+// to who they are (career-ops modes/contacto.md): a hiring manager gets the
+// fit + a question about the team, a recruiter a direct "is this still open /
+// who owns it", a peer a question about the work, a connection a warm ask.
+// LinkedIn caps connection notes at 300 characters.
+
+export { CONTACT_NOTE_MAX };
+
+export interface ContactNoteInput {
+  key: string;
+  kind: ContactKind | "connection";
+  name: string;
+  role?: string | null;
+  why?: string | null;
+}
+
+export async function writeContactNotes(input: {
+  job: { role: string; company: string };
+  contacts: ContactNoteInput[];
+  sender_context?: string;
+  sender_stories?: string[];
+  sender_first_name?: string | null;
+}): Promise<Record<string, string>> {
+  if (!input.contacts.length) return {};
+  const started = Date.now();
+  const system = `You write LinkedIn connection-request notes for a job seeker, one per contact. Each note is at most ${CONTACT_NOTE_MAX} characters INCLUDING spaces — hard limit. No greeting beyond the first name, no sign-off needed.
+
+Tune each note to the contact's kind:
+- hiring_manager: one specific line on why the sender fits THIS role (a real proof point from their background), then one question about the team or the problem it's solving.
+- recruiter: say which role (by name), one line of fit, and ask whether they cover it or who does.
+- peer: curiosity about the work itself; one question about what the role is really like. No ask for a referral.
+- connection: they already know the sender; ask plainly if they'd be up for an intro to whoever owns the role.
+
+${coldOutreachGuide("linkedin")}
+
+${antiAiWritingGuide("prose")}
+
+Only use facts from the sender's background and the contact line. Never invent shared history.
+
+Output strict JSON only: { "notes": { "<key>": string } }`;
+  const userPrompt = [
+    `# Job\n${input.job.role} at ${input.job.company}`,
+    input.sender_context && `# About the sender\n${input.sender_context}`,
+    input.sender_stories?.length && `# Sender's stories (real things they've done)\n${input.sender_stories.map((s) => `- ${s}`).join("\n")}`,
+    input.sender_first_name && `# Sender's first name\n${input.sender_first_name}`,
+    `# Contacts\n${input.contacts
+      .map((c) => `- key=${c.key} kind=${c.kind} name=${c.name}${c.role ? ` role=${c.role}` : ""}${c.why ? ` note=${c.why}` : ""}`)
+      .join("\n")}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  let outcome: "ok" | "error" = "ok";
+  let err: string | null = null;
+  try {
+    const resp = await client().messages.create({
+      model: MODEL,
+      max_tokens: 1500,
+      system,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    inTokens = resp.usage.input_tokens;
+    outTokens = resp.usage.output_tokens;
+    for (const block of resp.content) {
+      if (block.type === "text") text += block.text;
+    }
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    throw e;
+  } finally {
+    await logAgentRun({
+      agent_type: "jobs:contact_notes",
+      model: MODEL,
+      input_tokens: inTokens,
+      output_tokens: outTokens,
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { contacts: input.contacts.length },
+    });
+  }
+  let parsed: { notes?: Record<string, unknown> } = {};
+  try {
+    parsed = JSON.parse(extractJson(text));
+  } catch {
+    return {};
+  }
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(parsed.notes ?? {})) {
+    if (typeof v === "string" && v.trim()) out[k] = clampNote(v.trim());
+  }
+  return out;
+}
+
 
 // ---------- SOURCE PEOPLE FROM TEXT ----------
 // Free-text sibling of sourceHiringManagers. The person flow gets requests that
