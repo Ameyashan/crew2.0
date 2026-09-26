@@ -4,11 +4,12 @@ import { useState, type CSSProperties, type KeyboardEvent, type MouseEvent } fro
 import { TOKENS, RADII } from "@/components/paper/tokens";
 import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
 
-// A small "Follow / Following ✓" toggle for a company. Self-contained: it owns
-// the POST/DELETE to /api/jobs/follow and updates optimistically, reverting on
-// failure. `onChange(companyId, following)` lets a parent react (e.g. refresh
-// the "New at companies you follow" strip). Renders nothing without a
-// company_id (an unresolved listing can't be followed).
+// A small "Track / Tracking ✓" toggle for a company — following a company adds
+// it to the Jobs tracker. Self-contained: it owns the POST/DELETE to
+// /api/jobs/follow and updates optimistically, reverting on failure (and
+// briefly saying so when the tracker is full). `onChange(companyId, following)`
+// lets a parent react. Renders nothing without a company_id (an unresolved
+// listing can't be tracked).
 export function FollowButton({
   companyId,
   following: initial,
@@ -23,6 +24,7 @@ export function FollowButton({
   const [following, setFollowing] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [hover, setHover] = useState(false);
+  const [full, setFull] = useState(false);
 
   if (!companyId) return null;
 
@@ -39,6 +41,10 @@ export function FollowButton({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ company_id: companyId }),
       });
+      if (res.status === 409) {
+        setFull(true);
+        setTimeout(() => setFull(false), 2500);
+      }
       if (!res.ok) throw new Error(String(res.status));
       onChange?.(companyId as string, next);
     } catch {
@@ -69,7 +75,7 @@ export function FollowButton({
       role="button"
       tabIndex={0}
       aria-pressed={following}
-      aria-label={following ? "Unfollow company" : "Follow company"}
+      aria-label={following ? "Stop tracking company" : "Track company"}
       onClick={toggle}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -81,7 +87,7 @@ export function FollowButton({
       onMouseLeave={() => setHover(false)}
       style={style}
     >
-      {following ? "Following ✓" : "＋ Follow"}
+      {full ? "Tracker full" : following ? "Tracking ✓" : "＋ Track"}
     </span>
   );
 }

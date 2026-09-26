@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { runWithUser, runAsSystem } from "@/lib/user-context";
+import { runAsSystem } from "@/lib/user-context";
 import { systemBudgetStatus } from "@/lib/llm-budget";
 import { fetchAllListings } from "@/lib/jobs/orchestrator";
 import { enrichJobs } from "@/lib/jobs/enrich";
-import { scoreDueUsers } from "@/lib/jobs/scan";
+import { selectAll } from "@/lib/jobs/paging";
 import { resolveUniverseBatch } from "@/lib/jobs/universe/resolve";
 import { refineUniverseSectors } from "@/lib/jobs/universe/sectors";
 import { matchCompaniesToH1b, applyTrackRecordToJobs } from "@/lib/jobs/h1b/match";
@@ -17,6 +17,8 @@ export const maxDuration = 300;
 // catalog can't be fetched in one request, so each tick works through a
 // time-budgeted slice, in priority order:
 //
+//   0. tracked — boards some user tracks (followed_companies), refreshed every
+//               TRACKED_INTERVAL so the tracker's "last 24h" list is timely.
 //   1. fetch  — boards not refreshed in FETCH_INTERVAL, most-stale first.
 //               ~150 boards/tick × 144 ticks/day ≫ the catalog, so every
 //               board is refreshed about once per FETCH_INTERVAL.
@@ -25,11 +27,13 @@ export const maxDuration = 300;
 //               companies to USCIS H-1B records.
 //   3. sectors — one LLM batch tagging universe employers with interest
 //               sectors, until all are tagged.
-//   4. score  — users the daily jobs-scan couldn't fit (last scan > 20h ago).
-//   5. enrich — drain the unenriched backlog, newest first, with whatever
+//   4. enrich — drain the unenriched backlog, newest first, with whatever
 //               time is left. Free signals only (size, USCIS track record):
 //               the LLM JD visa parse runs on demand for scoring candidates,
 //               never across the whole catalog.
+//
+// No per-user scoring runs here: the Jobs tracker matches titles in code, and
+// the AI-ranked Recommended tab scores only on its user's explicit Refresh.
 //
 // Every phase is idempotent and bounded, so an overlapping or failed tick is
 // harmless: the next one picks up where the queue stands. The LLM phases
@@ -37,14 +41,14 @@ export const maxDuration = 300;
 // (src/lib/llm-budget.ts) and resume the next UTC day.
 
 const FETCH_INTERVAL_MS = 20 * 3_600_000;
+const TRACKED_INTERVAL_MS = 3 * 3_600_000;
+const TRACKED_BUDGET_MS = 40_000;
 const FETCH_BUDGET_MS = 140_000;
 const RESOLVE_UNTIL_MS = 190_000;
 const SECTORS_UNTIL_MS = 210_000;
-const SCORE_UNTIL_MS = 215_000; // last user start; leaves ~85s for that user
 const ENRICH_UNTIL_MS = 250_000; // a 40-job round with Workday hydration can take ~30s
 const RESOLVE_BATCH = 25;
 const ENRICH_BATCH = 40;
-const USER_STALE_MS = 20 * 3_600_000;
 
 async function tick() {
   const started = Date.now();
@@ -57,6 +61,21 @@ async function tick() {
       out[name] = { error: e instanceof Error ? e.message : String(e) };
     }
   };
+
+  await safe("tracked", async () => {
+    const sb = supabaseAdmin();
+    const rows = await selectAll<{ company_id: string }>((from, to) =>
+      sb.from("followed_companies").select("company_id").order("company_id").range(from, to),
+    );
+    const companyIds = [...new Set(rows.map((r) => r.company_id))];
+    if (!companyIds.length) return { attempted: 0 };
+    const r = await fetchAllListings({
+      companyIds,
+      staleBefore: new Date(started - TRACKED_INTERVAL_MS).toISOString(),
+      deadline: at(TRACKED_BUDGET_MS),
+    });
+    return { tracked: companyIds.length, attempted: r.attempted, skipped: r.skipped, inserted: r.inserted, errors: r.errors.length };
+  });
 
   await safe("fetch", async () => {
     const r = await fetchAllListings({
@@ -82,16 +101,6 @@ async function tick() {
   }
 
   if (Date.now() < at(SECTORS_UNTIL_MS)) await safe("sectors", () => refineUniverseSectors());
-
-  if (Date.now() < at(SCORE_UNTIL_MS)) {
-    await safe("score", () =>
-      scoreDueUsers({
-        staleBefore: new Date(started - USER_STALE_MS).toISOString(),
-        deadline: at(SCORE_UNTIL_MS),
-        runAs: (uid, fn) => runWithUser(uid, fn),
-      }).then((r) => ({ scored_users: r.scored_users, remaining: r.remaining })),
-    );
-  }
 
   await safe("enrich", async () => {
     let enriched = 0;
@@ -133,7 +142,6 @@ export async function GET(req: NextRequest) {
   if (auth !== `Bearer ${expected}` && req.headers.get("x-cron-secret") !== expected) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
-  // System context: the LLM phases log (and are budgeted) as system spend;
-  // per-user scoring re-wraps with the real uid.
+  // System context: the LLM phases log (and are budgeted) as system spend.
   return runAsSystem(async () => Response.json(await tick()));
 }

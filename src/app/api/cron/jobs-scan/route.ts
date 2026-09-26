@@ -1,30 +1,25 @@
 import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { withUser } from "@/lib/auth";
-import { runWithUser, runAsSystem } from "@/lib/user-context";
+import { runAsSystem } from "@/lib/user-context";
 import { systemBudgetExhausted } from "@/lib/llm-budget";
 import { ensureCatalogCoverage } from "@/lib/jobs/catalog";
 import { fetchAllListings } from "@/lib/jobs/orchestrator";
-import { scoreDueUsers, strArray, extractPins } from "@/lib/jobs/scan";
+import { strArray, extractPins } from "@/lib/jobs/scan";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// The daily scan: grow catalog → catch up stale boards → per-user select +
-// enrich + score. Board fetching, discovery and the global enrichment drain
-// run continuously in /api/cron/jobs-fetch (every 10 min), so this run only
-// tops up boards that tick hasn't reached and spends the rest of its budget on
-// scoring — oldest-scanned users first, until the deadline; anyone left over
-// is picked up by jobs-fetch ticks. Idempotent: upserts dedupe and scoring
-// skips already-scored jobs. Selection/scoring is shared with the on-demand
-// refresh (src/lib/jobs/scan.ts).
+// The daily scan: grow the catalog for users' sectors and pinned companies,
+// then top up boards the continuous fetch (/api/cron/jobs-fetch, every 10 min)
+// hasn't reached. It no longer scores anyone: the Jobs page is a company
+// tracker matched by title in code (src/lib/jobs/tracker.ts), and the
+// AI-ranked Recommended tab scores only when its user presses Refresh
+// (src/lib/jobs/scan.ts runUserScan). Idempotent: upserts dedupe.
 
 const COVERAGE_BUDGET_MS = 45_000;
 const FETCH_BUDGET_MS = 60_000;
-// No new user starts after this; one user (enrich + hydrate + LLM pass) can
-// take a minute or more, and a run killed mid-user just waits out its lease.
-const SCORE_DEADLINE_MS = 200_000;
 // Boards the fetch cron hasn't refreshed in this long get topped up here.
 const STALE_MS = 20 * 3_600_000;
 
@@ -46,7 +41,6 @@ async function gatherDemand(sb: SupabaseClient, userIds?: string[]) {
 }
 
 async function runScan(opts: { onlyUser?: string }): Promise<Response> {
-  const started = Date.now();
   const sb = supabaseAdmin();
   const onlyUser = opts.onlyUser;
 
@@ -80,14 +74,6 @@ async function runScan(opts: { onlyUser?: string }): Promise<Response> {
     return null;
   });
 
-  // 3. per-user select + enrich + score, oldest-scanned first, until the deadline
-  const scoring = await scoreDueUsers({
-    staleBefore: new Date(started).toISOString(),
-    deadline: started + SCORE_DEADLINE_MS,
-    onlyUser,
-    runAs: (uid, fn) => runWithUser(uid, fn),
-  });
-
   return Response.json({
     ok: true,
     coverage_added: coverageAdded,
@@ -98,7 +84,6 @@ async function runScan(opts: { onlyUser?: string }): Promise<Response> {
       errors: fetched.errors.length,
       skipped: fetched.skipped,
     },
-    ...scoring,
   });
 }
 
@@ -107,8 +92,8 @@ export async function GET(req: NextRequest) {
   const expected = process.env.CRON_SECRET;
   const authed = !!expected && (auth === `Bearer ${expected}` || req.headers.get("x-cron-secret") === expected);
 
-  // System context so the global phases log (and are budgeted) as system
-  // spend; per-user scoring re-wraps with the real uid below.
+  // System context so the coverage LLM calls log (and are budgeted) as system
+  // spend.
   if (authed) return runAsSystem(() => runScan({}));
 
   // Dev-only manual trigger: scoped to the session user, gated behind an env

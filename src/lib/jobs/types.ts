@@ -110,26 +110,58 @@ export interface JobDetail extends FeedItem {
   country: string | null;
 }
 
-// One row in the "New at companies you follow" strip. Recency-first (ordered by
-// when WE first saw the listing), independent of fit score — the point is the
-// company, not the match. `is_fresh` flags listings first seen within 24h.
-export interface FollowingItem {
+// ── Company tracker ──────────────────────────────────────────────────────────
+
+// One role at a tracked company. Recency is when WE first saw the listing
+// (reliable and monotonic, unlike Greenhouse's approximate posted_date).
+export interface TrackerJob {
   job_id: string;
   title: string;
   company: string;
-  company_id: string | null;
+  company_id: string;
   location: string | null;
+  remote_type: RemoteType;
+  compensation: string | null;
   posted_date: string | null;
   posted_date_approx: boolean;
   first_seen_at: string;
-  is_fresh: boolean;
+  is_new: boolean; // first seen in the last 24h (or since the last digest)
   url: string;
 }
 
-// A followed company, surfaced for management UIs / the strip's empty state.
-export interface FollowedCompanyDTO {
+// A tracked company with how many of its open roles fit the user's titles.
+export interface TrackedCompany {
   company_id: string;
   name: string;
+  badges: string[];
+  open_count: number;
+  new_count: number;
+  last_checked_at: string | null;
+}
+
+// GET /api/jobs/tracker
+export interface TrackerDTO {
+  companies: TrackedCompany[];
+  new_jobs: TrackerJob[]; // the last 24h, newest first
+  open_jobs: TrackerJob[]; // everything else still open, newest first
+  role_terms: string[]; // what titles are matched against ([] = every role)
+  limit: number; // max companies per user
+}
+
+// A company the user can pick in tracker setup (search result or preset).
+// `company_id` is null when we know the employer but can't track it yet (no
+// supported job board found).
+export interface TrackerCompanyOption {
+  company_id: string | null;
+  name: string;
+  badge: string | null;
+}
+
+// GET /api/jobs/tracker/presets
+export interface TrackerPreset {
+  id: "profile" | "startups" | "sector" | "visa";
+  label: string;
+  companies: TrackerCompanyOption[];
 }
 
 // How the user wants roles matched: like their CURRENT title (read from the
