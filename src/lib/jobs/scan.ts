@@ -362,11 +362,11 @@ export interface UserScanSummary {
   reason?: "no_preferences" | "no_companies";
 }
 
-// Enrich the candidates that aren't yet (their visa / size chips are the ones
-// the user will see — the global enrichment drain can't keep up with ~100k
-// jobs), then re-apply the filters that depend on enrichment.
+// Enrich the candidates that aren't yet, including the LLM JD visa parse the
+// global drain skips (their visa / size chips are the ones the user will see),
+// then re-apply the filters that depend on enrichment.
 export async function enrichCandidates(sb: SupabaseClient, jobs: Job[], prefs: ScanPrefs): Promise<Job[]> {
-  const pending = jobs.filter((j) => !j.enriched_at).map((j) => j.id);
+  const pending = jobs.filter((j) => !j.enriched_at || !j.jd_visa_checked_at).map((j) => j.id);
   if (pending.length) {
     try {
       await enrichJobs({ jobIds: pending, limit: pending.length });
@@ -376,7 +376,7 @@ export async function enrichCandidates(sb: SupabaseClient, jobs: Job[], prefs: S
       const { data } = await sb
         .from("jobs")
         .select(
-          "id, visa_confidence, visa_evidence, company_size, enriched_at, raw_json, location_raw, city, region, country, remote_type, posted_date, posted_date_approx",
+          "id, visa_confidence, visa_evidence, company_size, enriched_at, jd_visa_checked_at, raw_json, location_raw, city, region, country, remote_type, posted_date, posted_date_approx",
         )
         .in("id", pending);
       const byId = new Map((data ?? []).map((r) => [r.id as string, r]));

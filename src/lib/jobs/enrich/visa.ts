@@ -9,6 +9,9 @@
 // Everything else is 'unclear' (incl. no JD text). The mentionsVisa() keyword
 // screen skips the LLM entirely for the majority of JDs that never touch the
 // topic — an explicit statement necessarily contains one of those keywords.
+// Runs on Haiku: a three-way label from explicit text needs no more, and this
+// is the highest-volume call in the app (enrich.ts runs it per scoring
+// candidate, not per catalog job).
 
 import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "@/lib/claude";
@@ -16,7 +19,7 @@ import { logAgentRun } from "@/lib/agent-runs";
 import { mentionsVisa } from "@/lib/jobs/util";
 import type { VisaConfidence } from "@/lib/jobs/types";
 
-const MODEL = "claude-sonnet-4-6";
+const MODEL = "claude-haiku-4-5";
 
 let _client: Anthropic | null = null;
 function client() {

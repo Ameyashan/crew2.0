@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { withUser } from "@/lib/auth";
-import { runWithUser } from "@/lib/user-context";
+import { runWithUser, runAsSystem } from "@/lib/user-context";
+import { systemBudgetExhausted } from "@/lib/llm-budget";
 import { ensureCatalogCoverage } from "@/lib/jobs/catalog";
 import { fetchAllListings } from "@/lib/jobs/orchestrator";
 import { scoreDueUsers, strArray, extractPins } from "@/lib/jobs/scan";
@@ -51,19 +52,23 @@ async function runScan(opts: { onlyUser?: string }): Promise<Response> {
 
   // 1. grow catalog for current demand (best-effort, bounded)
   let coverageAdded = 0;
-  try {
-    const demand = await gatherDemand(sb, onlyUser ? [onlyUser] : undefined);
-    const cov = await Promise.race([
-      ensureCatalogCoverage({
-        sectors: demand.sectors,
-        companyNames: demand.companies,
-        maxValidate: onlyUser ? 12 : 40,
-      }),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), COVERAGE_BUDGET_MS)),
-    ]);
-    coverageAdded = cov?.added.length ?? 0;
-  } catch (e) {
-    console.error("[jobs-scan] coverage failed", e);
+  // Coverage growth is an LLM call; skipped once the daily system budget is
+  // spent (a no-op in the dev per-user trigger, which isn't a system run).
+  if (!(await systemBudgetExhausted())) {
+    try {
+      const demand = await gatherDemand(sb, onlyUser ? [onlyUser] : undefined);
+      const cov = await Promise.race([
+        ensureCatalogCoverage({
+          sectors: demand.sectors,
+          companyNames: demand.companies,
+          maxValidate: onlyUser ? 12 : 40,
+        }),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), COVERAGE_BUDGET_MS)),
+      ]);
+      coverageAdded = cov?.added.length ?? 0;
+    } catch (e) {
+      console.error("[jobs-scan] coverage failed", e);
+    }
   }
 
   // 2. top up boards the fetch cron hasn't reached (bounded)
@@ -102,10 +107,9 @@ export async function GET(req: NextRequest) {
   const expected = process.env.CRON_SECRET;
   const authed = !!expected && (auth === `Bearer ${expected}` || req.headers.get("x-cron-secret") === expected);
 
-  // Anonymous context so the global fetch/enrich phases can reach logAgentRun
-  // (it requires a user context to exist); per-user scoring re-wraps with the
-  // real uid below.
-  if (authed) return runWithUser(null, () => runScan({}));
+  // System context so the global phases log (and are budgeted) as system
+  // spend; per-user scoring re-wraps with the real uid below.
+  if (authed) return runAsSystem(() => runScan({}));
 
   // Dev-only manual trigger: scoped to the session user, gated behind an env
   // flag so it can never be invoked in production.

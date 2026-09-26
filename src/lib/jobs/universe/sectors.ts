@@ -12,6 +12,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "@/lib/claude";
 import { logAgentRun } from "@/lib/agent-runs";
+import { systemBudgetExhausted } from "@/lib/llm-budget";
 import { supabaseAdmin } from "@/lib/supabase";
 import { SECTORS, isSectorId } from "@/lib/jobs/catalog/sectors";
 
@@ -42,6 +43,8 @@ interface Row {
 
 async function tagBatch(rows: Row[]): Promise<Map<number, string[]>> {
   const out = new Map<number, string[]>();
+  // Over the daily cron budget: empty result = "retry next tick".
+  if (await systemBudgetExhausted()) return out;
   const userPrompt = rows
     .map((r, i) => `[${i + 1}] ${r.name}${r.industry ? ` — ${r.industry}` : ""}`)
     .join("\n");

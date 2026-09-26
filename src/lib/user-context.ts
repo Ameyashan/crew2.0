@@ -11,12 +11,26 @@ import { AsyncLocalStorage } from "node:async_hooks";
 // context with userId = null. Persistence paths must gate on maybeUserId() /
 // isAnonymousRun() and skip their writes when anonymous — currentUserId() stays
 // strict so an ungated write fails loudly instead of inserting a null-owned row.
-type UserStore = { userId: string | null };
+//
+// `system` marks unattended background work (crons): no user either, but its
+// LLM spend is logged as system spend and counted against the daily system
+// budget (src/lib/llm-budget.ts). Per-user work inside a cron re-wraps with
+// runWithUser(uid), which clears the flag.
+type UserStore = { userId: string | null; system?: boolean };
 
 const storage = new AsyncLocalStorage<UserStore>();
 
 export function runWithUser<T>(userId: string | null, fn: () => T): T {
   return storage.run({ userId }, fn);
+}
+
+export function runAsSystem<T>(fn: () => T): T {
+  return storage.run({ userId: null, system: true }, fn);
+}
+
+// True inside runAsSystem(). Safe outside any context (returns false).
+export function isSystemRun(): boolean {
+  return storage.getStore()?.system === true;
 }
 
 // Throws if called outside a user context, OR while the run is anonymous — a

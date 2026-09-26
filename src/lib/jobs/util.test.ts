@@ -7,7 +7,9 @@ test("mentionsVisa catches sponsorship language, positive and negative", () => {
   assert.equal(mentionsVisa("Visa sponsorship available."), true);
   assert.equal(mentionsVisa("Must be authorized to work in the US without sponsorship."), true);
   assert.equal(mentionsVisa("We support H-1B and H1B transfers."), true);
-  assert.equal(mentionsVisa("Work authorisation required (UK spelling)."), true);
+  assert.equal(mentionsVisa("We will not sponsor applicants for work visas."), true);
+  assert.equal(mentionsVisa("Candidates must not require a visa now or in the future."), true);
+  assert.equal(mentionsVisa("The company is not able to sponsor at this time."), true);
   assert.equal(mentionsVisa("STEM OPT and CPT candidates welcome."), true);
   assert.equal(mentionsVisa("Green card process starts day one."), true);
   assert.equal(mentionsVisa("Immigration support provided."), true);
@@ -20,6 +22,15 @@ test("mentionsVisa skips JDs that never touch the topic", () => {
   // Short acronyms only match as standalone words.
   assert.equal(mentionsVisa("Adopt modern tooling; exceptional headroom."), false);
   assert.equal(mentionsVisa("OPT holders encouraged to apply"), true);
+});
+
+test("mentionsVisa ignores boilerplate that can't yield a verdict", () => {
+  // A bare work-authorization requirement is 'unclear' by the inference rules.
+  assert.equal(mentionsVisa("Must be legally authorized to work in the United States."), false);
+  assert.equal(mentionsVisa("Work authorisation required (UK spelling)."), false);
+  assert.equal(mentionsVisa("Employer-sponsored health plans and a sponsored gym membership."), false);
+  assert.equal(mentionsVisa("Help Visa merchants accept payments across the Visa network."), false);
+  assert.equal(mentionsVisa("Users can opt out of marketing emails."), false);
 });
 
 // Pin the existing helpers this module also exports (previously untested here).

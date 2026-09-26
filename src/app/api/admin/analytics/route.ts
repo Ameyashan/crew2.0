@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
   // Pull the windows we need in parallel. Everything is service-role.
   const [events, agentRuns, anonRuns] = await Promise.all([
     sb.from("product_events").select("event, user_id, anon_id, created_at").gte("created_at", since),
-    sb.from("agent_runs").select("agent_type, outcome, cost_usd, created_at").gte("created_at", since),
+    sb.from("agent_runs").select("agent_type, outcome, cost_usd, user_id, system, created_at").gte("created_at", since),
     sb.from("anon_run_events").select("created_at").gte("created_at", since),
   ]);
 
@@ -66,6 +66,14 @@ export async function GET(req: NextRequest) {
     a.runs += 1;
     if (r.outcome === "error") a.errors += 1;
     a.cost_usd += Number(r.cost_usd ?? 0);
+  }
+
+  // Who the spend is for: signed-in users, anonymous blur-gate runs, or
+  // unattended cron work (system — capped daily, see src/lib/llm-budget.ts).
+  const costByActor = { user: 0, anon: 0, system: 0 };
+  for (const r of runRows) {
+    const actor = r.system ? "system" : r.user_id ? "user" : "anon";
+    costByActor[actor] += Number(r.cost_usd ?? 0);
   }
 
   // "Untracked surfaces": event names present in product_events, so the agent
@@ -93,6 +101,7 @@ export async function GET(req: NextRequest) {
     signups_by_day: byDay(evRows.filter((r) => r.event === "signup") as { created_at: string }[]),
     anon_runs_by_day: byDay(anonRows as { created_at: string }[]),
     per_agent: perAgent,
+    cost_usd_by_actor: costByActor,
     tracked_events: trackedEvents,
   });
 }
