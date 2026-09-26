@@ -5,12 +5,14 @@
 // need to fit in one request.
 //
 // Per row, cheapest first:
-//   1. slug probe — name variants on Greenhouse / Lever / Ashby (probe.ts).
-//      Skipped when probed_at is set (the seed migration ships pre-probed rows).
+//   1. slug probe — name variants on Greenhouse / Lever / Ashby /
+//      SmartRecruiters (probe.ts). Skipped when probed_at is set (the seed
+//      migration ships pre-probed rows) — except SmartRecruiters, added after
+//      the seed, which is probed for every miss.
 //   2. LLM guesses — one batched call proposes boards for the misses (incl.
-//      Workday, whose tenant/site can't be derived from the name). Every guess
-//      is verified against the live board before it's trusted, same trust model
-//      as the catalog resolver (catalog/resolve.ts).
+//      Workday / Oracle / Eightfold / iCIMS, whose tenant/site can't be derived
+//      from the name). Every guess is verified against the live board before
+//      it's trusted (verify.ts), same trust model as the catalog resolver.
 //   3. careers-page sniff — fetch the careers URL the model suggested and scan
 //      its HTML for a board link (careers.ts).
 // Hits insert a companies row (source 'universe'); misses back off
@@ -24,17 +26,12 @@ import { logAgentRun } from "@/lib/agent-runs";
 import { systemBudgetExhausted } from "@/lib/llm-budget";
 import { supabaseAdmin } from "@/lib/supabase";
 import { mapPool } from "@/lib/jobs/util";
-import {
-  canonicalSlug,
-  findBoard,
-  probeBoard,
-  workdayBelongsTo,
-  LARGE_MIN_JOBS,
-  type ProbeAts,
-} from "@/lib/jobs/universe/probe";
+import { canonicalSlug, findBoard, LARGE_MIN_JOBS } from "@/lib/jobs/universe/probe";
+import { verifyBoard, type BoardAttempt } from "@/lib/jobs/universe/verify";
 import { selectAll } from "@/lib/jobs/paging";
-import { discoverFromCareersPage } from "@/lib/jobs/universe/careers";
-import { parseWorkdaySlug, workdayEvidence } from "@/lib/jobs/sources/workday";
+import { boardLinksIn, discoverFromCareersPage } from "@/lib/jobs/universe/careers";
+import { BOARD_FORMATS_PROMPT } from "@/lib/jobs/sources/formats";
+import { ATS_VALUES } from "@/lib/db/schema";
 import type { Ats } from "@/lib/jobs/types";
 
 const MODEL = "claude-sonnet-4-6";
@@ -45,6 +42,10 @@ const LLM_BATCH = 25;
 // an operator resets them (or the list is re-seeded).
 const MAX_ATTEMPTS = 4;
 const BACKOFF_DAYS = [7, 14, 28];
+// Bumped when the resolver learns new ATSes (2 = Oracle / SmartRecruiters /
+// Eightfold / iCIMS). An unresolved row last tried by an older version is due
+// again immediately, with a fresh attempt budget (company_universe.resolver_version).
+export const RESOLVER_VERSION = 2;
 
 let _client: Anthropic | null = null;
 function client() {
@@ -65,53 +66,33 @@ export interface UniverseRow {
   probed_at: string | null;
 }
 
-// A board guess to verify. Workday slugs are "tenant/wdN/site".
-export interface BoardAttempt {
-  ats: Ats;
-  slug: string;
-}
+export type { BoardAttempt };
 
 export interface VerifiedBoard extends BoardAttempt {
   jobs: number;
 }
 
 // Verify one guess against the live board; returns its job count or null.
-// Every ATS must also show the board is THIS company's: Greenhouse/Lever/Ashby
-// via board name / posting text (probe.ts), Workday via tenant name or the
-// site's own branding + a posting (workdayBelongsTo) — tenant names collide
-// across employers. Large employers must clear LARGE_MIN_JOBS either way.
-export async function verifyAttempt(a: BoardAttempt, row: Pick<UniverseRow, "name" | "size_bucket">): Promise<number | null> {
-  const minJobs = row.size_bucket === "large" ? LARGE_MIN_JOBS : 1;
-  let n: number | null;
-  if (a.ats === "workday") {
-    const ev = await workdayEvidence(a.slug);
-    const tenant = parseWorkdaySlug(a.slug)?.tenant ?? "";
-    n = ev && workdayBelongsTo(tenant, ev.text, row.name) ? ev.total : null;
-  } else {
-    n = await probeBoard(a.ats as ProbeAts, a.slug, row.name).catch(() => null);
-  }
-  return n && n >= minJobs ? n : null;
+export function verifyAttempt(a: BoardAttempt, row: Pick<UniverseRow, "name" | "size_bucket">): Promise<number | null> {
+  return verifyBoard(a, row);
 }
 
 // ── LLM guesses ──────────────────────────────────────────────────────────────
 
 const SYSTEM = `You locate the public job boards of well-known employers. For each numbered company, give up to 3 best guesses of the applicant-tracking-system board that hosts its CURRENT US job listings, plus its careers page URL.
 
-Board formats:
-- {"ats":"greenhouse","slug":"<board token>"} — boards.greenhouse.io/<slug>
-- {"ats":"lever","slug":"<site>"} — jobs.lever.co/<site>
-- {"ats":"ashby","slug":"<org>"} — jobs.ashbyhq.com/<org>
-- {"ats":"workday","slug":"<tenant>/<wdN>/<site>"} — https://<tenant>.<wdN>.myworkdayjobs.com/<site>, e.g. "nvidia/wd5/NVIDIAExternalCareerSite", "salesforce/wd12/External_Career_Site"
+${BOARD_FORMATS_PROMPT}
 
 Rules:
-- Large enterprises mostly use Workday; startups mostly Greenhouse, Lever or Ashby. Guess the one you believe is live today.
+- Large enterprises mostly use Workday or Oracle Recruiting Cloud (banks especially); startups mostly Greenhouse, Lever or Ashby. Guess the one you believe is live today.
+- Some employers front their board with a custom careers site (e.g. Goldman Sachs's higher.gs.com runs on Oracle) — guess the board behind it.
 - It is fine to be unsure — every guess is verified against the live board, so a wrong guess costs nothing. Omit a company entirely only if you have no idea.
 - "careers_url" is the company's own careers landing page (or null).
 
 Output strict JSON only, no prose:
 { "companies": [ { "i": number, "boards": [ { "ats": string, "slug": string } ], "careers_url": string | null } ] }`;
 
-const ATS_SET = new Set<Ats>(["greenhouse", "lever", "ashby", "workday"]);
+const ATS_SET = new Set<Ats>(ATS_VALUES);
 
 export interface Guess {
   boards: BoardAttempt[];
@@ -173,7 +154,9 @@ export async function guessBoards(names: string[]): Promise<{ ok: boolean; guess
     const boards: BoardAttempt[] = [];
     for (const b of Array.isArray(c.boards) ? (c.boards as Array<Record<string, unknown>>) : []) {
       const ats = b?.ats as Ats;
-      const slug = typeof b?.slug === "string" ? b.slug.trim() : "";
+      let slug = typeof b?.slug === "string" ? b.slug.trim() : "";
+      // The model sometimes answers with the board's URL; read the slug out.
+      if (/^https?:\/\//i.test(slug)) slug = boardLinksIn(slug).find((l) => l.ats === ats)?.slug ?? "";
       if (ATS_SET.has(ats) && slug && boards.length < 3) boards.push({ ats, slug });
     }
     const careersUrl =
@@ -248,6 +231,7 @@ async function markResolved(row: UniverseRow, board: VerifiedBoard) {
       resolve_status: "resolved",
       resolved_at: nowIso,
       resolve_note: `${board.ats}:${board.slug} (${board.jobs} jobs)`,
+      resolver_version: RESOLVER_VERSION,
       probed_at: row.probed_at ?? nowIso,
       updated_at: nowIso,
     })
@@ -264,6 +248,7 @@ async function markMiss(row: UniverseRow, note: string) {
     .update({
       resolve_status: "unresolved",
       resolve_attempts: attempts,
+      resolver_version: RESOLVER_VERSION,
       resolve_note: note,
       probed_at: row.probed_at ?? nowIso,
       // After the last attempt, park it (null next_resolve_at + attempts cap
@@ -290,10 +275,13 @@ export async function loadDueRows(limit: number): Promise<UniverseRow[]> {
   const sb = supabaseAdmin();
   const { data, error } = await sb
     .from("company_universe")
-    .select("id, name, org_type, sectors, size_bucket, resolve_attempts, probed_at, fortune_rank, startup_rank, h1b_rank")
+    .select(
+      "id, name, org_type, sectors, size_bucket, resolve_attempts, resolver_version, probed_at, fortune_rank, startup_rank, h1b_rank",
+    )
     .neq("resolve_status", "resolved")
-    .lt("resolve_attempts", MAX_ATTEMPTS)
-    .or(`next_resolve_at.is.null,next_resolve_at.lte.${new Date().toISOString()}`)
+    .or(
+      `resolver_version.lt.${RESOLVER_VERSION},and(resolve_attempts.lt.${MAX_ATTEMPTS},or(next_resolve_at.is.null,next_resolve_at.lte.${new Date().toISOString()}))`,
+    )
     .order("resolve_attempts", { ascending: true })
     .limit(Math.max(limit * 4, 200));
   if (error) throw new Error(`load universe rows failed: ${error.message}`);
@@ -313,7 +301,8 @@ export async function loadDueRows(limit: number): Promise<UniverseRow[]> {
       org_type: r.org_type as string,
       sectors: (r.sectors as string[]) ?? [],
       size_bucket: (r.size_bucket as string | null) ?? null,
-      resolve_attempts: (r.resolve_attempts as number) ?? 0,
+      // A row last tried by an older resolver starts a fresh attempt budget.
+      resolve_attempts: ((r.resolver_version as number) ?? 1) < RESOLVER_VERSION ? 0 : ((r.resolve_attempts as number) ?? 0),
       probed_at: (r.probed_at as string | null) ?? null,
     }));
 }
@@ -347,15 +336,15 @@ export async function resolveUniverseBatch(opts?: {
     summary.by_method[method] = (summary.by_method[method] ?? 0) + 1;
   };
 
-  // 1. slug probe (rows not pre-probed).
+  // 1. slug probe (rows not pre-probed; SmartRecruiters for every row — the
+  // seed's probe predates it).
   const misses: UniverseRow[] = [];
   await mapPool(rows, PROBE_CONCURRENCY, async (row) => {
     if (Date.now() > deadline) return;
     try {
-      if (!row.probed_at) {
-        const found = await findBoard(row.name, { minJobs: row.size_bucket === "large" ? LARGE_MIN_JOBS : 1 });
-        if (found) return hit(row, found, "probe");
-      }
+      const minJobs = row.size_bucket === "large" ? LARGE_MIN_JOBS : 1;
+      const found = await findBoard(row.name, row.probed_at ? { minJobs, ats: ["smartrecruiters"] } : { minJobs });
+      if (found) return hit(row, found, "probe");
       misses.push(row);
     } catch {
       summary.errors++;

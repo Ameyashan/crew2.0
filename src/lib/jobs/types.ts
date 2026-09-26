@@ -137,6 +137,8 @@ export interface TrackedCompany {
   open_count: number;
   new_count: number;
   last_checked_at: string | null;
+  // People from the user's imported LinkedIn connections who work there.
+  known_count: number;
 }
 
 // GET /api/jobs/tracker
@@ -146,6 +148,7 @@ export interface TrackerDTO {
   open_jobs: TrackerJob[]; // everything else still open, newest first
   role_terms: string[]; // what titles are matched against ([] = every role)
   limit: number; // max companies per user
+  connections_imported: boolean; // has the user imported LinkedIn connections?
 }
 
 // A company the user can pick in tracker setup (search result or preset).

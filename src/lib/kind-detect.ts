@@ -25,6 +25,9 @@ const ATS_HOSTS: RegExp[] = [
   /(^|\.)applytojob\.com$/, // JazzHR
   /(^|\.)bamboohr\.com$/,
   /(^|\.)pinpointhq\.com$/,
+  /\.fa\.([a-z0-9-]+\.)?(ocs\.)?oraclecloud\d{0,2}\.com$/, // Oracle Recruiting Cloud
+  /(^|\.)eightfold\.ai$/,
+  /^higher\.gs\.com$/, // Goldman Sachs careers
 ];
 
 // Pull the hostnames out of anything URL-shaped in the text. Tolerates bare

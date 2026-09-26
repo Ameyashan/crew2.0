@@ -14,6 +14,7 @@ import { selectAll } from "@/lib/jobs/paging";
 import { resolveCandidates } from "@/lib/jobs/catalog/resolve";
 import { validateAttempts } from "@/lib/jobs/catalog/validate";
 import { isSectorId } from "@/lib/jobs/catalog/sectors";
+import { canonicalSlug } from "@/lib/jobs/universe/probe";
 import type { Company } from "@/lib/db/schema";
 
 // A sector is "covered" once this many active companies carry the tag.
@@ -126,7 +127,7 @@ export async function ensureCatalogCoverage(
         name: row.company.company,
         normalized: norm,
         ats: row.hit.ats,
-        slug: row.hit.slug,
+        slug: canonicalSlug(row.hit.ats, row.hit.slug),
         sectors: row.company.sectors,
         source: "llm_resolved",
         added_by: input.addedBy ?? null,

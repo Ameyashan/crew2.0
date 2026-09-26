@@ -148,7 +148,26 @@ export interface DailyDigest {
 
 // ── Daily Job-Discovery Feed (mirrors 0010_jobs_feed.sql) ────────────────────
 
-export type Ats = "greenhouse" | "lever" | "ashby" | "workday";
+export type Ats =
+  | "greenhouse"
+  | "lever"
+  | "ashby"
+  | "workday"
+  | "oracle"
+  | "smartrecruiters"
+  | "eightfold"
+  | "icims";
+// Every Ats value, for runtime checks (LLM output, API input).
+export const ATS_VALUES: readonly Ats[] = [
+  "greenhouse",
+  "lever",
+  "ashby",
+  "workday",
+  "oracle",
+  "smartrecruiters",
+  "eightfold",
+  "icims",
+];
 export type RemoteType = "remote" | "hybrid" | "onsite" | "unknown";
 export type SizeBucket = "large" | "medium" | "startup";
 // 'sponsors_verified' is backed by USCIS filing data (0021); 'no_sponsorship' is
@@ -232,6 +251,7 @@ export interface CompanyUniverse {
   size_bucket: SizeBucket | null;
   resolve_status: "pending" | "resolved" | "unresolved";
   resolve_attempts: number;
+  resolver_version: number; // resolver generation that last tried this row (0033)
   resolve_note: string | null;
   probed_at: string | null;
   next_resolve_at: string | null;

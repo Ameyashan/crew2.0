@@ -9,8 +9,12 @@
 // Curated from the durable, source-agnostic fundamentals of cold outreach that
 // every credible guide agrees on (Amplemarket / Lemlist / HBR / "Smart Brevity"
 // and the like): make it relevant, make it short, make ONE easy ask, and make it
-// effortless to ignore. The guide is channel-aware — the subject-line rule only
-// applies to email; exact length budgets live with the draft prompts.
+// effortless to ignore. Sharpened with high-leverage-job-hunt's outreach rules
+// (paulklayvc/skills, Move 3): name the gap in their world rather than the
+// sender's skills, short sentences with specific nouns, end on a question,
+// claim only what's true, never mail-merge. The guide is channel-aware — the
+// subject-line rule only applies to email; exact length budgets live with the
+// draft prompts. Keep .claude/skills/cold-outreach/SKILL.md in sync.
 
 export type OutreachChannel = "email" | "x_dm" | "linkedin";
 
@@ -34,27 +38,37 @@ export const OUTREACH_PRINCIPLES: OutreachPrinciple[] = [
   {
     title: "Open on them, not you",
     detail:
-      "The first line is about the recipient — something specific they shipped, wrote, or are working on. Never open with 'My name is' or 'I'm reaching out'. Earn the next line before you talk about yourself.",
+      "The first line is about the recipient or their company — something specific they shipped, wrote, or are building right now. Never open with 'My name is' or 'I'm reaching out'. Earn the next line before you talk about yourself.",
   },
   {
-    title: "One reason, one ask",
+    title: "Name the gap, not your skills",
     detail:
-      "Say why you're writing in a sentence, then make exactly ONE low-friction ask — a single yes/no-able question. Multiple asks split attention and kill replies.",
+      "Make the message about a real problem or opportunity in THEIR world — a launch, a stated priority, a hiring push, something that works elsewhere in their market — and let the sender's background appear only as proof they've seen that problem up close. Never list skills or adjectives about the sender. If the research shows no real gap, don't invent one; anchor on the one concrete thing they did.",
+  },
+  {
+    title: "One reason, one ask, end on a question",
+    detail:
+      "Say why you're writing in a sentence, then make exactly ONE low-friction ask, phrased as a question they can answer (not a request or a demand), and end the message on it. Multiple asks split attention and kill replies.",
   },
   {
     title: "Be ruthlessly short",
     detail:
-      "Every sentence has to earn its place. A busy stranger should grasp the ask in one read on a phone. In a DM that means a couple of sentences — get to the point in line one.",
+      "Short sentences, specific nouns, no stacked adjectives. Every sentence has to earn its place; a busy stranger should grasp the ask in one read on a phone. In a DM that means a couple of sentences — get to the point in line one.",
   },
   {
-    title: "Earn credibility in one line",
+    title: "Earn credibility in one true line",
     detail:
-      "Give the single most relevant proof point that makes you worth a reply — a concrete result, a shipped thing, a number. One line, not a résumé. Specific beats impressive.",
+      "Give the single most relevant proof point that makes you worth a reply — a concrete result, a shipped thing, a number — and only one the sender's own background actually supports. Inflated or invented claims collapse on the first reply. One line, not a résumé. Specific beats impressive.",
   },
   {
     title: "Make the reply effortless",
     detail:
       "The ask should be answerable in one line without leaving the app. No calendar links, attachments, or 'hop on a 30-min call' in a first touch. Lower the cost of saying yes.",
+  },
+  {
+    title: "No mail-merge",
+    detail:
+      "At least one detail must be true only of this recipient. No template phrasing ('explore synergies', 'pick your brain', 'I'd love to connect', 'touch base') and no line that could be pasted into a message to anyone else — recipients spot those instantly.",
   },
   {
     title: "Respect their time and their out",

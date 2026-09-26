@@ -4,6 +4,10 @@
 
 import { fetchBoard } from "@/lib/jobs/orchestrator";
 import { workdayJobCount } from "@/lib/jobs/sources/workday";
+import { oracleEvidence } from "@/lib/jobs/sources/oracle";
+import { smartRecruitersEvidence } from "@/lib/jobs/sources/smartrecruiters";
+import { eightfoldEvidence } from "@/lib/jobs/sources/eightfold";
+import { icimsEvidence } from "@/lib/jobs/sources/icims";
 import type { Ats } from "@/lib/jobs/types";
 
 export interface ValidationResult {
@@ -16,6 +20,21 @@ export async function validateCandidate(ats: Ats, slug: string): Promise<Validat
   if (ats === "workday") {
     const n = await workdayJobCount(slug);
     return { ok: !!n, jobCount: n ?? 0 };
+  }
+  // Enterprise boards: one small liveness read instead of paging the board.
+  const probe =
+    ats === "oracle"
+      ? oracleEvidence
+      : ats === "smartrecruiters"
+        ? smartRecruitersEvidence
+        : ats === "eightfold"
+          ? eightfoldEvidence
+          : ats === "icims"
+            ? icimsEvidence
+            : null;
+  if (probe) {
+    const ev = await probe(slug).catch(() => null);
+    return { ok: !!ev && ev.total > 0, jobCount: ev?.total ?? 0 };
   }
   try {
     const jobs = await fetchBoard(ats, slug);

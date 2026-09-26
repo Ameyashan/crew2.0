@@ -8,6 +8,9 @@ import { useIsMobile } from "@/lib/use-is-mobile";
 import { startRun, setFocusedRun } from "@/lib/runs-store";
 import { CompanyLogo } from "@/components/paper/CompanyLogo";
 import { FollowButton } from "@/components/paper/FollowButton";
+import { PeopleYouKnow } from "@/components/jobs/PeopleYouKnow";
+import { AskForIntroButton } from "@/components/jobs/AskForIntroButton";
+import { WhoToContact } from "@/components/jobs/WhoToContact";
 import {
   postedAgo,
   compDisplay,
@@ -292,6 +295,23 @@ export default function JobDetailPage() {
             </p>
           );
 
+          const peopleCard = (
+            <PeopleYouKnow
+              companyId={job.company_id}
+              company={job.company}
+              renderAction={(p) => (
+                <AskForIntroButton
+                  person={p}
+                  target={{ company: job.company, role: job.title, job_url: job.url }}
+                />
+              )}
+            />
+          );
+
+          const contactsCard = (
+            <WhoToContact jobId={job.job_id} role={job.title} company={job.company} jobUrl={job.url} />
+          );
+
           const jdCard = (
             <div
               style={{
@@ -486,6 +506,8 @@ export default function JobDetailPage() {
                 // Stacked: the short "why" card first, then the long JD.
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 22 }}>
                   {whyCard}
+                  {peopleCard}
+                  {contactsCard}
                   {jdCard}
                   {crewPitch}
                 </div>
@@ -518,6 +540,8 @@ export default function JobDetailPage() {
                       {crewPitch}
                       {actions}
                     </div>
+                    {peopleCard}
+                    {contactsCard}
                   </div>
                 </div>
               )}

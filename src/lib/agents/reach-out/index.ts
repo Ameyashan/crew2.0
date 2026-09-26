@@ -21,6 +21,7 @@ import { currentUserId, isAnonymousRun } from "@/lib/user-context";
 import { getProfile, senderContextFromProfile } from "@/lib/profile";
 import { listStoryEntries } from "@/lib/story";
 import { agentEnabled } from "@/lib/agent-selection";
+import type { WarmIntroTarget } from "@/lib/writing/warm-intro";
 
 export interface RunReachOutInput {
   text: string;
@@ -36,6 +37,10 @@ export interface RunReachOutInput {
   // Job-application flow: the role/company this outreach is for. Anchors the
   // draft so a stray intent can't point the email at the wrong company.
   job_context?: { role?: string | null; company?: string | null };
+  // Warm-intro ask: `picked` is someone the user already knows (an imported
+  // LinkedIn connection) at `warm_intro.company`; the drafts ask them for an
+  // intro instead of being cold outreach.
+  warm_intro?: WarmIntroTarget;
   // History feature: when set, drafts are tagged with this compose_run_id so
   // the /app/history detail view can fetch a run's drafts directly.
   compose_run_id?: string;
@@ -81,7 +86,9 @@ export async function* runReachOutStream(
     // company. Passing it lets research reject a same-name person who has moved
     // on (the "shown at Speak, but really an Anthropic IC" failure) instead of
     // asserting a wrong brief.
-    const expectCompany = input.job_context?.company ?? null;
+    // A warm-intro connection is someone at the target company, so the same
+    // current-employer check applies.
+    const expectCompany = input.job_context?.company ?? input.warm_intro?.company ?? null;
     const researchInput = input.picked?.linkedin
       ? {
           linkedin_url: input.picked.linkedin,
@@ -377,6 +384,7 @@ export async function* runReachOutStream(
           channel: c,
           intent: effectiveIntent,
           job_context: input.job_context,
+          warm_intro: input.warm_intro,
           sender_context: senderCtx || undefined,
           sender_writing_samples: profile?.writing_samples ?? undefined,
           sender_stories: senderStories.length ? senderStories : undefined,

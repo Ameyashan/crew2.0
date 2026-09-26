@@ -132,6 +132,14 @@ export type Run = {
     poster?: ContactData | null;
     hiring_manager?: ContactData | null;
   } | null;
+  // Warm-intro ask (person runs): the connection to ask is `initialPicked`;
+  // `warmIntro` names the company / role they'd introduce the user to. Both
+  // are forwarded to /api/compose on every (re)launch.
+  warmIntro?: { company: string; role?: string | null; team?: string | null; job_url?: string | null } | null;
+  initialPicked?: { name?: string; role?: string | null; company?: string | null; linkedin?: string | null } | null;
+  // Person runs started from a job's "Who to reach out to" list: the role +
+  // company the outreach is about (anchors research and the drafts).
+  jobContext?: { role?: string | null; company?: string | null } | null;
   // The compose_runs row id reported back by the server once the stream starts.
   // Used by the history page to dedupe and to hydrate the right run.
   composeRunId?: string | null;
@@ -392,7 +400,16 @@ function clearPending(localId: string) {
 
 export function startRun(
   input: string,
-  opts?: { intent?: string; providedEmail?: boolean; kind?: "person" | "job"; selectedAgents?: string[] },
+  opts?: {
+    intent?: string;
+    providedEmail?: boolean;
+    kind?: "person" | "job";
+    selectedAgents?: string[];
+    // Warm-intro ask: `picked` is the connection, `warmIntro` the target.
+    picked?: Run["initialPicked"];
+    warmIntro?: Run["warmIntro"];
+    jobContext?: Run["jobContext"];
+  },
 ): string | null {
   const text = (input || "").trim();
   if (!text) return null;
@@ -418,6 +435,9 @@ export function startRun(
     error: null,
     createdAt: Date.now(),
     selectedAgents: Array.isArray(opts?.selectedAgents) ? [...opts.selectedAgents] : undefined,
+    warmIntro: opts?.warmIntro ?? null,
+    initialPicked: opts?.picked ?? null,
+    jobContext: opts?.jobContext ?? null,
   };
 
   // newest on top
@@ -1859,9 +1879,11 @@ async function streamRun(run: Run, signal: AbortSignal, picked?: unknown) {
       body: JSON.stringify({
         text: run.input,
         intent: run.intent || undefined,
-        picked: picked || undefined,
+        picked: picked || run.initialPicked || undefined,
         screenshot_id: run.screenshotId || undefined,
         agents: run.selectedAgents || undefined,
+        warm_intro: run.warmIntro || undefined,
+        job_context: run.jobContext || undefined,
       }),
       signal,
     });

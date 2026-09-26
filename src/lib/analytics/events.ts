@@ -35,6 +35,14 @@ export const PRODUCT_EVENTS = {
   // company we have no job board for (demand signal for new adapters).
   tracker_companies_saved: {} as { count: number },
   tracker_company_untrackable: {} as { name: string },
+  // LinkedIn connections import (Settings) — powers "people you know at X".
+  connections_imported: {} as { count: number },
+  connections_cleared: {},
+  // "Ask for intro" on a connection → warm-intro Compose run.
+  warm_intro_started: {} as { has_role: boolean },
+  // Job page "Who to reach out to" lookup (connections + web + Apollo).
+  job_contacts_found: {} as { count: number; apollo: string },
+  job_contact_action: {} as { action: "copy_note" | "draft"; kind: string },
   // Signed-out funnel (blur gate)
   blur_gate_hit: {},
   blur_gate_signin_click: {},

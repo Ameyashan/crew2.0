@@ -45,6 +45,13 @@ export const FORBIDDEN_PHRASES: string[] = [
   "looking forward to your response",
   "looking forward to connecting",
   "thank you for your time and consideration",
+  // mail-merge outreach phrasing (high-leverage-job-hunt's anti-patterns)
+  "explore synergies",
+  "explore potential synergies",
+  "pick your brain",
+  "hop on a call",
+  "hop on a quick call",
+  "touch base",
   // AI filler transitions / framing
   "it's worth noting",
   "it is worth noting",

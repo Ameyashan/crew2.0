@@ -1,0 +1,230 @@
+# Borrowing from career-ops + high-leverage-job-hunt — handover log
+
+Five steps, shipped in order on one branch (one commit per step, one PR).
+Each section below is written at the end of its step for whoever picks up the
+next one: what landed, where it lives, what's live in the database, what's
+deliberately left out, and what the next step can rely on.
+
+| # | Step | Borrowed from |
+|---|------|---------------|
+| 1 | More job systems (Oracle, SmartRecruiters, Eightfold, iCIMS) | career-ops `providers/*.mjs` (MIT) |
+| 2 | LinkedIn connections import → "people you know" | career-ops `docs/LINKEDIN_JOIN.md`; high-leverage-job-hunt Move 3 (warm path first) |
+| 3 | Warm-intro request draft type in Compose | high-leverage-job-hunt Move 3 |
+| 4 | Sharper cold-message rules in drafting prompts | high-leverage-job-hunt Move 3 |
+| 5 | Find the right person for a job (connections + web search + Apollo + Compose) | career-ops `modes/contacto.md` |
+
+---
+
+## Step 1 — More job systems ✅
+
+**Why:** the tracker could only follow companies on Greenhouse / Lever / Ashby /
+Workday, so big employers showed "can't track yet". 676 of 1,324 universe
+employers were unresolved. Goldman Sachs and JPMorgan Chase, for example, both
+run Oracle Recruiting Cloud (Goldman behind its custom `higher.gs.com` front end).
+
+### What landed
+
+| File | What |
+|------|------|
+| `src/lib/jobs/sources/oracle.ts` | Oracle Recruiting Cloud. Slug `host/siteNumber`. US-filtered via the tenant's "United States" location facet, newest 300, lazy JD via the `ById` detail finder. |
+| `src/lib/jobs/sources/smartrecruiters.ts` | SmartRecruiters Posting API. Slug = company id (lowercase). `country=us` when there are US postings, max 500, lazy JD. |
+| `src/lib/jobs/sources/eightfold.ts` | Eightfold. Slug `tenant/domain`. Handles both the legacy `/api/apply/v2` API and the newer PCSX API (a tenant 403s the one it doesn't serve). US-filtered, newest 200 (10/page server cap), lazy JD. |
+| `src/lib/jobs/sources/icims.ts` | iCIMS portal HTML (no JSON API). Slug = portal host. 10 pages max, lazy JD + real date from the posting's JSON-LD. |
+| `src/lib/jobs/sources/http.ts` | Shared host-pinned fetch (browser UA, `redirect: "error"`), entity decode, JSON-LD reader. |
+| `src/lib/jobs/sources/formats.ts` | One prompt block describing every ATS slug format — used by both LLM board guessers. |
+| `src/lib/jobs/universe/verify.ts` | `verifyBoard()` — liveness + ownership per ATS (moved out of `resolve.ts` so scripts can use it). Opaque tenants (Oracle `hdpc`, iCIMS portals, Eightfold) must be named by the board's own text. |
+| `src/lib/jobs/universe/probe.ts` | SmartRecruiters added to the slug probe (it exposes `company.name`); `canonicalSlug` knows Oracle. |
+| `src/lib/jobs/universe/careers.ts` | Careers-page sniff recognizes Oracle / SmartRecruiters / Eightfold / iCIMS links. |
+| `src/lib/jobs/universe/resolve.ts` | Uses `verifyBoard`, the shared formats prompt, reads URL-shaped LLM slugs, probes SmartRecruiters for every miss, and `RESOLVER_VERSION = 2` (below). |
+| `src/lib/jobs/orchestrator.ts`, `hydrate.ts`, `util.ts` (`jdText`), `catalog/validate.ts`, `catalog/resolve.ts`, `catalog/index.ts` | Dispatch to the new adapters; generic lazy hydration (`isLazyHydrated`); catalog inserts use `canonicalSlug`. |
+| `src/lib/kind-detect.ts` | Oracle Cloud / Eightfold / higher.gs.com URLs count as job links in Compose. |
+| `src/lib/db/schema.ts` | `Ats` union + `ATS_VALUES`; `resolver_version` on `CompanyUniverse`. |
+| `supabase/migrations/0033_enterprise_ats.sql` | Widens both ATS checks, seeds verified Goldman + JPMorgan boards, adds `company_universe.resolver_version`. |
+| `THIRD_PARTY_NOTICES.md` | career-ops MIT notice (required — the four adapters are ports). |
+| `src/lib/jobs/sources/enterprise.test.ts` | Pure-function tests for all four adapters + careers-page links. |
+
+### Database state (applied to project `ccikbznbrjpruwiqzxib` via Supabase MCP)
+
+- `0033_enterprise_ats` **applied**. `companies`/`jobs` ATS checks accept the 4 new values.
+- Seeded and marked resolved: **Goldman Sachs Group** → `oracle:hdpc.fa.us2.oraclecloud.com/LateralHiring` (1,144 postings), **JPMorgan Chase** → `oracle:jpmc.fa.oraclecloud.com/CX_1001` (7,504).
+- **Until this branch deploys**, the running app's `fetchBoard` returns `[]` for `oracle`, so those two show as trackable but fill with jobs only after deploy.
+- The 676 unresolved employers get retried **by the new code only**: the new resolver treats `resolver_version < 2` rows as due with a fresh attempt budget. (A plain SQL reset would have let the old deployed resolver burn the retries on the old ATS list.) Drains ~60 rows per `jobs-fetch` tick, LLM spend bounded by `systemBudgetExhausted()`.
+
+### Verified live (from this container)
+
+| Board | Jobs fetched | Complete | Verify (as that company) | Hydrated JD |
+|---|---|---|---|---|
+| Oracle `hdpc…/LateralHiring` (Goldman) | 300 US | no (cap) | 1,144 ✅ | 4,183 chars |
+| Oracle `jpmc…/CX_1001` | 300 US | no (cap) | 7,504 ✅ | 3,415 chars |
+| SmartRecruiters `servicenow` | 410 US | yes | 701 ✅ | 17,597 chars |
+| Eightfold `micron/micron.com` (PCSX) | 200 US | no (cap) | 2,954 ✅ | 10,341 chars |
+| Eightfold `bayer/bayer.com` (legacy) | 200 US | no (cap) | 616 ✅ | 10,600 chars |
+| iCIMS `careers-quest.icims.com` | 40 | yes | 40 ✅ | 7,368 chars |
+
+Collision checks: Goldman's board does **not** verify as JPMorgan; ServiceNow's does not verify as Salesforce.
+
+### Deliberately not done
+
+- **SuccessFactors** — `jobs.sap.com`-style sites answer a Cloudflare challenge to server requests.
+- **Phenom** — the `/widgets` API works, but careers pages sit behind Incapsula so we can't auto-detect tenants, and most Phenom sites front Workday (which we already read).
+- **Wayfair** — `wayfair.com/careers` is behind a PerimeterX CAPTCHA; its board is a private Greenhouse behind that. Not reachable from a server. (Goldman *was* solvable: its custom site applies through Oracle.)
+- Eightfold boards are slow (≈1 s per 10-row page; Bayer took 23 s for 200). Fine inside the time-budgeted `jobs-fetch` tick; lower `EIGHTFOLD_MAX_JOBS` if it crowds out other boards.
+
+### For step 2
+
+- Company identity for matching connections: `companies.name` / `normalized`, and `company_universe.name` / `match_key` (`normalizeEmployerName` in `src/lib/jobs/h1b/normalize.ts`). Use the same normalizer for a connection's company so "Goldman Sachs" ↔ "Goldman Sachs Group" match.
+- Tracker cards come from `GET /api/jobs/tracker` (`src/lib/jobs/tracker.ts`), job detail from `GET /api/jobs/[id]`.
+
+---
+
+## Step 2 — LinkedIn connections → "people you know" ✅
+
+**Why:** high-leverage-job-hunt's core move is a warm path in before a cold
+application; career-ops cross-references a LinkedIn connections export against
+target companies. We do that with the user's *own* export — no scraping, no
+LinkedIn API, no ToS risk.
+
+### What landed
+
+| File | What |
+|------|------|
+| `src/lib/connections/csv.ts` | Browser-side parser for LinkedIn's `Connections.csv` (skips the "Notes:" preamble, RFC-4180 quotes, "15 Mar 2024" dates). **Drops email addresses** — they never leave the browser. |
+| `src/lib/connections/match.ts` | `companyKey` / `companyCore` — match keys so "Goldman Sachs" ↔ "Goldman Sachs Group", "JPMorganChase" ↔ "JPMorgan Chase", "Scale AI" ↔ "Scale". Reuses `normalizeEmployerName` + probe.ts's `DROP_WORDS`/`DESCRIPTORS` (now exported). Filters "Self-employed", "Stealth", … |
+| `src/lib/connections/store.ts` | Chunked import (`stageConnections`: rows land `pending`, the final chunk swaps them in atomically-enough — readers skip pending rows), `connectionsAt(names)`, `knownCounts(companyIds)`, `employerNames(companyIds)` (catalog name + universe name + aliases), `clearConnections`. |
+| `src/app/api/connections/route.ts` | `GET` summary · `POST` one chunk (≤4,000 rows) · `DELETE` all. |
+| `src/app/api/connections/at/route.ts` | `GET ?company_id=…&company=…` → `{ total, people, imported }`. |
+| `src/components/paper/ConnectionsCard.tsx` | Settings card (anchor `#connections`): how to get the export, upload, progress, delete. |
+| `src/components/jobs/PeopleYouKnow.tsx` | Reusable "YOU KNOW N PEOPLE HERE" card. Props `renderAction(person)` and `footer` are the hooks for steps 3 and 5. |
+| `src/lib/jobs/tracker.ts` + `types.ts` | `TrackedCompany.known_count`, `TrackerDTO.connections_imported`. |
+| `src/app/app/jobs/page.tsx` | Chips show "· N known"; filtering to a company shows its PeopleYouKnow card; import nudge when nothing is imported. |
+| `src/app/app/jobs/[id]/page.tsx` | PeopleYouKnow card in the job's right rail (stacked on mobile). |
+| `src/lib/analytics/events.ts` | `connections_imported {count}`, `connections_cleared`. |
+| `supabase/migrations/0034_connections.sql` | `connections` table (no email column), `(user_id, company_core)` index, owner-only RLS. |
+| `src/lib/connections/connections.test.ts` | Parser, email-drop, date/URL, and company-matching tests. |
+
+### Database state
+
+- `0034_connections` **applied** to `ccikbznbrjpruwiqzxib`. Empty table; nothing to backfill.
+
+### Not verified here
+
+- No browser run (the container has no Supabase/Anthropic env to boot `next dev`). Type-check, lint (no new errors; 5 pre-existing), and `npm test` (249 pass) are clean. **Worth a manual pass after deploy:** Settings → upload a real `Connections.csv` → tracker chips show "· N known" → a job page shows the card.
+
+### For step 3 (warm-intro draft)
+
+- Put the action on each person via `<PeopleYouKnow renderAction={(p) => …} />` — used on the job page (`src/app/app/jobs/[id]/page.tsx`) and the filtered tracker view (`src/app/app/jobs/page.tsx`).
+- A person is `Connection` from `src/lib/connections/store.ts`: `{ id, full_name, linkedin_url, company, position, connected_on }`. We have **no email** for them by design — the intro ask is a LinkedIn DM (or email if Apollo/Hunter finds one in Compose).
+- Compose entry points: `startRun(input, { kind })` in `src/lib/runs-store.ts` (the job page already uses it); intents flow through `POST /api/compose` → `src/lib/agents/reach-out`.
+
+---
+
+## Step 3 — Warm-intro request draft ✅
+
+**Why:** high-leverage-job-hunt Move 3: once you know *who* you know at a
+company (step 2), the next move is a concrete, easy-to-act-on intro request, not
+a cold note to a stranger.
+
+### What landed
+
+| File | What |
+|------|------|
+| `src/lib/writing/warm-intro.ts` | The warm-intro "skill": 6 principles as data (honest about the relationship, name the target, one line on fit, one explicit easy ask, a forwardable third-person blurb (not on X), don't pitch the connection), `warmIntroGuide(channel)`, `warmIntroIntent(target)`, `parseWarmIntroTarget(untrusted)`. No em dashes in the guidance (the anti-AI linter treats them as a tell). |
+| `src/lib/claude.ts` | `DraftInput.warm_intro`; `warmIntroSystem()` swaps in for `draftSystem()` (cold-outreach craft is *not* applied to a warm ask); own length budgets (room for the blurb); the user prompt states the target instead of the job-application block. Same anti-AI lint + humanize pass as every draft. |
+| `src/lib/agents/reach-out/index.ts` | `RunReachOutInput.warm_intro` → passed to `draft()`; research's `expect_company` = the target company (the connection must work there). |
+| `src/app/api/compose/route.ts`, `src/lib/runs/execute-person.ts` | `warm_intro` accepted on the JSON body, stored in `compose_runs.payload` (so the cron re-drive keeps it), default intent "Warm intro ask: …". |
+| `src/lib/runs-store.ts` | `startRun(…, { picked, warmIntro })`; `Run.initialPicked` / `Run.warmIntro` forwarded on every (re)launch. |
+| `src/components/jobs/AskForIntroButton.tsx` | "Ask for intro →" on each person: starts the run anchored on their LinkedIn URL + name/title/company, opens the Desk. Event `warm_intro_started`. |
+| Job page + filtered tracker | `PeopleYouKnow renderAction` → `AskForIntroButton` (job page passes role + posting URL; tracker passes just the company). |
+| `src/lib/writing/warm-intro.test.ts` | Target parsing, intent, per-channel blurb rule. |
+
+### Behavior notes
+
+- A warm-intro run is an ordinary **person** run (same Desk card, History entry, email lookup, three channel drafts, redraft/steer), so nothing downstream needed to change.
+- Research is anchored on the connection's LinkedIn URL when the export had one (it almost always does).
+- No DB change in this step.
+
+### Not verified here
+
+- No `ANTHROPIC_API_KEY` in this container, so no live draft was generated. Prompt assembly, types, lint and tests (252 pass) are clean. **Worth a manual check after deploy:** Jobs → a tracked company with connections → "Ask for intro →" → the Desk run drafts a LinkedIn note with a forwardable blurb.
+
+### For step 4 (sharper cold rules)
+
+- Cold craft lives in `src/lib/writing/cold-outreach.ts` (`OUTREACH_PRINCIPLES`, `coldOutreachGuide`) and the "Outreach specifics" block in `draftSystem()` in `src/lib/claude.ts`. `redraftSystem()` also injects `coldOutreachGuide`. The warm-intro path deliberately does **not** use them — keep it that way.
+- The anti-AI linter (`src/lib/writing/anti-ai.ts`, `lintAntiAi`) runs on every draft; don't put em dashes or its flagged phrases in example text you add to prompts.
+
+---
+
+## Step 4 — Sharper cold-message rules ✅
+
+**Why:** high-leverage-job-hunt's direct-message rules (Move 3) are sharper than
+what we had: open on the company's work, name the missing thing rather than
+the sender's skills, short sentences with specific nouns, end with a question,
+claim only what's true, and never mail-merge.
+
+### What landed
+
+| File | What |
+|------|------|
+| `src/lib/writing/cold-outreach.ts` | `OUTREACH_PRINCIPLES` 7 → 9: new **Name the gap, not your skills** and **No mail-merge**; "One reason, one ask" now **ends on a question**; "Be ruthlessly short" adds short sentences / specific nouns; credibility line must be **true** (only what the sender's background supports). Injected into every cold draft and every redraft/steer, all three channels. |
+| `src/lib/claude.ts` | `draftSystem()` "Outreach specifics": the advice question aims at a real problem/opportunity in the recipient's world; the sender's story is proof, never a skills list. (Warm-intro path untouched.) |
+| `src/lib/writing/anti-ai.ts` | Linter flags mail-merge phrases: "explore synergies", "explore potential synergies", "pick your brain", "hop on a (quick) call", "touch base". A hit triggers the existing one-pass humanize rewrite. "I'd love to connect" is prompt-only (too common in LinkedIn notes to lint without false positives). |
+| `.claude/skills/cold-outreach/SKILL.md` | Kept in sync (9 rules, credit, "not for warm intros" pointer). |
+| `src/lib/writing/cold-outreach.test.ts` | Rules present per channel, subject rule email-only, linter hits. |
+
+### Not verified here
+
+- No live LLM run (no API key in the container). The change is prompt text + 6 lint phrases; tests (254) pass.
+
+### For step 5 (find the right person for a job)
+
+- Existing people-finding pieces to reuse, not rebuild:
+  - `sourceHiringManagers()` in `src/lib/claude.ts` — Claude + web_search, ranked likely hiring managers for role@company (used by the apply flow).
+  - `sourcePeopleFromText()` — "people at X in Y" shortlist.
+  - Apollo: `src/lib/apollo.ts` (`findEmail`, `lookupEmployerApollo`); check for a people-search endpoint before adding one.
+  - Connections: `connectionsAt(names)` in `src/lib/connections/store.ts`.
+  - Compose: `startRun(text, { kind: "person", picked, intent })` + `setFocusedRun` then `router.push("/app/compose")` (see `AskForIntroButton`); the job page's existing "Interested — run the crew" button runs the full apply flow (`/api/compose/apply`).
+- The job page already shows `PeopleYouKnow` with warm-intro buttons (step 3); step 5 adds the *cold* side for when you don't know anyone, plus role-typed ≤300-char LinkedIn notes per career-ops `modes/contacto.md`.
+
+---
+
+## Step 5 — Find the right person for a job ✅
+
+**Why:** career-ops `modes/contacto.md` finds the hiring manager / recruiter /
+a peer for a job and drafts a ≤300-char LinkedIn note tuned to each. We do the
+same on the job page, combining every people source Jugaadu has: your
+connections (step 2), Claude web search, Apollo, and the existing Compose
+pipeline for full outreach.
+
+### What landed
+
+| File | What |
+|------|------|
+| `src/components/jobs/WhoToContact.tsx` | Job page card "WHO TO REACH OUT TO". On click (never automatic): lists people with a kind label (likely hiring manager / recruiter / on the team / you know them), sources (web · apollo · connections), the note with a `n/300` counter, **Copy note**, and **Draft outreach →** (Compose person run with the job as `job_context`) or **Ask for intro →** for someone you know (step 3's warm-intro run). Refresh after an hour. |
+| `src/app/api/jobs/[id]/contacts/route.ts` | `GET` cached result · `POST` compute (returns the cache if < 1 h old; 25 fresh lookups/user/day → 429). |
+| `src/lib/jobs/contacts.ts` | `findJobContacts()`: connections at the employer (all its names) → `sourceJobContacts()` (web) → Apollo (needs the domain the web step returns) → merge/dedupe (LinkedIn handle, then name) → flag anyone you know → `writeContactNotes()` → cache in `job_contacts`. |
+| `src/lib/jobs/contacts-logic.ts` | Pure: `roleCore()` (title family for Apollo's title filter), `mergeContacts`, `sortContacts` (known people first, then HM, recruiter, peer), `clampNote` (hard 300-char cut at a sentence/word boundary). Tested. |
+| `src/lib/claude.ts` | `sourceJobContacts()` (web_search, ≤6 uses; typed kinds; current-employer + no-fabrication rules copied from `sourceHiringManagers`; returns `company_domain`) and `writeContactNotes()` (one batched call; per-kind tone; cold-outreach + anti-AI guides; clamped). |
+| `src/lib/apollo.ts` | `searchPeopleApollo()` → `POST /mixed_people/api_search` (**0 credits**; first name + obfuscated last name + title only) and `revealPersonApollo(id)` → `POST /people/match {id}` (**1 credit**; full name + LinkedIn). Capped at `APOLLO_REVEAL_CAP = 3` per lookup: ≤2 managers (title family + manager/director/head seniority) + 1 recruiter. Both logged to `agent_runs`. |
+| `src/app/api/compose/route.ts`, `execute-person.ts`, `runs-store.ts` | Person runs accept `job_context {role, company}` (JSON body → `compose_runs.payload`), so "Draft outreach" anchors research on the company and the drafts on the role, exactly like the apply flow. |
+| `supabase/migrations/0035_job_contacts.sql` | Cache table (PK user+job, cascade on job delete, owner-only RLS). |
+| `src/lib/analytics/events.ts` | `job_contacts_found {count, apollo}`, `job_contact_action {action, kind}`. |
+
+### Database state
+
+- `0035_job_contacts` **applied** to `ccikbznbrjpruwiqzxib`.
+
+### Cost per lookup (worst case)
+
+One Sonnet web-search call (≤6 searches) + one Sonnet notes call + 2 free Apollo searches + ≤3 Apollo reveals. Cached per user+job; 25 fresh lookups per user per day.
+
+### Not verified here
+
+- No `ANTHROPIC_API_KEY` / `APOLLO_API_KEY` in this container, so the live lookup wasn't run. The Apollo request/response shapes follow Apollo's docs for `mixed_people/api_search` (0 credits, obfuscated last names) and `people/match` by `id`. If Apollo's plan blocks the search endpoint, the card still works from web + connections (`apollo` is reported on the DTO). **Worth a manual check after deploy:** open a Goldman / JPMorgan job → Find people → notes ≤300 chars → Draft outreach opens a Desk run.
+
+---
+
+## Wrap-up (all five steps)
+
+- **Migrations applied:** 0033 (enterprise ATS + Goldman/JPMorgan boards + `resolver_version`), 0034 (`connections`), 0035 (`job_contacts`).
+- **After deploy:** the jobs-fetch cron retries the 676 unplaced employers with the new job systems (≈60 per tick). Watch `/api/admin/universe` for resolved counts by ATS, and the `tracker_company_untrackable` events for what's still missing.
+- **Still untrackable by design:** Wayfair (PerimeterX CAPTCHA), SuccessFactors tenants behind Cloudflare, Phenom-only sites. Candidates for a later step: an aggregator fallback (Google Jobs via SerpApi / JSearch) for names with no board.

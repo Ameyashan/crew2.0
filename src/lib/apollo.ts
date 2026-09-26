@@ -273,3 +273,128 @@ export async function lookupEmployerApollo(input: {
   }
 }
 
+
+// ── People search (find-the-right-person for a job) ─────────────────────────
+// Two steps, because Apollo splits them:
+//   1. POST /mixed_people/api_search — FREE (0 credits), filters by employer
+//      domain + titles/seniorities, but returns only a first name, an
+//      obfuscated last name and the title (no LinkedIn, no email).
+//   2. POST /people/match { id } — reveals the full name + LinkedIn URL for
+//      one of those people. This is an enrichment call and costs a credit, so
+//      callers reveal only the top few.
+
+export interface ApolloPersonHit {
+  id: string;
+  first_name: string | null;
+  title: string | null;
+  organization: string | null;
+}
+
+export interface ApolloRevealed {
+  name: string;
+  title: string | null;
+  linkedin_url: string | null;
+  organization: string | null;
+}
+
+export async function searchPeopleApollo(input: {
+  domain: string;
+  titles?: string[];
+  seniorities?: string[];
+  perPage?: number;
+}): Promise<ApolloPersonHit[]> {
+  const apiKey = process.env.APOLLO_API_KEY;
+  if (!apiKey || !input.domain) return [];
+  const started = Date.now();
+  let outcome: "ok" | "error" | "no_match" = "ok";
+  let err: string | null = null;
+  try {
+    const body: Record<string, unknown> = {
+      q_organization_domains_list: [input.domain],
+      page: 1,
+      per_page: Math.min(Math.max(input.perPage ?? 10, 1), 25),
+    };
+    if (input.titles?.length) body.person_titles = input.titles;
+    if (input.seniorities?.length) body.person_seniorities = input.seniorities;
+    const resp = await fetch(`${APOLLO_BASE}/mixed_people/api_search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-cache", "x-api-key": apiKey },
+      body: JSON.stringify(body),
+    });
+    const raw = (await resp.json().catch(() => null)) as { people?: Array<Record<string, unknown>> } | null;
+    if (!resp.ok) {
+      outcome = "error";
+      err = `apollo ${resp.status}`;
+      return [];
+    }
+    const people = (raw?.people ?? [])
+      .map((p) => ({
+        id: typeof p.id === "string" ? p.id : "",
+        first_name: (p.first_name as string | undefined) ?? null,
+        title: (p.title as string | undefined) ?? null,
+        organization: ((p.organization as Record<string, unknown> | undefined)?.name as string | undefined) ?? null,
+      }))
+      .filter((p) => p.id);
+    if (!people.length) outcome = "no_match";
+    return people;
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    return [];
+  } finally {
+    await logAgentRun({
+      agent_type: "apollo:people_search",
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { domain: input.domain, titles: input.titles, seniorities: input.seniorities },
+    });
+  }
+}
+
+export async function revealPersonApollo(id: string): Promise<ApolloRevealed | null> {
+  const apiKey = process.env.APOLLO_API_KEY;
+  if (!apiKey || !id) return null;
+  const started = Date.now();
+  let outcome: "ok" | "error" | "no_match" = "ok";
+  let err: string | null = null;
+  try {
+    const resp = await fetch(`${APOLLO_BASE}/people/match`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-cache", "x-api-key": apiKey },
+      body: JSON.stringify({ id, reveal_personal_emails: false, reveal_phone_number: false }),
+    });
+    const raw = (await resp.json().catch(() => null)) as { person?: Record<string, unknown> } | null;
+    if (!resp.ok) {
+      outcome = "error";
+      err = `apollo ${resp.status}`;
+      return null;
+    }
+    const p = raw?.person;
+    const name =
+      (p?.name as string | undefined) ??
+      [p?.first_name, p?.last_name].filter((x) => typeof x === "string" && x).join(" ");
+    if (!p || !name) {
+      outcome = "no_match";
+      return null;
+    }
+    return {
+      name,
+      title: (p.title as string | undefined) ?? null,
+      linkedin_url: (p.linkedin_url as string | undefined) ?? null,
+      organization: ((p.organization as Record<string, unknown> | undefined)?.name as string | undefined) ?? null,
+    };
+  } catch (e) {
+    outcome = "error";
+    err = String(e);
+    return null;
+  } finally {
+    await logAgentRun({
+      agent_type: "apollo:people_reveal",
+      latency_ms: Date.now() - started,
+      outcome,
+      error: err,
+      meta: { id },
+    });
+  }
+}
