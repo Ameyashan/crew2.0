@@ -6,6 +6,7 @@ import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
 import { TOKENS, RADII } from "@/components/paper/tokens";
 import { CompanyLogo } from "@/components/paper/CompanyLogo";
 import { TrackerSetup, type SetupStep } from "@/components/jobs/TrackerSetup";
+import { PeopleYouKnow } from "@/components/jobs/PeopleYouKnow";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { postedAgo, compDisplay } from "@/lib/jobs/format";
 import type { TrackerDTO, TrackerJob } from "@/lib/jobs/types";
@@ -212,6 +213,7 @@ export default function JobsTrackerPage() {
     [tracker, companyFilter],
   );
   const pending = companies.filter((c) => !c.last_checked_at).length;
+  const filtered = companyFilter ? companies.find((c) => c.company_id === companyFilter) ?? null : null;
   const open = (id: string) => router.push(`/app/jobs/${id}`);
 
   return (
@@ -302,6 +304,15 @@ export default function JobsTrackerPage() {
             <em style={{ color: TOKENS.inkSoft }}>{rolesPhrase(tracker.role_terms)}</em>. We check their boards every
             few hours.
             {pending > 0 && ` First check for ${pending} new ${pending === 1 ? "company" : "companies"} lands within ~15 minutes.`}
+            {!tracker.connections_imported && (
+              <>
+                {" "}
+                <a href="/app/settings#connections" style={{ color: TOKENS.amber, textDecoration: "none" }}>
+                  Import your LinkedIn connections
+                </a>{" "}
+                to see who you know at each one.
+              </>
+            )}
           </div>
 
           {/* Company chips double as a filter. */}
@@ -332,10 +343,24 @@ export default function JobsTrackerPage() {
                   <span style={{ color: active ? TOKENS.paper : c.new_count ? TOKENS.green : TOKENS.faint }}>
                     {c.new_count ? `+${c.new_count}` : c.last_checked_at ? c.open_count : "…"}
                   </span>
+                  {c.known_count > 0 && (
+                    <span
+                      title={`You know ${c.known_count} ${c.known_count === 1 ? "person" : "people"} here`}
+                      style={{ color: active ? TOKENS.paper : TOKENS.amber }}
+                    >
+                      · {c.known_count} known
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
+
+          {filtered && (
+            <div style={{ marginBottom: 26 }}>
+              <PeopleYouKnow key={filtered.company_id} companyId={filtered.company_id} company={filtered.name} />
+            </div>
+          )}
 
           <SectionLabel
             color={TOKENS.green}

@@ -56,7 +56,7 @@ export function canonicalSlug(ats: string, slug: string): string {
 }
 
 // Words that rarely appear in a board slug ("Palantir Technologies" → palantir).
-const DROP_WORDS = new Set([
+export const DROP_WORDS = new Set([
   "the", "technologies", "technology", "systems", "labs", "holdings", "group", "company",
   "corporation", "inc", "financial", "services", "platforms", "software", "solutions",
 ]);
@@ -91,7 +91,7 @@ export function slugVariants(name: string): string[] {
 
 // Words a company adds to or drops from its name without becoming a
 // different company ("Scale" / "Scale AI", "Lucid USA" / "Lucid Motors").
-const DESCRIPTORS = new Set([
+export const DESCRIPTORS = new Set([
   "ai", "io", "hq", "health", "bank", "security", "motors", "aerospace", "enterprise", "careers",
   "digital", "biosciences", "bio", "card", "software", "private", "se", "usa", "us", "films",
   "therapeutics", "robotics", "energy", "capital", "financial", "global", "app", "3d",

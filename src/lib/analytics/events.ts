@@ -35,6 +35,9 @@ export const PRODUCT_EVENTS = {
   // company we have no job board for (demand signal for new adapters).
   tracker_companies_saved: {} as { count: number },
   tracker_company_untrackable: {} as { name: string },
+  // LinkedIn connections import (Settings) — powers "people you know at X".
+  connections_imported: {} as { count: number },
+  connections_cleared: {},
   // Signed-out funnel (blur gate)
   blur_gate_hit: {},
   blur_gate_signin_click: {},

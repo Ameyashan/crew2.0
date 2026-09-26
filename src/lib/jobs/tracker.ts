@@ -9,6 +9,7 @@ import { loadScanPrefs, matchesLocations, matchesVisaNeed } from "@/lib/jobs/sca
 import { jobLocation } from "@/lib/jobs/serialize";
 import { universeBadges, type UniverseBadgeInput } from "@/lib/jobs/universe/classify";
 import { TRACK_LIMIT, titleFilterOr, titleMatches, isNewListing } from "@/lib/jobs/tracker-match";
+import { connectionsSummary, knownCounts } from "@/lib/connections/store";
 import type { RemoteType, TrackedCompany, TrackerDTO, TrackerJob, VisaConfidence } from "@/lib/jobs/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -68,11 +69,24 @@ export async function loadTracker(
   opts?: { newSince?: number },
 ): Promise<TrackerDTO> {
   const newSince = opts?.newSince ?? Date.now() - DAY_MS;
-  const [ids, { prefs, currentRole }] = await Promise.all([loadTrackedCompanyIds(sb, uid), loadScanPrefs(sb, uid)]);
+  const [ids, { prefs, currentRole }, summary] = await Promise.all([
+    loadTrackedCompanyIds(sb, uid),
+    loadScanPrefs(sb, uid),
+    connectionsSummary(sb, uid),
+  ]);
   const roleTerms = roleTitleTerms(prefs.role_mode, prefs.target_roles, currentRole);
+  const connectionsImported = summary.count > 0;
   if (!ids.length) {
-    return { companies: [], new_jobs: [], open_jobs: [], role_terms: roleTerms, limit: TRACK_LIMIT };
+    return {
+      companies: [],
+      new_jobs: [],
+      open_jobs: [],
+      role_terms: roleTerms,
+      limit: TRACK_LIMIT,
+      connections_imported: connectionsImported,
+    };
   }
+  const known = connectionsImported ? await knownCounts(sb, uid, ids) : new Map<string, number>();
 
   const { data: companyData } = await sb
     .from("companies")
@@ -129,6 +143,7 @@ export async function loadTracker(
       open_count: jobs.length,
       new_count: jobs.filter((j) => j.is_new).length,
       last_checked_at: c.last_fetched_at,
+      known_count: known.get(id) ?? 0,
     });
     all.push(...jobs);
   }
@@ -140,5 +155,6 @@ export async function loadTracker(
     open_jobs: all.filter((j) => !j.is_new).slice(0, MAX_OPEN_JOBS),
     role_terms: roleTerms,
     limit: TRACK_LIMIT,
+    connections_imported: connectionsImported,
   };
 }

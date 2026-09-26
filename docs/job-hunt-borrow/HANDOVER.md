@@ -74,3 +74,44 @@ Collision checks: Goldman's board does **not** verify as JPMorgan; ServiceNow's 
 
 - Company identity for matching connections: `companies.name` / `normalized`, and `company_universe.name` / `match_key` (`normalizeEmployerName` in `src/lib/jobs/h1b/normalize.ts`). Use the same normalizer for a connection's company so "Goldman Sachs" ↔ "Goldman Sachs Group" match.
 - Tracker cards come from `GET /api/jobs/tracker` (`src/lib/jobs/tracker.ts`), job detail from `GET /api/jobs/[id]`.
+
+---
+
+## Step 2 — LinkedIn connections → "people you know" ✅
+
+**Why:** high-leverage-job-hunt's core move is a warm path in before a cold
+application; career-ops cross-references a LinkedIn connections export against
+target companies. We do that with the user's *own* export — no scraping, no
+LinkedIn API, no ToS risk.
+
+### What landed
+
+| File | What |
+|------|------|
+| `src/lib/connections/csv.ts` | Browser-side parser for LinkedIn's `Connections.csv` (skips the "Notes:" preamble, RFC-4180 quotes, "15 Mar 2024" dates). **Drops email addresses** — they never leave the browser. |
+| `src/lib/connections/match.ts` | `companyKey` / `companyCore` — match keys so "Goldman Sachs" ↔ "Goldman Sachs Group", "JPMorganChase" ↔ "JPMorgan Chase", "Scale AI" ↔ "Scale". Reuses `normalizeEmployerName` + probe.ts's `DROP_WORDS`/`DESCRIPTORS` (now exported). Filters "Self-employed", "Stealth", … |
+| `src/lib/connections/store.ts` | Chunked import (`stageConnections`: rows land `pending`, the final chunk swaps them in atomically-enough — readers skip pending rows), `connectionsAt(names)`, `knownCounts(companyIds)`, `employerNames(companyIds)` (catalog name + universe name + aliases), `clearConnections`. |
+| `src/app/api/connections/route.ts` | `GET` summary · `POST` one chunk (≤4,000 rows) · `DELETE` all. |
+| `src/app/api/connections/at/route.ts` | `GET ?company_id=…&company=…` → `{ total, people, imported }`. |
+| `src/components/paper/ConnectionsCard.tsx` | Settings card (anchor `#connections`): how to get the export, upload, progress, delete. |
+| `src/components/jobs/PeopleYouKnow.tsx` | Reusable "YOU KNOW N PEOPLE HERE" card. Props `renderAction(person)` and `footer` are the hooks for steps 3 and 5. |
+| `src/lib/jobs/tracker.ts` + `types.ts` | `TrackedCompany.known_count`, `TrackerDTO.connections_imported`. |
+| `src/app/app/jobs/page.tsx` | Chips show "· N known"; filtering to a company shows its PeopleYouKnow card; import nudge when nothing is imported. |
+| `src/app/app/jobs/[id]/page.tsx` | PeopleYouKnow card in the job's right rail (stacked on mobile). |
+| `src/lib/analytics/events.ts` | `connections_imported {count}`, `connections_cleared`. |
+| `supabase/migrations/0034_connections.sql` | `connections` table (no email column), `(user_id, company_core)` index, owner-only RLS. |
+| `src/lib/connections/connections.test.ts` | Parser, email-drop, date/URL, and company-matching tests. |
+
+### Database state
+
+- `0034_connections` **applied** to `ccikbznbrjpruwiqzxib`. Empty table; nothing to backfill.
+
+### Not verified here
+
+- No browser run (the container has no Supabase/Anthropic env to boot `next dev`). Type-check, lint (no new errors; 5 pre-existing), and `npm test` (249 pass) are clean. **Worth a manual pass after deploy:** Settings → upload a real `Connections.csv` → tracker chips show "· N known" → a job page shows the card.
+
+### For step 3 (warm-intro draft)
+
+- Put the action on each person via `<PeopleYouKnow renderAction={(p) => …} />` — used on the job page (`src/app/app/jobs/[id]/page.tsx`) and the filtered tracker view (`src/app/app/jobs/page.tsx`).
+- A person is `Connection` from `src/lib/connections/store.ts`: `{ id, full_name, linkedin_url, company, position, connected_on }`. We have **no email** for them by design — the intro ask is a LinkedIn DM (or email if Apollo/Hunter finds one in Compose).
+- Compose entry points: `startRun(input, { kind })` in `src/lib/runs-store.ts` (the job page already uses it); intents flow through `POST /api/compose` → `src/lib/agents/reach-out`.

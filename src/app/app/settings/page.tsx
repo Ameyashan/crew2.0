@@ -11,6 +11,7 @@ import {
 } from "@/components/paper/phase5-logic";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { ApplicationDetailsCard } from "@/components/paper/ApplicationDetailsCard";
+import { ConnectionsCard } from "@/components/paper/ConnectionsCard";
 
 // White soft-shadow card surface.
 function Card({ children, style }) {
@@ -191,6 +192,8 @@ function SettingsV3({ profile, saveProfile, reloadProfile }) {
           isMobile={isMobile}
           style={{ gridColumn: isMobile ? undefined : "1 / -1" }}
         />
+
+        <ConnectionsCard style={{ gridColumn: isMobile ? undefined : "1 / -1" }} />
 
         <Card style={{ gridColumn: isMobile ? undefined : "1 / -1" }}>
           <div
