@@ -115,3 +115,39 @@ LinkedIn API, no ToS risk.
 - Put the action on each person via `<PeopleYouKnow renderAction={(p) => …} />` — used on the job page (`src/app/app/jobs/[id]/page.tsx`) and the filtered tracker view (`src/app/app/jobs/page.tsx`).
 - A person is `Connection` from `src/lib/connections/store.ts`: `{ id, full_name, linkedin_url, company, position, connected_on }`. We have **no email** for them by design — the intro ask is a LinkedIn DM (or email if Apollo/Hunter finds one in Compose).
 - Compose entry points: `startRun(input, { kind })` in `src/lib/runs-store.ts` (the job page already uses it); intents flow through `POST /api/compose` → `src/lib/agents/reach-out`.
+
+---
+
+## Step 3 — Warm-intro request draft ✅
+
+**Why:** high-leverage-job-hunt Move 3: once you know *who* you know at a
+company (step 2), the next move is a concrete, easy-to-act-on intro request, not
+a cold note to a stranger.
+
+### What landed
+
+| File | What |
+|------|------|
+| `src/lib/writing/warm-intro.ts` | The warm-intro "skill": 6 principles as data (honest about the relationship, name the target, one line on fit, one explicit easy ask, a forwardable third-person blurb (not on X), don't pitch the connection), `warmIntroGuide(channel)`, `warmIntroIntent(target)`, `parseWarmIntroTarget(untrusted)`. No em dashes in the guidance (the anti-AI linter treats them as a tell). |
+| `src/lib/claude.ts` | `DraftInput.warm_intro`; `warmIntroSystem()` swaps in for `draftSystem()` (cold-outreach craft is *not* applied to a warm ask); own length budgets (room for the blurb); the user prompt states the target instead of the job-application block. Same anti-AI lint + humanize pass as every draft. |
+| `src/lib/agents/reach-out/index.ts` | `RunReachOutInput.warm_intro` → passed to `draft()`; research's `expect_company` = the target company (the connection must work there). |
+| `src/app/api/compose/route.ts`, `src/lib/runs/execute-person.ts` | `warm_intro` accepted on the JSON body, stored in `compose_runs.payload` (so the cron re-drive keeps it), default intent "Warm intro ask: …". |
+| `src/lib/runs-store.ts` | `startRun(…, { picked, warmIntro })`; `Run.initialPicked` / `Run.warmIntro` forwarded on every (re)launch. |
+| `src/components/jobs/AskForIntroButton.tsx` | "Ask for intro →" on each person: starts the run anchored on their LinkedIn URL + name/title/company, opens the Desk. Event `warm_intro_started`. |
+| Job page + filtered tracker | `PeopleYouKnow renderAction` → `AskForIntroButton` (job page passes role + posting URL; tracker passes just the company). |
+| `src/lib/writing/warm-intro.test.ts` | Target parsing, intent, per-channel blurb rule. |
+
+### Behavior notes
+
+- A warm-intro run is an ordinary **person** run (same Desk card, History entry, email lookup, three channel drafts, redraft/steer), so nothing downstream needed to change.
+- Research is anchored on the connection's LinkedIn URL when the export had one (it almost always does).
+- No DB change in this step.
+
+### Not verified here
+
+- No `ANTHROPIC_API_KEY` in this container, so no live draft was generated. Prompt assembly, types, lint and tests (252 pass) are clean. **Worth a manual check after deploy:** Jobs → a tracked company with connections → "Ask for intro →" → the Desk run drafts a LinkedIn note with a forwardable blurb.
+
+### For step 4 (sharper cold rules)
+
+- Cold craft lives in `src/lib/writing/cold-outreach.ts` (`OUTREACH_PRINCIPLES`, `coldOutreachGuide`) and the "Outreach specifics" block in `draftSystem()` in `src/lib/claude.ts`. `redraftSystem()` also injects `coldOutreachGuide`. The warm-intro path deliberately does **not** use them — keep it that way.
+- The anti-AI linter (`src/lib/writing/anti-ai.ts`, `lintAntiAi`) runs on every draft; don't put em dashes or its flagged phrases in example text you add to prompts.

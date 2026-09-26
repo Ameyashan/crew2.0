@@ -7,6 +7,7 @@ import { TOKENS, RADII } from "@/components/paper/tokens";
 import { CompanyLogo } from "@/components/paper/CompanyLogo";
 import { TrackerSetup, type SetupStep } from "@/components/jobs/TrackerSetup";
 import { PeopleYouKnow } from "@/components/jobs/PeopleYouKnow";
+import { AskForIntroButton } from "@/components/jobs/AskForIntroButton";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { postedAgo, compDisplay } from "@/lib/jobs/format";
 import type { TrackerDTO, TrackerJob } from "@/lib/jobs/types";
@@ -358,7 +359,12 @@ export default function JobsTrackerPage() {
 
           {filtered && (
             <div style={{ marginBottom: 26 }}>
-              <PeopleYouKnow key={filtered.company_id} companyId={filtered.company_id} company={filtered.name} />
+              <PeopleYouKnow
+                key={filtered.company_id}
+                companyId={filtered.company_id}
+                company={filtered.name}
+                renderAction={(p) => <AskForIntroButton person={p} target={{ company: filtered.name }} />}
+              />
             </div>
           )}
 

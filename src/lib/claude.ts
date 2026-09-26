@@ -9,6 +9,7 @@ import {
   type AntiAiViolation,
 } from "@/lib/writing/anti-ai";
 import { coldOutreachGuide } from "@/lib/writing/cold-outreach";
+import { warmIntroGuide, type WarmIntroTarget } from "@/lib/writing/warm-intro";
 
 const MODEL = "claude-sonnet-4-6";
 
@@ -1460,6 +1461,10 @@ export interface DraftInput {
   // Anchors the subject + body on this so a stray Intent can't redirect the
   // email to a different company.
   job_context?: { role?: string | null; company?: string | null };
+  // Warm-intro ask: the recipient is someone the sender already knows at
+  // `company`; the draft asks them for an intro / to forward a note instead of
+  // being a cold message (src/lib/writing/warm-intro.ts).
+  warm_intro?: WarmIntroTarget;
 }
 
 export interface DraftResult {
@@ -1473,6 +1478,32 @@ const LENGTH_BUDGETS: Record<Channel, string> = {
   x_dm: "40–60 words. No subject. No greeting. Get to the point in sentence one.",
   linkedin: "60–100 words. No subject. One short greeting line maximum.",
 };
+
+// A warm-intro ask carries a forwardable blurb, so it gets a little more room.
+const WARM_INTRO_BUDGETS: Record<Channel, string> = {
+  email: "90–150 words including the forwardable blurb. Subject line under 6 words, specific (e.g. 'intro to the payments team?').",
+  x_dm: "35–60 words. No subject, no blurb.",
+  linkedin: "70–130 words including the forwardable blurb. No subject. One short greeting line maximum.",
+};
+
+function warmIntroSystem(channel: Channel, signOffName?: string, signOffLinkedin?: string) {
+  return `You write a short message, in the sender's voice, to someone they already know (a LinkedIn connection) asking for an introduction at that person's company. The sender hates AI-sounding writing.
+
+Channel: ${channel}.
+Length: ${WARM_INTRO_BUDGETS[channel]}
+
+${antiAiWritingGuide("prose")}
+
+${warmIntroGuide(channel)}
+
+- Use ONE concrete proof point from the sender's own stories/background. Do not invent achievements.
+- If the research shows the recipient's own team or role, use it to make the ask specific ("since you're on the data platform side…") — but never claim they are the hiring manager.
+- ${signOffInstruction(channel, signOffName, signOffLinkedin)}
+- Do NOT respond with meta-commentary like "I need more context" — write the best message you can with what you have.
+
+Output strict JSON only:
+${channel === "email" ? '{ "subject": string, "body": string }' : '{ "body": string }'}`;
+}
 
 // Shared closer rule so a one-off draft, a humanize rewrite, and an "Another
 // angle" redraft all sign off the same way. For email we append the sender's
@@ -1635,7 +1666,19 @@ export async function draft(input: DraftInput): Promise<DraftResult> {
     `Research:\n${ctx.context_lines.filter(Boolean).map((l) => `- ${l}`).join("\n") || "(no specific facts found)"}`
   );
 
-  if (input.job_context && (input.job_context.role || input.job_context.company)) {
+  if (input.warm_intro) {
+    const w = input.warm_intro;
+    userBlocks.push(
+      [
+        `# What the sender wants from this connection`,
+        `An introduction to the right person at ${w.company}${w.role ? ` for the ${w.role} role` : ""}${w.team ? ` (${w.team})` : ""}.`,
+        w.job_url && `Posting: ${w.job_url}`,
+        `The recipient is a 1st-degree LinkedIn connection of the sender who works at ${w.company}.`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  } else if (input.job_context && (input.job_context.role || input.job_context.company)) {
     const jc = [
       input.job_context.role && `Role: ${input.job_context.role}`,
       input.job_context.company && `Company: ${input.job_context.company}`,
@@ -1693,7 +1736,9 @@ export async function draft(input: DraftInput): Promise<DraftResult> {
     const resp = await client().messages.create({
       model: MODEL,
       max_tokens: 600,
-      system: draftSystem(input.channel, input.sender_full_name, input.sender_linkedin),
+      system: input.warm_intro
+        ? warmIntroSystem(input.channel, input.sender_full_name, input.sender_linkedin)
+        : draftSystem(input.channel, input.sender_full_name, input.sender_linkedin),
       messages: [{ role: "user", content: userPrompt }],
     });
     inTokens = resp.usage.input_tokens;
@@ -1714,7 +1759,7 @@ export async function draft(input: DraftInput): Promise<DraftResult> {
       latency_ms: Date.now() - started,
       outcome,
       error: err,
-      meta: { intent: input.intent },
+      meta: { intent: input.intent, warm_intro: !!input.warm_intro },
     });
   }
 

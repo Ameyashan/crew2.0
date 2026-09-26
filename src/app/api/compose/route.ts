@@ -8,6 +8,7 @@ import { parseAgents } from "@/lib/agent-selection";
 import { assertAnonRunAllowed } from "@/lib/anon-rate-limit";
 import { runPersonPipeline, type PersonPayload } from "@/lib/runs/execute-person";
 import { makeDbSink } from "@/lib/runs/sink";
+import { parseWarmIntroTarget, warmIntroIntent } from "@/lib/writing/warm-intro";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -85,14 +86,17 @@ async function parseInput(req: NextRequest): Promise<ParsedInput | { error: stri
   }
 
   const body = await req.json().catch(() => ({}));
+  // Warm-intro ask (JSON only — started from a "people you know" card).
+  const warmIntro = parseWarmIntroTarget(body?.warm_intro) ?? undefined;
   return {
     input: {
       text: (body?.text ?? "").toString(),
-      intent: body?.intent ? body.intent.toString() : undefined,
+      intent: body?.intent ? body.intent.toString() : warmIntro ? warmIntroIntent(warmIntro) : undefined,
       picked: body?.picked && typeof body.picked === "object" ? body.picked : undefined,
       provided_email:
         typeof body?.provided_email === "string" && body.provided_email.trim() ? body.provided_email.trim() : undefined,
       agents: parseAgents(body?.agents),
+      warm_intro: warmIntro,
     },
     screenshot_id: typeof body?.screenshot_id === "string" && body.screenshot_id.trim() ? body.screenshot_id.trim() : undefined,
   };
@@ -147,6 +151,7 @@ export async function POST(req: NextRequest) {
     provided_email: input.provided_email,
     screenshot_id,
     agents: input.agents,
+    warm_intro: input.warm_intro,
   };
 
   const nowIso = new Date().toISOString();

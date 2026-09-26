@@ -9,6 +9,7 @@ import { startRun, setFocusedRun } from "@/lib/runs-store";
 import { CompanyLogo } from "@/components/paper/CompanyLogo";
 import { FollowButton } from "@/components/paper/FollowButton";
 import { PeopleYouKnow } from "@/components/jobs/PeopleYouKnow";
+import { AskForIntroButton } from "@/components/jobs/AskForIntroButton";
 import {
   postedAgo,
   compDisplay,
@@ -293,7 +294,18 @@ export default function JobDetailPage() {
             </p>
           );
 
-          const peopleCard = <PeopleYouKnow companyId={job.company_id} company={job.company} />;
+          const peopleCard = (
+            <PeopleYouKnow
+              companyId={job.company_id}
+              company={job.company}
+              renderAction={(p) => (
+                <AskForIntroButton
+                  person={p}
+                  target={{ company: job.company, role: job.title, job_url: job.url }}
+                />
+              )}
+            />
+          );
 
           const jdCard = (
             <div

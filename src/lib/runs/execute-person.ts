@@ -15,6 +15,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { runWithUser } from "@/lib/user-context";
 import { parseAgents } from "@/lib/agent-selection";
 import { isJobBoardUrl } from "@/lib/kind-detect";
+import { parseWarmIntroTarget } from "@/lib/writing/warm-intro";
 import type { RunSink, DrainableSink } from "./sink";
 
 // Inputs captured on the compose_runs row so a fresh worker can re-run with no
@@ -26,6 +27,8 @@ export type PersonPayload = {
   provided_email?: string;
   screenshot_id?: string;
   agents?: unknown;
+  // Warm-intro ask (src/lib/writing/warm-intro.ts) — `picked` is the connection.
+  warm_intro?: unknown;
 };
 
 // Reload the uploaded screenshot from storage so research can read the person's
@@ -118,6 +121,7 @@ export async function runPersonPipeline(composeRunId: string, sink: RunSink): Pr
     const picked = p.picked ?? undefined;
     const provided_email = p.provided_email || undefined;
     const agents = parseAgents(p.agents);
+    const warm_intro = parseWarmIntroTarget(p.warm_intro) ?? undefined;
 
     let person: unknown = null;
     let enrichment: unknown = null;
@@ -138,7 +142,7 @@ export async function runPersonPipeline(composeRunId: string, sink: RunSink): Pr
         send({ type: "kind_suggestion", suggest: "job" });
       }
 
-      const input: RunReachOutInput = { text, intent, picked, intent_image, provided_email, agents };
+      const input: RunReachOutInput = { text, intent, picked, intent_image, provided_email, agents, warm_intro };
       for await (const evt of runReachOutStream({ ...input, compose_run_id: composeRunId })) {
         send(evt);
         if (evt.type === "step" && evt.id === "research" && evt.status === "done") {

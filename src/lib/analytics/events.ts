@@ -38,6 +38,8 @@ export const PRODUCT_EVENTS = {
   // LinkedIn connections import (Settings) — powers "people you know at X".
   connections_imported: {} as { count: number },
   connections_cleared: {},
+  // "Ask for intro" on a connection → warm-intro Compose run.
+  warm_intro_started: {} as { has_role: boolean },
   // Signed-out funnel (blur gate)
   blur_gate_hit: {},
   blur_gate_signin_click: {},
