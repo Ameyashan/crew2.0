@@ -1,8 +1,9 @@
 // Deterministic board discovery for universe companies: try slug variants of
-// the company name on the public Greenhouse / Lever / Ashby APIs and accept a
-// board only if it (a) has at least one job and (b) plausibly belongs to THIS
-// company — Greenhouse exposes the board's display name; Lever/Ashby don't, so
-// we require the company's name to appear in a posting's text. That second
+// the company name on the public Greenhouse / Lever / Ashby / SmartRecruiters
+// APIs and accept a board only if it (a) has at least one job and (b)
+// plausibly belongs to THIS company — Greenhouse and SmartRecruiters expose
+// the company's display name; Lever/Ashby don't, so we require the company's
+// name to appear in a posting's text. That second
 // check is what keeps "plume" or "arm" from binding to an unrelated company.
 //
 // Relative imports only: scripts/probe-company-boards.ts runs this under plain
@@ -11,8 +12,8 @@
 
 import { normalizeEmployerName } from "../h1b/normalize.ts";
 
-export type ProbeAts = "greenhouse" | "lever" | "ashby";
-export const PROBE_ATS: ProbeAts[] = ["greenhouse", "lever", "ashby"];
+export type ProbeAts = "greenhouse" | "lever" | "ashby" | "smartrecruiters";
+export const PROBE_ATS: ProbeAts[] = ["greenhouse", "lever", "ashby", "smartrecruiters"];
 
 export interface BoardHit {
   ats: ProbeAts;
@@ -37,14 +38,19 @@ async function getJson(url: string): Promise<unknown | null> {
 }
 
 // The one stored form of a board slug, so the same board can't enter the
-// catalog twice under different casing ("Ramp" / "ramp"): Greenhouse, Lever
-// and Ashby tokens are case-insensitive → lowercase; Workday lowercases the
-// tenant and wdN but keeps the site as published.
+// catalog twice under different casing ("Ramp" / "ramp"): Greenhouse, Lever,
+// Ashby, SmartRecruiters, Eightfold and iCIMS tokens are case-insensitive →
+// lowercase; Workday lowercases the tenant and wdN but keeps the site as
+// published; Oracle lowercases the host but keeps the site number.
 export function canonicalSlug(ats: string, slug: string): string {
   const s = slug.trim();
   if (ats === "workday") {
     const m = s.match(/^([^/]+)\/([^/]+)\/(.+)$/);
     return m ? `${m[1].toLowerCase()}/${m[2].toLowerCase()}/${m[3]}` : s;
+  }
+  if (ats === "oracle") {
+    const m = s.match(/^([^/]+)\/(.+)$/);
+    return m ? `${m[1].toLowerCase()}/${m[2]}` : s;
   }
   return s.toLowerCase();
 }
@@ -152,6 +158,13 @@ export async function probeBoard(ats: ProbeAts, slug: string, name: string): Pro
       .map((j) => [s(j.descriptionPlain), s(j.additionalPlain), s(j.text)].join(" "))
       .join(" ");
     return mentions(sample, name) ? data.length : null;
+  }
+  if (ats === "smartrecruiters") {
+    const data = (await getJson(`https://api.smartrecruiters.com/v1/companies/${enc}/postings?limit=1`)) as Jsonish | null;
+    const total = typeof data?.totalFound === "number" ? (data.totalFound as number) : 0;
+    const first = Array.isArray(data?.content) ? ((data!.content as Jsonish[])[0] ?? null) : null;
+    const company = s((first?.company as Jsonish | undefined)?.name);
+    return total > 0 && sameCompanyName(company, name) ? total : null;
   }
   const data = (await getJson(`https://api.ashbyhq.com/posting-api/job-board/${enc}`)) as Jsonish | null;
   const jobs = Array.isArray(data?.jobs) ? (data!.jobs as Jsonish[]) : [];

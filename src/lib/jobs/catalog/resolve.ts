@@ -7,6 +7,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "@/lib/claude";
 import { logAgentRun } from "@/lib/agent-runs";
 import { SECTORS, isSectorId } from "@/lib/jobs/catalog/sectors";
+import { ATS_VALUES } from "@/lib/db/schema";
+import { BOARD_FORMATS_PROMPT } from "@/lib/jobs/sources/formats";
 import type { Ats } from "@/lib/jobs/types";
 
 const MODEL = "claude-sonnet-4-6";
@@ -35,12 +37,13 @@ interface ResolveInput {
   perSector?: number; // how many companies to request per sector
 }
 
-const SYSTEM = `You map job-market interests to company career boards. Given sector tags and/or specific company names, list real companies that ACTIVELY hire and are likely hosted on Greenhouse, Lever, Ashby, or Workday.
+const SYSTEM = `You map job-market interests to company career boards. Given sector tags and/or specific company names, list real companies that ACTIVELY hire and are likely hosted on a supported applicant tracking system.
 
 For each company give your single best guess of:
-- "ats": one of "greenhouse" | "lever" | "ashby" | "workday" (large enterprises mostly use Workday).
-- "slug": the board/site slug used in that ATS's URL. Greenhouse and Lever slugs are almost always the company name lowercased with no spaces (e.g. "stripe", "scaleai"); Ashby slugs are usually the company name in its normal casing (e.g. "Ramp", "Linear", "OpenAI"). Workday slugs are "tenant/wdN/site" from https://<tenant>.<wdN>.myworkdayjobs.com/<site> (e.g. "nvidia/wd5/NVIDIAExternalCareerSite").
+- "ats" and "slug": where its CURRENT US listings are hosted (large enterprises mostly use Workday or Oracle; startups mostly Greenhouse, Lever or Ashby).
 - "sectors": which of the PROVIDED sector ids this company fits (subset; may be empty for a company given only by name).
+
+${BOARD_FORMATS_PROMPT}
 
 Rules:
 - Prefer well-known, currently-hiring companies. It is fine to be wrong about the exact slug — a validator checks every guess against the live board, so guess your best.
@@ -48,11 +51,15 @@ Rules:
 - Do NOT include a company more than once.
 
 Output strict JSON only, no prose:
-{ "companies": [ { "company": string, "ats": "greenhouse"|"lever"|"ashby"|"workday", "slug": string, "sectors": string[] } ] }`;
+{ "companies": [ { "company": string, "ats": string, "slug": string, "sectors": string[] } ] }`;
 
 function isAts(v: unknown): v is Ats {
-  return v === "greenhouse" || v === "lever" || v === "ashby" || v === "workday";
+  return typeof v === "string" && (ATS_VALUES as readonly string[]).includes(v);
 }
+
+// ATSes whose slug is a single name-like token, so name variants are worth
+// trying; the others (Workday, Oracle, Eightfold, iCIMS) are structured.
+const TOKEN_ATS = new Set<Ats>(["greenhouse", "lever", "ashby", "smartrecruiters"]);
 
 // Programmatic slug variants for a company name, used as fallbacks after the
 // model's primary guess. Bounded so the validator never probes too much.
@@ -140,8 +147,8 @@ export async function resolveCandidates(input: ResolveInput): Promise<ResolvedCo
     // Ordered attempts: model's primary guess, then programmatic variants on the
     // same ATS. Deduped and capped.
     // Name-derived variants only make sense for token-style slugs; a Workday
-    // slug is a tenant/wdN/site triple.
-    const slugs = r.ats === "workday" ? [primarySlug] : [primarySlug, ...slugVariants(company)];
+    // slug is a tenant/wdN/site triple, an Oracle one host/site, etc.
+    const slugs = TOKEN_ATS.has(r.ats) ? [primarySlug, ...slugVariants(company)] : [primarySlug];
     const attempts: { ats: Ats; slug: string }[] = [];
     const seen = new Set<string>();
     for (const slug of slugs) {

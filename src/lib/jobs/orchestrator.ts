@@ -17,6 +17,11 @@ import { fetchGreenhouseBoard } from "@/lib/jobs/sources/greenhouse";
 import { fetchLeverBoard } from "@/lib/jobs/sources/lever";
 import { fetchAshbyBoard } from "@/lib/jobs/sources/ashby";
 import { fetchWorkdayBoard, fetchWorkdayBoardPaged } from "@/lib/jobs/sources/workday";
+import { fetchOracleBoardPaged } from "@/lib/jobs/sources/oracle";
+import { fetchSmartRecruitersBoardPaged } from "@/lib/jobs/sources/smartrecruiters";
+import { fetchEightfoldBoardPaged } from "@/lib/jobs/sources/eightfold";
+import { fetchIcimsBoardPaged } from "@/lib/jobs/sources/icims";
+import { isLazyHydrated } from "@/lib/jobs/hydrate";
 import type { Ats, BoardTarget, FetchResult, NormalizedJob } from "@/lib/jobs/types";
 
 // A board fetch that may be deliberately partial (Workday caps at the newest
@@ -48,14 +53,33 @@ export async function fetchBoard(
       return fetchAshbyBoard(slug, companyName);
     case "workday":
       return fetchWorkdayBoard(slug, companyName);
+    case "oracle":
+    case "smartrecruiters":
+    case "eightfold":
+    case "icims":
+      return (await fetchBoardResult(ats, slug, companyName)).jobs;
     default:
       return [];
   }
 }
 
+// Workday and the enterprise boards (Oracle, SmartRecruiters, Eightfold,
+// iCIMS) may be capped at their newest postings, so they report completeness.
 export async function fetchBoardResult(ats: Ats, slug: string, companyName?: string): Promise<BoardFetchResult> {
-  if (ats === "workday") return fetchWorkdayBoardPaged(slug, companyName);
-  return { jobs: await fetchBoard(ats, slug, companyName), complete: true };
+  switch (ats) {
+    case "workday":
+      return fetchWorkdayBoardPaged(slug, companyName);
+    case "oracle":
+      return fetchOracleBoardPaged(slug, companyName);
+    case "smartrecruiters":
+      return fetchSmartRecruitersBoardPaged(slug, companyName);
+    case "eightfold":
+      return fetchEightfoldBoardPaged(slug, companyName);
+    case "icims":
+      return fetchIcimsBoardPaged(slug, companyName);
+    default:
+      return { jobs: await fetchBoard(ats, slug, companyName), complete: true };
+  }
 }
 
 // A board that fails this many fetches in a row is deactivated (the company
@@ -191,10 +215,11 @@ export async function fetchAllListings(opts?: FetchOptions): Promise<FetchResult
             is_active: true,
             updated_at: runTs,
           };
-          // A Workday row we already have may be hydrated (JD, real start
-          // date, full locations — see hydrate.ts); the listing only carries
-          // a summary, so refreshing must not overwrite those columns.
-          if (n.ats === "workday" && existing.has(n.external_job_id)) return base;
+          // A lazily-hydrated row we already have (Workday, Oracle, …) may
+          // carry its JD, real start date and full locations (hydrate.ts);
+          // the listing only has a summary, so refreshing must not overwrite
+          // those columns.
+          if (isLazyHydrated(n.ats) && existing.has(n.external_job_id)) return base;
           return {
             ...base,
             location_raw: n.location_raw,
