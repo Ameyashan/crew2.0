@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { runWithUser } from "@/lib/user-context";
+import { runWithUser, runAsSystem } from "@/lib/user-context";
+import { systemBudgetStatus } from "@/lib/llm-budget";
 import { fetchAllListings } from "@/lib/jobs/orchestrator";
 import { enrichJobs } from "@/lib/jobs/enrich";
 import { scoreDueUsers } from "@/lib/jobs/scan";
@@ -31,7 +32,9 @@ export const maxDuration = 300;
 //               never across the whole catalog.
 //
 // Every phase is idempotent and bounded, so an overlapping or failed tick is
-// harmless: the next one picks up where the queue stands.
+// harmless: the next one picks up where the queue stands. The LLM phases
+// (resolve, sectors, H-1B match) stop at the daily system budget
+// (src/lib/llm-budget.ts) and resume the next UTC day.
 
 const FETCH_INTERVAL_MS = 20 * 3_600_000;
 const FETCH_BUDGET_MS = 140_000;
@@ -117,6 +120,7 @@ async function tick() {
     ]);
     return { stale_boards: stale.count, unresolved_universe: pending.count, unenriched_jobs: unenriched.count };
   });
+  await safe("llm_budget", systemBudgetStatus);
 
   return { ok: true, elapsed_ms: Date.now() - started, ...out };
 }
@@ -129,7 +133,7 @@ export async function GET(req: NextRequest) {
   if (auth !== `Bearer ${expected}` && req.headers.get("x-cron-secret") !== expected) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
-  // Anonymous context: the LLM phases log through logAgentRun, which needs
-  // one; per-user scoring re-wraps with the real uid.
-  return runWithUser(null, async () => Response.json(await tick()));
+  // System context: the LLM phases log (and are budgeted) as system spend;
+  // per-user scoring re-wraps with the real uid.
+  return runAsSystem(async () => Response.json(await tick()));
 }

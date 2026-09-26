@@ -25,6 +25,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "@/lib/claude";
 import { logAgentRun } from "@/lib/agent-runs";
+import { systemBudgetExhausted } from "@/lib/llm-budget";
 import { supabaseAdmin } from "@/lib/supabase";
 import { mapPool } from "@/lib/jobs/util";
 import { normalizeEmployerName, rollupStats, evidenceFromStats, type FyRecord } from "@/lib/jobs/h1b/normalize";
@@ -248,6 +249,10 @@ export async function matchCompaniesToH1b(opts?: { onlyUnmatched?: boolean }): P
 
   // Tier 2: LLM disambiguation over the prefix candidates, batched.
   for (let i = 0; i < pending.length; i += COMPANIES_PER_LLM_CALL) {
+    // Over the daily cron budget: stop before the call — an empty pick list
+    // would record these companies as unmatched. The rest keep
+    // h1b_matched_at null and are picked up by a later run.
+    if (await systemBudgetExhausted()) break;
     const batch = pending.slice(i, i + COMPANIES_PER_LLM_CALL);
     const picks = await llmDisambiguate(batch);
     for (let b = 0; b < batch.length; b++) {

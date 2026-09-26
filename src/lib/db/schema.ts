@@ -123,7 +123,8 @@ export interface VoiceSample {
 
 export interface AgentRun {
   id: string;
-  user_id: string;
+  user_id: string | null; // null for anonymous (blur-gate) and system (cron) runs
+  system: boolean; // unattended cron work, budgeted daily (0032)
   agent_type: string;
   model: string | null;
   input_tokens: number | null;

@@ -21,6 +21,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "@/lib/claude";
 import { logAgentRun } from "@/lib/agent-runs";
+import { systemBudgetExhausted } from "@/lib/llm-budget";
 import { supabaseAdmin } from "@/lib/supabase";
 import { mapPool } from "@/lib/jobs/util";
 import {
@@ -123,6 +124,8 @@ export interface Guess {
 export async function guessBoards(names: string[]): Promise<{ ok: boolean; guesses: Map<number, Guess> }> {
   const out = new Map<number, Guess>();
   if (!names.length) return { ok: true, guesses: out };
+  // Over the daily cron budget: same as an outage, rows wait for tomorrow.
+  if (await systemBudgetExhausted()) return { ok: false, guesses: out };
   const userPrompt = names.map((n, i) => `[${i + 1}] ${n}`).join("\n");
 
   const started = Date.now();
