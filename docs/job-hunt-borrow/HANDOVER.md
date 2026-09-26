@@ -151,3 +151,36 @@ a cold note to a stranger.
 
 - Cold craft lives in `src/lib/writing/cold-outreach.ts` (`OUTREACH_PRINCIPLES`, `coldOutreachGuide`) and the "Outreach specifics" block in `draftSystem()` in `src/lib/claude.ts`. `redraftSystem()` also injects `coldOutreachGuide`. The warm-intro path deliberately does **not** use them — keep it that way.
 - The anti-AI linter (`src/lib/writing/anti-ai.ts`, `lintAntiAi`) runs on every draft; don't put em dashes or its flagged phrases in example text you add to prompts.
+
+---
+
+## Step 4 — Sharper cold-message rules ✅
+
+**Why:** high-leverage-job-hunt's direct-message rules (Move 3) are sharper than
+what we had: open on the company's work, name the missing thing rather than
+the sender's skills, short sentences with specific nouns, end with a question,
+claim only what's true, and never mail-merge.
+
+### What landed
+
+| File | What |
+|------|------|
+| `src/lib/writing/cold-outreach.ts` | `OUTREACH_PRINCIPLES` 7 → 9: new **Name the gap, not your skills** and **No mail-merge**; "One reason, one ask" now **ends on a question**; "Be ruthlessly short" adds short sentences / specific nouns; credibility line must be **true** (only what the sender's background supports). Injected into every cold draft and every redraft/steer, all three channels. |
+| `src/lib/claude.ts` | `draftSystem()` "Outreach specifics": the advice question aims at a real problem/opportunity in the recipient's world; the sender's story is proof, never a skills list. (Warm-intro path untouched.) |
+| `src/lib/writing/anti-ai.ts` | Linter flags mail-merge phrases: "explore synergies", "explore potential synergies", "pick your brain", "hop on a (quick) call", "touch base". A hit triggers the existing one-pass humanize rewrite. "I'd love to connect" is prompt-only (too common in LinkedIn notes to lint without false positives). |
+| `.claude/skills/cold-outreach/SKILL.md` | Kept in sync (9 rules, credit, "not for warm intros" pointer). |
+| `src/lib/writing/cold-outreach.test.ts` | Rules present per channel, subject rule email-only, linter hits. |
+
+### Not verified here
+
+- No live LLM run (no API key in the container). The change is prompt text + 6 lint phrases; tests (254) pass.
+
+### For step 5 (find the right person for a job)
+
+- Existing people-finding pieces to reuse, not rebuild:
+  - `sourceHiringManagers()` in `src/lib/claude.ts` — Claude + web_search, ranked likely hiring managers for role@company (used by the apply flow).
+  - `sourcePeopleFromText()` — "people at X in Y" shortlist.
+  - Apollo: `src/lib/apollo.ts` (`findEmail`, `lookupEmployerApollo`); check for a people-search endpoint before adding one.
+  - Connections: `connectionsAt(names)` in `src/lib/connections/store.ts`.
+  - Compose: `startRun(text, { kind: "person", picked, intent })` + `setFocusedRun` then `router.push("/app/compose")` (see `AskForIntroButton`); the job page's existing "Interested — run the crew" button runs the full apply flow (`/api/compose/apply`).
+- The job page already shows `PeopleYouKnow` with warm-intro buttons (step 3); step 5 adds the *cold* side for when you don't know anyone, plus role-typed ≤300-char LinkedIn notes per career-ops `modes/contacto.md`.

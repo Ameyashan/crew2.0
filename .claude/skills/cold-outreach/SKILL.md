@@ -15,24 +15,37 @@ constraint, not a preference.
    real reason for writing — the specific role, or the one thing you reference in
    the body. No clickbait, no fake `Re:`/`Fwd:`, no urgency words. DMs have no
    subject; lead with the hook instead.
-2. **Open on them, not you.** The first line is about the recipient — something
-   specific they shipped, wrote, or are working on. Never open with "My name
-   is" or "I'm reaching out". Earn the next line before you talk about yourself.
-3. **One reason, one ask.** Say why you're writing in a sentence, then make
-   exactly ONE low-friction ask — a single yes/no-able question. Multiple asks
-   split attention and kill replies.
-4. **Be ruthlessly short.** Every sentence has to earn its place. A busy stranger
-   should grasp the ask in one read on a phone. Rough budgets: email 80–120
-   words, LinkedIn DM 60–100, X DM 40–60 (get to the point in line one).
-5. **Earn credibility in one line.** Give the single most relevant proof point
-   that makes you worth a reply — a concrete result, a shipped thing, a number.
-   One line, not a résumé. Specific beats impressive.
-6. **Make the reply effortless.** The ask should be answerable in one line
+2. **Open on them, not you.** The first line is about the recipient or their
+   company — something specific they shipped, wrote, or are building right now.
+   Never open with "My name is" or "I'm reaching out". Earn the next line before
+   you talk about yourself.
+3. **Name the gap, not your skills.** Make the message about a real problem or
+   opportunity in *their* world — a launch, a stated priority, a hiring push,
+   something that works elsewhere in their market — and let the sender's
+   background appear only as proof they've seen that problem up close. Never
+   list skills. If the research shows no real gap, don't invent one.
+4. **One reason, one ask, end on a question.** Say why you're writing in a
+   sentence, then make exactly ONE low-friction ask, phrased as a question (not a
+   request), and end the message on it.
+5. **Be ruthlessly short.** Short sentences, specific nouns, no stacked
+   adjectives. A busy stranger should grasp the ask in one read on a phone.
+   Rough budgets: email 80–120 words, LinkedIn DM 60–100, X DM 40–60 (get to the
+   point in line one).
+6. **Earn credibility in one true line.** The single most relevant proof point —
+   a concrete result, a shipped thing, a number — and only one the sender's own
+   background supports. Inflated claims collapse on the first reply.
+7. **Make the reply effortless.** The ask should be answerable in one line
    without leaving the app. No calendar links, attachments, or "hop on a 30-min
    call" in a first touch. Lower the cost of saying yes.
-7. **Respect their time and their out.** No flattery, no false urgency, no guilt,
+8. **No mail-merge.** At least one detail must be true only of this recipient. No
+   template phrasing ("explore synergies", "pick your brain", "I'd love to
+   connect", "touch base") and no line that could go to anyone else.
+9. **Respect their time and their out.** No flattery, no false urgency, no guilt,
    no manipulation. Write as a peer, not a supplicant. It should be easy to
    ignore without feeling bad — that's what makes it easy to answer.
+
+Rules 3, 4, 6 and 8 are borrowed from high-leverage-job-hunt
+(github.com/paulklayvc/skills), Move 3.
 
 ## Channel notes
 
@@ -55,6 +68,11 @@ puffery, or stacked transitions ("moreover", "furthermore"). See
 Would a smart, busy person who has never heard of the sender reply to this? If
 the message is generic, all about the sender, asks for too much, or could have
 been sent to a hundred people, rewrite it until it couldn't have been.
+
+## Not for warm intros
+
+A note to someone the sender already knows (asking for an intro) follows a
+different skill — `src/lib/writing/warm-intro.ts`.
 
 ## Where this lives in the app
 
