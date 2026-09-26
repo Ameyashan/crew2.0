@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { withUser } from "@/lib/auth";
 import { loadFollowedCompanyIds } from "@/lib/jobs/scan";
+import { TRACK_LIMIT } from "@/lib/jobs/tracker-match";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,7 @@ function readCompanyId(body: unknown): string | null {
 }
 
 // POST /api/jobs/follow { company_id } -> { following: true }
+// Following = tracking (the Jobs tracker), capped at TRACK_LIMIT companies.
 // Idempotent: a duplicate follow is a no-op. The FK to companies(id) rejects a
 // company_id that isn't a real catalog row, so a junk id 400s rather than
 // inserting an orphan.
@@ -34,6 +36,13 @@ export async function POST(req: NextRequest) {
     if (!company_id) return Response.json({ error: "company_id required" }, { status: 400 });
 
     const sb = supabaseAdmin();
+    const current = await loadFollowedCompanyIds(sb, userId);
+    if (!current.includes(company_id) && current.length >= TRACK_LIMIT) {
+      return Response.json(
+        { error: `You're already tracking ${TRACK_LIMIT} companies — remove one to add another.` },
+        { status: 409 },
+      );
+    }
     const { error } = await sb
       .from("followed_companies")
       .upsert({ user_id: userId, company_id }, { onConflict: "user_id,company_id", ignoreDuplicates: true });

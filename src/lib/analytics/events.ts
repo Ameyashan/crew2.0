@@ -31,6 +31,10 @@ export const PRODUCT_EVENTS = {
   // message_sent = they confirmed they sent it (writes an interactions row).
   draft_opened_channel: {} as { channel: string },
   message_sent: {} as { channel: string },
+  // Jobs company tracker. tracker_company_untrackable = the user asked for a
+  // company we have no job board for (demand signal for new adapters).
+  tracker_companies_saved: {} as { count: number },
+  tracker_company_untrackable: {} as { name: string },
   // Signed-out funnel (blur gate)
   blur_gate_hit: {},
   blur_gate_signin_click: {},

@@ -2,15 +2,11 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { withUser } from "@/lib/auth";
 import { getProfile } from "@/lib/profile";
-import { ensureCatalogCoverage } from "@/lib/jobs/catalog";
 import { isSectorId } from "@/lib/jobs/catalog/sectors";
 import { coerceRoleMode } from "@/lib/jobs/scan";
 import type { PreferencesDTO, PostedWithin, SizeBucket } from "@/lib/jobs/types";
 
 export const runtime = "nodejs";
-// Saving preferences kicks off a bounded catalog-coverage pass (LLM + live
-// validation), which can take a little while; give it room beyond the default.
-export const maxDuration = 60;
 
 const POSTED: PostedWithin[] = ["24h", "1wk", "1mo", "any"];
 const SIZES: SizeBucket[] = ["large", "medium", "startup"];
@@ -143,15 +139,10 @@ export async function PUT(req: NextRequest) {
       if (delErr) console.error("[jobs/preferences] clear stale matches failed", delErr);
     }
 
+    // No catalog growth here: that's an LLM pass, and saving is frequent (the
+    // tracker setup saves roles/locations). The Recommended tab's explicit
+    // Refresh grows the catalog for the user's sectors (src/lib/jobs/scan.ts).
     const { pins, current_role } = await loadProfileSignals();
-
-    // Grow the catalog for any newly-requested interests/pins so the first feed
-    // isn't empty. Bounded + best-effort: never fail the save on a coverage hiccup.
-    try {
-      await ensureCatalogCoverage({ sectors: interests, companyNames: pins, addedBy: userId, maxValidate: 10 });
-    } catch (e) {
-      console.error("[jobs/preferences] ensureCatalogCoverage failed", e);
-    }
 
     const dto: PreferencesDTO = {
       interests,

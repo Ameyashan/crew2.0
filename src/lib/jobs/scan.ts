@@ -1,10 +1,11 @@
 // Shared scan helpers + the on-demand per-user pipeline.
 //
-// The daily cron (api/cron/jobs-scan) fetches + enriches the catalog GLOBALLY
-// once, then scores per user. The "Refresh" button on the feed instead runs a
-// bounded, single-user pass: grow the catalog for that user's interests, fetch
-// listings for just their candidate companies, enrich, then select + score.
-// Both paths share candidate selection so rankings stay consistent.
+// The crons fetch + enrich the catalog GLOBALLY and never score users. Scoring
+// (an LLM pass) happens only when a user presses "Refresh" on the Recommended
+// tab: a bounded, single-user pass that grows the catalog for their interests,
+// fetches listings for just their candidate companies, enriches, then selects
+// + scores. The preference matchers here are also used by the company tracker
+// (src/lib/jobs/tracker.ts) and the feed's read-time filters.
 //
 // runUserScan() calls scoreJobsForUser(), which reads currentUserId(); callers
 // MUST run it inside runWithUser()/withUser().
@@ -407,95 +408,6 @@ export async function scoreUser(sb: SupabaseClient, uid: string, companyIds?: st
     visaRequired: prefs.visa_required,
   });
   return { candidates: candidates.length, ...summary };
-}
-
-export interface DueUsersSummary {
-  scored_users: number;
-  remaining: number; // due users left for a later call (deadline hit)
-  per_user: Array<Record<string, unknown>>;
-}
-
-// Score onboarded users whose last scan predates `staleBefore`, oldest first,
-// until `deadline`. The daily jobs-scan passes its own start time (everyone
-// is due); jobs-fetch ticks pass ~20h ago to pick up whoever the daily run
-// couldn't fit. Each user runs in their own context (logAgentRun bills them).
-export async function scoreDueUsers(opts: {
-  staleBefore: string;
-  deadline: number;
-  onlyUser?: string;
-  runAs: <T>(uid: string, fn: () => Promise<T>) => Promise<T>;
-}): Promise<DueUsersSummary> {
-  const sb = supabaseAdmin();
-  let users: string[];
-  if (opts.onlyUser) {
-    users = [opts.onlyUser];
-  } else {
-    const rows = await selectAll<{ user_id: string }>((from, to) =>
-      sb.from("user_profile").select("user_id").not("onboarded_at", "is", null).order("user_id").range(from, to),
-    );
-    users = rows.map((r) => r.user_id);
-  }
-  const state = await selectAll<{ user_id: string; last_scanned_at: string }>((from, to) =>
-    sb.from("job_scan_state").select("user_id, last_scanned_at").order("user_id").range(from, to),
-  );
-  const last = new Map(state.map((r) => [r.user_id, r.last_scanned_at]));
-  const due = users
-    .filter((u) => opts.onlyUser || !last.has(u) || last.get(u)! < opts.staleBefore)
-    .sort((a, b) => (last.get(a) ?? "").localeCompare(last.get(b) ?? ""));
-
-  const out: DueUsersSummary = { scored_users: 0, remaining: 0, per_user: [] };
-  for (let i = 0; i < due.length; i++) {
-    if (Date.now() > opts.deadline) {
-      out.remaining = due.length - i;
-      break;
-    }
-    const uid = due[i];
-    // Claim first: the daily scan and a jobs-fetch tick can overlap, and two
-    // runs scoring the same user would pay for the LLM pass twice.
-    if (!opts.onlyUser && !(await claimUser(sb, uid, opts.staleBefore))) continue;
-    try {
-      const summary = await opts.runAs(uid, () => scoreUser(sb, uid));
-      out.per_user.push({ user_id: uid, ...summary });
-      out.scored_users++;
-      await sb
-        .from("job_scan_state")
-        .upsert({ user_id: uid, last_scanned_at: new Date().toISOString(), claimed_at: null }, { onConflict: "user_id" });
-    } catch (e) {
-      out.per_user.push({ user_id: uid, error: e instanceof Error ? e.message : String(e) });
-      // Release the lease so the next tick retries.
-      await sb.from("job_scan_state").update({ claimed_at: null }).eq("user_id", uid);
-    }
-  }
-  return out;
-}
-
-// A claim is a lease, not a scan: last_scanned_at only moves on success, so a
-// run killed mid-user (function timeout) delays that user by at most
-// SCAN_LEASE_MS, not a day.
-const SCAN_LEASE_MS = 10 * 60_000;
-
-// Atomically take a user for scoring. False = another run holds a live lease
-// or already scanned them since `staleBefore`.
-async function claimUser(sb: SupabaseClient, uid: string, staleBefore: string): Promise<boolean> {
-  const now = new Date();
-  const nowIso = now.toISOString();
-  const { data: inserted } = await sb
-    .from("job_scan_state")
-    .upsert(
-      { user_id: uid, last_scanned_at: new Date(0).toISOString(), claimed_at: nowIso },
-      { onConflict: "user_id", ignoreDuplicates: true },
-    )
-    .select("user_id");
-  if (inserted?.length) return true;
-  const leaseExpired = new Date(now.getTime() - SCAN_LEASE_MS).toISOString();
-  const { data: claimed } = await sb
-    .from("job_scan_state")
-    .update({ claimed_at: nowIso })
-    .eq("user_id", uid)
-    .lt("last_scanned_at", staleBefore)
-    .or(`claimed_at.is.null,claimed_at.lt.${leaseExpired}`)
-    .select("user_id");
-  return !!claimed?.length;
 }
 
 // On-demand per-user refresh ("Refresh" on the feed): coverage → a bounded

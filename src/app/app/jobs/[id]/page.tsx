@@ -150,6 +150,9 @@ export default function JobDetailPage() {
           const visaColors = visaChipColors(job.visa_confidence);
           const visaEvidence = visaEvidenceLine(job.visa_evidence);
           const bullets = whyBullets(job.reasons);
+          // Tracker jobs have no match row: nothing was scored, so there's no
+          // FIT to show and nothing to dismiss.
+          const scored = !!job.match_id;
 
           // The two actions, rendered near the top (header) so they're usable
           // without scrolling past the JD, and again inside the sticky rail on
@@ -185,6 +188,7 @@ export default function JobDetailPage() {
               >
                 {busy ? "Starting…" : "Interested — run the crew →"}
               </span>
+              {scored && (
               <span
                 role="button"
                 tabIndex={0}
@@ -214,6 +218,7 @@ export default function JobDetailPage() {
               >
                 Not for me
               </span>
+              )}
             </div>
           );
 
@@ -260,7 +265,11 @@ export default function JobDetailPage() {
                 ) : (
                   <div style={{ display: "flex", gap: 9 }}>
                     <span style={{ color: TOKENS.amber, flex: "none" }}>→</span>
-                    <span>Ranked into your feed by fit against your Story and stated interests.</span>
+                    <span>
+                      {scored
+                        ? "Ranked into your feed by fit against your Story and stated interests."
+                        : "Open at a company you track, with a title that fits the roles you're after."}
+                    </span>
                   </div>
                 )}
               </div>
@@ -439,6 +448,7 @@ export default function JobDetailPage() {
                     </div>
                   )}
                 </div>
+                {scored && (
                 <div
                   style={{
                     border: `1px solid ${fit.border}`,
@@ -465,6 +475,7 @@ export default function JobDetailPage() {
                     FIT
                   </div>
                 </div>
+                )}
               </div>
 
               {/* Mobile: actions above the fold — no scrolling past the JD to
