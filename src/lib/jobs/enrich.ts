@@ -9,8 +9,12 @@
 //                 ('no_sponsorship', job-level truth) beats the company's USCIS
 //                 track record ('sponsors_verified' + evidence snapshot, see
 //                 src/lib/jobs/h1b/), which beats the JD positive parse
-//                 ('likely_sponsors'), else 'unclear'. The JD parse is cheap:
-//                 inferVisa keyword-screens before calling the LLM.
+//                 ('likely_sponsors'), else 'unclear'. The JD parse is an
+//                 LLM call (keyword-screened by inferVisa), so it's opt-out:
+//                 the jobs-fetch drain passes jdVisa:false and only scoring
+//                 candidates get it (enrichCandidates in scan.ts), tracked by
+//                 jd_visa_checked_at. Draining ~100k universe jobs through it
+//                 cost ~$110 in a day for jobs no user saw.
 
 import { supabaseAdmin } from "@/lib/supabase";
 import { jdText, mapPool, mentionsVisa } from "@/lib/jobs/util";
@@ -41,16 +45,20 @@ export interface EnrichResult {
 
 // `jobIds` targets specific jobs (a user's scoring candidates — the ones whose
 // chips people will actually see); otherwise the newest unenriched jobs.
-export async function enrichJobs(opts?: { limit?: number; jobIds?: string[] }): Promise<EnrichResult> {
+// `jdVisa: false` skips the LLM JD parse: the job is marked enriched with its
+// free signals (size, USCIS track record) and keeps jd_visa_checked_at null, so
+// a later jdVisa pass over it (as a candidate) still reads the JD.
+export async function enrichJobs(opts?: { limit?: number; jobIds?: string[]; jdVisa?: boolean }): Promise<EnrichResult> {
   const sb = supabaseAdmin();
   const limit = opts?.limit ?? DEFAULT_LIMIT;
+  const jdVisa = opts?.jdVisa ?? true;
   if (opts?.jobIds && !opts.jobIds.length) return { enriched: 0, sized: 0, visaLikely: 0, visaVerified: 0, visaNone: 0 };
 
   let q = sb
     .from("jobs")
     .select("id, company_id, company, ats, raw_json")
-    .is("enriched_at", null)
     .eq("is_active", true);
+  q = jdVisa ? q.or("enriched_at.is.null,jd_visa_checked_at.is.null") : q.is("enriched_at", null);
   if (opts?.jobIds) q = q.in("id", opts.jobIds);
   const { data: jobsData, error } = await q.order("first_seen_at", { ascending: false }).limit(limit);
   if (error) throw new Error(`load jobs for enrichment failed: ${error.message}`);
@@ -93,15 +101,22 @@ export async function enrichJobs(opts?: { limit?: number; jobIds?: string[] }): 
     // Precedence: an explicit JD "no sponsorship" is job-level truth and beats
     // the company's USCIS track record (a verified company can still post reqs
     // it won't sponsor); the track record beats the JD positive parse.
-    const jdVisa = await inferVisa(jdText(job.ats, job.raw_json));
+    // Unread JD (jdVisa off) = null, which every reader treats like 'unclear'.
+    const fromJd = jdVisa ? await inferVisa(jdText(job.ats, job.raw_json)) : null;
     const trackRecord = (job.company_id && evidenceByCompanyId.get(job.company_id)) || null;
-    const negative = jdVisa === "no_sponsorship";
-    const visa: VisaConfidence = negative ? "no_sponsorship" : trackRecord ? "sponsors_verified" : jdVisa;
+    const negative = fromJd === "no_sponsorship";
+    const visa: VisaConfidence | null = negative ? "no_sponsorship" : trackRecord ? "sponsors_verified" : fromJd;
     const evidence: VisaEvidence | null = negative ? null : trackRecord;
 
     const { error: upErr } = await sb
       .from("jobs")
-      .update({ company_size: size, visa_confidence: visa, visa_evidence: evidence, enriched_at: nowIso })
+      .update({
+        company_size: size,
+        visa_confidence: visa,
+        visa_evidence: evidence,
+        enriched_at: nowIso,
+        ...(jdVisa ? { jd_visa_checked_at: nowIso } : {}),
+      })
       .eq("id", job.id);
     if (upErr) return;
 
@@ -172,8 +187,8 @@ export async function rescanVisaNegatives(opts?: { limit?: number }): Promise<Re
   await mapPool(candidates, VISA_CONCURRENCY, async (c) => {
     const negative = (await inferVisa(c.text)) === "no_sponsorship";
     const update = negative
-      ? { visa_confidence: "no_sponsorship", visa_evidence: null, enriched_at: nowIso }
-      : { enriched_at: nowIso }; // bump so the next bounded run moves on
+      ? { visa_confidence: "no_sponsorship", visa_evidence: null, enriched_at: nowIso, jd_visa_checked_at: nowIso }
+      : { enriched_at: nowIso, jd_visa_checked_at: nowIso }; // bump so the next bounded run moves on
     const { error } = await sb.from("jobs").update(update).eq("id", c.id);
     if (!error && negative) flipped++;
   });

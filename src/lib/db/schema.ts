@@ -262,6 +262,7 @@ export interface Job {
   visa_evidence: VisaEvidence | null;
   company_size: SizeBucket | null;
   enriched_at: string | null;
+  jd_visa_checked_at: string | null; // LLM JD visa parse done (0031)
   first_seen_at: string;
   last_seen_at: string;
   is_active: boolean;

@@ -26,8 +26,9 @@ export const maxDuration = 300;
 //               sectors, until all are tagged.
 //   4. score  — users the daily jobs-scan couldn't fit (last scan > 20h ago).
 //   5. enrich — drain the unenriched backlog, newest first, with whatever
-//               time is left (candidates are enriched on demand at scoring
-//               time, so this is for everything else).
+//               time is left. Free signals only (size, USCIS track record):
+//               the LLM JD visa parse runs on demand for scoring candidates,
+//               never across the whole catalog.
 //
 // Every phase is idempotent and bounded, so an overlapping or failed tick is
 // harmless: the next one picks up where the queue stands.
@@ -93,7 +94,7 @@ async function tick() {
     let enriched = 0;
     let rounds = 0;
     while (Date.now() < at(ENRICH_UNTIL_MS)) {
-      const r = await enrichJobs({ limit: ENRICH_BATCH });
+      const r = await enrichJobs({ limit: ENRICH_BATCH, jdVisa: false });
       rounds++;
       enriched += r.enriched;
       if (r.enriched < ENRICH_BATCH) break; // backlog drained (or a batch failed)

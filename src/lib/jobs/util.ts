@@ -117,16 +117,36 @@ export function jdText(
 }
 
 // Does a JD even talk about visas/sponsorship? Pre-screen for the visa
-// inference pass: any explicit sponsorship statement (positive or negative)
-// necessarily contains one of these terms, so skipping the LLM when none
-// appear loses no recall and saves the large majority of calls. Word-ish
-// boundaries keep short acronyms (OPT/CPT/EAD) from matching inside words
-// ("optimize", "accepted", "leadership").
-const VISA_MENTION_RE =
-  /visa|sponsor|work.{0,3}authori[sz]|h[\s-]?1b|immigration|green.{0,3}card|(?<![a-z])(opt|cpt|ead)(?![a-z])/i;
+// inference pass: an explicit sponsorship statement (positive or negative)
+// necessarily contains one of these phrases, so skipping the LLM when none
+// appear loses no recall. Kept deliberately narrow — the old bare /sponsor/,
+// /visa/i and /work authorization/ matches fired on ~1 in 4 JDs ("employer-
+// sponsored benefits", Visa the company, EEO "authorized to work" boilerplate,
+// "opt out"), none of which can yield a verdict (a bare work-authorization
+// requirement is 'unclear' by the inference rules).
+const VISA_PHRASE_RE = new RegExp(
+  [
+    "sponsorship",
+    // "sponsor visas", "sponsor applicants for work visas", "sponsor H-1B"
+    "sponsor(?:s|ed|ing)?\\s+(?:(?:an?|the|any|your|their|new|future)\\s+)?(?:visas?|h[\\s-]?1[\\s-]?b|employment|work|candidates?|applicants?|individuals?|immigration|foreign)",
+    // "unable to sponsor at this time", "will not sponsor"
+    "(?:not|unable to|cannot|can't|won't|able to)\\s+sponsor",
+    "h[\\s-]?1[\\s-]?b",
+    "green[\\s-]?cards?",
+    "immigration",
+    "work\\s+visas?",
+    "visas?\\s+(?:sponsor|support|status|holders?|requirements?|transfers?|assistance)",
+  ].join("|"),
+  "i",
+);
+// Case-sensitive: lowercase "visa" is the immigration sense (capitalized
+// mid-sentence it's usually the card network); uppercase acronyms only, so
+// "opt in/out" never matches.
+const VISA_TOKEN_RE = /\bvisas?\b|(?<![A-Za-z])(?:OPT|CPT|EAD)(?![A-Za-z])/;
 
 export function mentionsVisa(jd: string): boolean {
-  return VISA_MENTION_RE.test(jd || "");
+  const t = jd || "";
+  return VISA_PHRASE_RE.test(t) || VISA_TOKEN_RE.test(t);
 }
 
 // Run `fn` over `items` with a bounded concurrency pool. Keeps public ATS calls
