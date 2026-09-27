@@ -663,7 +663,11 @@ export async function runPipeline(composeRunId: string, sink: RunSink): Promise<
         outcome: runOutcome,
         error: runError,
         personId,
-        resumeGenerationId,
+        // `resumeGenerationId` is only set when the tailor succeeds ("saved").
+        // A résumé that failed still has its row, linked early by
+        // recordResumeRow — keep that link, or the failed résumé shows up in
+        // history as a second, standalone run next to its application.
+        resumeGenerationId: resumeGenerationId ?? priorResumeRowId,
         output: {
           parsed: parsedBundle,
           person: collectedPerson,
