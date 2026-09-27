@@ -70,11 +70,14 @@ export function GoalChat({
   onLocked,
   height = 420,
   activeLabel,
+  initialText = "",
 }: {
   source: "onboarding" | "app";
   onLocked?: (goal: ActiveGoalDTO) => void;
   height?: number;
   activeLabel?: string | null;
+  // Pre-filled (not sent) message, e.g. from the "refine?" prompt.
+  initialText?: string;
 }) {
   const [loaded, setLoaded] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
@@ -83,7 +86,7 @@ export function GoalChat({
   const [streaming, setStreaming] = useState("");
   const [drafting, setDrafting] = useState(false);
   const [sending, setSending] = useState(false);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText);
   const [error, setError] = useState<string | null>(null);
   const [locking, setLocking] = useState(false);
   const [lockError, setLockError] = useState<string | null>(null);

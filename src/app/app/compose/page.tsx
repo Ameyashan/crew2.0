@@ -46,9 +46,11 @@ import {
   storyNudgeKey,
   isFirstTime,
   deskHeadline,
+  goalSuggestionPills,
   deskRailSections,
 } from "@/components/paper/desk-logic";
 import { GoalStrip } from "@/components/goal/GoalStrip";
+import { useActiveGoal } from "@/components/goal/use-active-goal";
 import { RunsRail } from "@/components/paper/runs-rail";
 import {
   runStatusChip,
@@ -226,7 +228,11 @@ function ComposeV3({ p, go }) {
   const [railOpen, setRailOpen] = useState(false);
   // Prototype shows the Story nudge for signed-in accounts only.
   const showNudge = signedIn === true && !!nudgeKey && storyIsEmpty && !nudgeDismissed;
-  const headline = deskHeadline(signedIn, firstTime, name);
+  // A locked goal reshapes the greeting and the composer pills.
+  const activeGoal = useActiveGoal(signedIn === true);
+  const goalSpec = activeGoal?.goal ?? null;
+  const headline = deskHeadline(signedIn, firstTime, name, goalSpec);
+  const pills = goalSuggestionPills(goalSpec);
 
   // Open a specific earlier run in place (not the generic history list): pull its
   // full persisted row, hydrate it into the store, and focus it — reusing the
@@ -425,7 +431,7 @@ function ComposeV3({ p, go }) {
         <DeskComposer
           input={input} setInput={setInput}
           screenshot={screenshot} setScreenshot={setScreenshot}
-          onGo={onGo} fillComposer={fillComposer}
+          onGo={onGo} fillComposer={fillComposer} pills={pills}
         />
 
         {/* thin-Story nudge: signed-in, empty Story, dismissible per-account */}
@@ -2392,7 +2398,8 @@ function GoogleGlyph({ size = 18 }) {
 
 /* ─────────────────────── the Desk composer (prototype lines 164–201) ─────────────────────── */
 
-function DeskComposer({ input, setInput, screenshot, setScreenshot, onGo, fillComposer }) {
+function DeskComposer({ input, setInput, screenshot, setScreenshot, onGo, fillComposer, pills = SUGGESTION_PILLS }) {
+  const router = useRouter();
   const fileRef = useRef(null);
   const [attachError, setAttachError] = useState(null);
   // Drag-over highlight for image drop onto the composer card.
@@ -2523,8 +2530,8 @@ function DeskComposer({ input, setInput, screenshot, setScreenshot, onGo, fillCo
             }}
           >+</button>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile}/>
-          {SUGGESTION_PILLS.map((pill) => (
-            <button key={pill.id} onClick={() => fillComposer(pill.fill)} className="dk-pill" style={{
+          {pills.map((pill) => (
+            <button key={pill.id} onClick={() => (pill.href ? router.push(pill.href) : fillComposer(pill.fill))} className="dk-pill" style={{
               fontFamily: PAPER_FONTS_V2.sans, fontSize: 11.5, lineHeight: 1, color: TOKENS.muted,
               border: `1px solid ${TOKENS.line}`, borderRadius: RADII.pill, padding: '7px 12px',
               background: 'transparent', cursor: 'pointer', transition: 'border-color .15s, color .15s',

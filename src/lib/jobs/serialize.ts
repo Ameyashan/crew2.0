@@ -30,6 +30,10 @@ export interface FeedJoinRow {
     country: string | null;
     remote_type: RemoteType;
     compensation: string | null;
+    // Parsed pay (0037) — the label backs up `compensation` for JD-only pay.
+    comp_label?: string | null;
+    comp_currency?: string | null;
+    comp_max_usd?: number | null;
     posted_date: string | null;
     posted_date_approx: boolean;
     url: string;
@@ -73,7 +77,7 @@ export function feedItemFromJoin(row: FeedJoinRow): FeedItem | null {
     company_id: j.company_id,
     location: jobLocation(j),
     remote_type: j.remote_type,
-    compensation: j.compensation,
+    compensation: j.compensation ?? j.comp_label ?? null,
     posted_date: j.posted_date,
     posted_date_approx: j.posted_date_approx,
     url: j.url,
@@ -97,7 +101,7 @@ export function jobDetail(job: Job, match: JobMatch | null, company?: CompanyEmb
     company_id: job.company_id,
     location: jobLocation(job),
     remote_type: job.remote_type,
-    compensation: job.compensation,
+    compensation: job.compensation ?? job.comp_label ?? null,
     posted_date: job.posted_date,
     posted_date_approx: job.posted_date_approx,
     url: job.url,

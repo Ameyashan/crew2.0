@@ -16,6 +16,7 @@ import {
   postedAgo,
   compDisplay,
   goalPhrase,
+  isReranking,
   whyBullets,
   sourceHost,
   companyDomain,
@@ -270,4 +271,14 @@ test("diversifyByCompany keeps order when nothing exceeds the cap", () => {
   assert.deepEqual(diversifyByCompany(items, 2), items);
   // Non-positive cap disables the reshuffle entirely.
   assert.deepEqual(diversifyByCompany(items, 0), items);
+});
+
+test("isReranking: only an empty feed shortly after a lock", () => {
+  const locked = "2026-09-27T10:00:00.000Z";
+  const t = Date.parse(locked);
+  assert.equal(isReranking(locked, 0, t + 60_000), true);
+  assert.equal(isReranking(locked, 3, t + 60_000), false);
+  assert.equal(isReranking(locked, 0, t + 11 * 60_000), false);
+  assert.equal(isReranking(null, 0, t), false);
+  assert.equal(isReranking("garbage", 0, t), false);
 });

@@ -12,6 +12,7 @@ import {
   postedThreshold,
 } from "@/lib/jobs/scan";
 import { diversifyByCompany } from "@/lib/jobs/format";
+import { compVsFloor, storedComp } from "@/lib/jobs/comp";
 import type { FeedItem } from "@/lib/jobs/types";
 
 export const runtime = "nodejs";
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
     const filterNew = url.searchParams.get("filter") === "new";
 
     const sb = supabaseAdmin();
-    const SELECT = `id, score, reasons, status, jobs!inner(id, company_id, title, company, location_raw, city, region, country, remote_type, compensation, posted_date, posted_date_approx, url, visa_confidence, visa_evidence, company_size, is_active, ${COMPANY_EMBED})`;
+    const SELECT = `id, score, reasons, status, jobs!inner(id, company_id, title, company, location_raw, city, region, country, remote_type, compensation, comp_label, comp_currency, comp_max_usd, posted_date, posted_date_approx, url, visa_confidence, visa_evidence, company_size, is_active, ${COMPANY_EMBED})`;
     let q = sb
       .from("job_matches")
       .select(SELECT)
@@ -61,11 +62,12 @@ export async function GET(req: NextRequest) {
       .limit(CANDIDATE_WINDOW);
     if (filterNew) q = q.eq("status", "new");
 
-    const [{ data, error }, { prefs, follows, pins }] = await Promise.all([q, loadScanPrefs(sb, userId)]);
+    const [{ data, error }, { prefs, follows, pins, goal }] = await Promise.all([q, loadScanPrefs(sb, userId)]);
     const explicit = explicitCompanies(follows, pins);
     if (error) return Response.json({ error: error.message }, { status: 500 });
 
     const threshold = postedThreshold(prefs.posted_within);
+    const floor = goal?.comp_floor_usd ?? null;
     const rows = ((data ?? []) as unknown as FeedJoinRow[]).filter((row) => {
       const j = row.jobs;
       if (!j) return false;
@@ -79,10 +81,18 @@ export async function GET(req: NextRequest) {
       // selection ignores it so a tight setting can't starve the pipeline. An
       // unknown posted date never hides a job.
       if (threshold && j.posted_date && j.posted_date < threshold) return false;
+      // A locked goal's pay floor hides roles whose posted range tops out
+      // below it. Unlisted / non-USD pay is never hidden.
+      if (floor != null && compVsFloor(storedComp(j), floor, goal?.comp_basis) === "below") return false;
       return true;
     });
 
-    const items = rows.map(feedItemFromJoin).filter((x): x is FeedItem => x !== null);
+    const items = rows.flatMap((row): FeedItem[] => {
+      const item = feedItemFromJoin(row);
+      if (!item) return [];
+      if (floor == null || !row.jobs) return [item];
+      return [{ ...item, comp_fit: compVsFloor(storedComp(row.jobs), floor, goal?.comp_basis) }];
+    });
 
     // Prefer matches that clear the fit bar; when too few do, include the
     // closest below-bar ones (items are score-ordered, so strong stay on top)

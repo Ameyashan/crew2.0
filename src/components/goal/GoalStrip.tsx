@@ -4,17 +4,23 @@ import Link from "next/link";
 import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
 import { TOKENS, RADII } from "@/components/paper/tokens";
 import { useActiveGoal } from "./use-active-goal";
+import { useGoalProgress } from "./use-goal-progress";
+import { progressSummary } from "@/lib/goal/progress-logic";
 
 // Desk strip under the headline: what the crew is working toward, or a nudge
 // to set it. Signed-in only; renders nothing while the goal is loading.
 export function GoalStrip({ signedIn }: { signedIn: boolean | null }) {
   const active = useActiveGoal(signedIn === true);
+  const progress = useGoalProgress(signedIn === true ? active?.id : null);
   if (signedIn !== true || active === undefined) return null;
 
   const pill = {
     display: "inline-flex",
     alignItems: "center",
-    gap: 8,
+    justifyContent: "center",
+    flexWrap: "wrap" as const,
+    columnGap: 8,
+    rowGap: 2,
     marginTop: 14,
     maxWidth: "100%",
     boxSizing: "border-box" as const,
@@ -53,7 +59,14 @@ export function GoalStrip({ signedIn }: { signedIn: boolean | null }) {
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         Working toward <span style={{ color: TOKENS.ink }}>{active.goal.short_label}</span>
       </span>
-      <span style={{ color: TOKENS.faint2, whiteSpace: "nowrap" }}>· Refine</span>
+      {progress && (
+        <span style={{ color: TOKENS.muted, whiteSpace: "nowrap" }}>· {progressSummary(progress.counts)}</span>
+      )}
+      {progress?.suggestRefine ? (
+        <span style={{ color: TOKENS.amber, whiteSpace: "nowrap" }}>· Passing on a lot — refine?</span>
+      ) : (
+        <span style={{ color: TOKENS.faint2, whiteSpace: "nowrap" }}>· Refine</span>
+      )}
     </Link>
   );
 }

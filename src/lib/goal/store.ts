@@ -19,6 +19,7 @@ import {
   type GoalSpec,
 } from "@/lib/goal/goal-logic";
 import { lockedTurn, unansweredProposal, type StoredMessage } from "@/lib/goal/chat-logic";
+import { formatMatchFeedback, type MatchSignal } from "@/lib/goal/progress-logic";
 
 export { getActiveGoal, type ActiveGoal };
 
@@ -28,14 +29,28 @@ export interface GoalChat {
   context_snapshot: string;
 }
 
+// A chat's context is frozen when it opens (prompt caching), so one left idle
+// for a day goes stale — the locked goal and match feedback have moved on. It
+// is archived on the next read and the next message starts a fresh chat.
+const CHAT_STALE_MS = 24 * 3_600_000;
+
 export async function getOpenChat(sb: SupabaseClient, uid: string): Promise<GoalChat | null> {
   const { data } = await sb
     .from("goal_chats")
-    .select("id, source, context_snapshot")
+    .select("id, source, context_snapshot, updated_at")
     .eq("user_id", uid)
     .eq("status", "open")
     .maybeSingle();
-  return (data as GoalChat | null) ?? null;
+  if (!data) return null;
+  if (Date.now() - Date.parse(data.updated_at) > CHAT_STALE_MS) {
+    await sb
+      .from("goal_chats")
+      .update({ status: "archived", updated_at: new Date().toISOString() })
+      .eq("id", data.id)
+      .eq("status", "open");
+    return null;
+  }
+  return { id: data.id, source: data.source, context_snapshot: data.context_snapshot };
 }
 
 export async function loadMessages(sb: SupabaseClient, chatId: string): Promise<StoredMessage[]> {
@@ -75,8 +90,43 @@ export async function buildContextSnapshot(sb: SupabaseClient, uid: string): Pro
     if (lines.length) parts.push(`Current job-feed settings:\n${lines.join("\n")}`);
   }
 
-  if (active) parts.push(`Their CURRENT locked goal (they're refining it):\n${formatGoalForScoring(active.goal)}`);
+  if (active) {
+    parts.push(`Their CURRENT locked goal (they're refining it):\n${formatGoalForScoring(active.goal)}`);
+    const feedback = await loadMatchFeedback(sb, uid, active);
+    if (feedback) parts.push(feedback);
+  }
   return parts.join("\n\n") || "(No profile information yet.)";
+}
+
+const FEEDBACK_DISMISSED = 15;
+const FEEDBACK_PURSUED = 10;
+
+// Matches the user dismissed / started outreach on under the current goal
+// (scored_at ≥ finalized_at: a lock clears and re-scores matches). Lets the
+// coach notice a pattern and suggest a tweak — the user still confirms.
+async function loadMatchFeedback(sb: SupabaseClient, uid: string, active: ActiveGoal): Promise<string> {
+  const pick = async (status: string, limit: number): Promise<MatchSignal[]> => {
+    const { data, error } = await sb
+      .from("job_matches")
+      .select("scored_at, jobs!inner(title, company)")
+      .eq("user_id", uid)
+      .eq("status", status)
+      .gte("scored_at", active.finalized_at)
+      .order("scored_at", { ascending: false })
+      .limit(limit);
+    if (error) {
+      console.error("[goal/snapshot] feedback query failed", error.message);
+      return [];
+    }
+    return ((data ?? []) as unknown as Array<{ jobs: { title: string; company: string } | null }>)
+      .map((r) => r.jobs)
+      .filter((j): j is MatchSignal => !!j);
+  };
+  const [dismissed, pursued] = await Promise.all([
+    pick("dismissed", FEEDBACK_DISMISSED),
+    pick("outreach_started", FEEDBACK_PURSUED),
+  ]);
+  return formatMatchFeedback(dismissed, pursued);
 }
 
 export async function openChat(

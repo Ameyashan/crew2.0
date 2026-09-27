@@ -12,6 +12,7 @@ import {
   visaChipLabel,
   visaChipColors,
   goalPhrase,
+  isReranking,
   filterJobs,
   NO_FILTERS,
   type FeedFilters,
@@ -20,6 +21,7 @@ import { sectorLabel } from "@/lib/jobs/catalog/sectors";
 import { CompanyLogo } from "@/components/paper/CompanyLogo";
 import { FollowButton } from "@/components/paper/FollowButton";
 import type { FeedItem, PreferencesDTO } from "@/lib/jobs/types";
+import { useActiveGoal } from "@/components/goal/use-active-goal";
 
 // The boolean (toggle) filter keys — `location` is free text and is set
 // separately, so `toggle()` is scoped to just these.
@@ -191,6 +193,7 @@ function JobCard({
     <div style={{ fontFamily: "system-ui, sans-serif", fontSize: 12.5, lineHeight: 1.5, color: TOKENS.muted }}>
       {item.location ? `${item.location} · ` : ""}
       <span style={{ color: comp.listed ? TOKENS.green : TOKENS.faint }}>{comp.label}</span>
+      {item.comp_fit === "meets" && <span style={{ color: TOKENS.green }}> · clears your pay floor</span>}
     </div>
   );
   // Why this employer is tracked (Fortune 500 / top startup / top H-1B
@@ -346,6 +349,9 @@ export default function RecommendedJobsPage() {
   const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
   const [refreshing, setRefreshing] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const activeGoal = useActiveGoal();
+  // Ticks while re-ranking so the window can close without a reload.
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   const fetchFeed = useCallback(() => fetch("/api/jobs/feed").then((r) => r.json()), []);
 
@@ -443,7 +449,22 @@ export default function RecommendedJobsPage() {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [jobs]);
   const total = jobs?.length ?? 0;
-  const goal = goalPhrase((prefs?.interests ?? []).map(sectorLabel));
+  // A locked goal names what the feed is ranked against; otherwise the sectors.
+  const goal = activeGoal?.goal.short_label ?? goalPhrase((prefs?.interests ?? []).map(sectorLabel));
+  const reranking = !refreshing && jobs !== null && isReranking(activeGoal?.finalized_at, total, nowTick);
+
+  // Just locked a goal → the background re-scan is filling the feed. Poll it
+  // until matches land or the window closes (nowTick advances each poll).
+  useEffect(() => {
+    if (!reranking) return;
+    const t = setInterval(() => {
+      setNowTick(Date.now());
+      fetchFeed()
+        .then(applyFeed)
+        .catch(() => {});
+    }, 20_000);
+    return () => clearInterval(t);
+  }, [reranking, fetchFeed, applyFeed]);
 
   return (
     <div
@@ -502,6 +523,8 @@ export default function RecommendedJobsPage() {
       >
         {refreshing
           ? "Scoring roles against your Story — this can take a minute or two…"
+          : reranking
+            ? "Re-ranking roles for your new goal — this takes a minute or two…"
           : total === 0 && jobs !== null
             ? "Roles across your sectors, ranked against your Story. Press Refresh to score them."
           : jobs === null
@@ -654,7 +677,7 @@ export default function RecommendedJobsPage() {
           }}
         >
           <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 26, color: TOKENS.ink, lineHeight: 1.1 }}>
-            {refreshing ? "Scoring your matches…" : "No recommendations yet"}
+            {refreshing ? "Scoring your matches…" : reranking ? "Re-ranking for your goal…" : "No recommendations yet"}
           </div>
           <p
             style={{
@@ -669,9 +692,11 @@ export default function RecommendedJobsPage() {
           >
             {refreshing
               ? "We're pulling roles from your sectors and ranking them against your Story. Hang tight."
-              : "Pick the sectors you care about, then press Refresh and we'll rank roles that fit."}
+              : reranking
+                ? `We're scoring roles against “${goal}”. They'll show up here on their own.`
+                : "Pick the sectors you care about, then press Refresh and we'll rank roles that fit."}
           </p>
-          {!refreshing && (
+          {!refreshing && !reranking && (
             <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
               <QuietPill onClick={refresh}>Refresh</QuietPill>
               <QuietPill onClick={() => router.push("/app/jobs/preferences")}>Set your interests</QuietPill>

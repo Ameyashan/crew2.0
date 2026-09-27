@@ -8,6 +8,8 @@ import { useIsMobile } from "@/lib/use-is-mobile";
 import { GoalChat } from "@/components/goal/GoalChat";
 import { GoalProposalCard } from "@/components/goal/GoalProposalCard";
 import { setActiveGoal, useActiveGoal, type ActiveGoalDTO } from "@/components/goal/use-active-goal";
+import { useGoalProgress } from "@/components/goal/use-goal-progress";
+import { GoalProgress } from "@/components/goal/GoalProgress";
 import type { GoalSpec } from "@/lib/goal/goal-logic";
 
 function lockedOn(iso: string): string {
@@ -22,6 +24,16 @@ export default function GoalPage() {
   const active = useActiveGoal();
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const progress = useGoalProgress(active?.id);
+  // "Talk it through" from the refine prompt: remount the chat with a starter
+  // message and bring it into view.
+  const [refineSeed, setRefineSeed] = useState("");
+  async function startRefine() {
+    // Fresh chat, so the coach's context includes the latest match feedback.
+    await fetch("/api/goal/chat/reset", { method: "POST" }).catch(() => {});
+    setRefineSeed("I keep passing on the matches I'm getting — help me refine my goal.");
+    setTimeout(() => document.getElementById("goal-coach")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
 
   async function saveEdit(goal: GoalSpec) {
     setSaving(true);
@@ -111,16 +123,29 @@ export default function GoalPage() {
             error={saveError}
             readOnly
           />
-          <div style={{ marginTop: 12, fontFamily: PAPER_FONTS_V2.sans, fontSize: 13 }}>
-            <Link href="/app/jobs/recommended" style={{ color: TOKENS.ink }}>
-              See roles that fit this goal →
-            </Link>
-          </div>
+          {progress ? (
+            <>
+              {heading("Progress since you set it")}
+              <GoalProgress progress={progress} onRefine={() => void startRefine()} />
+            </>
+          ) : (
+            <div style={{ marginTop: 12, fontFamily: PAPER_FONTS_V2.sans, fontSize: 13 }}>
+              <Link href="/app/jobs/recommended" style={{ color: TOKENS.ink }}>
+                See roles that fit this goal →
+              </Link>
+            </div>
+          )}
         </>
       )}
 
-      {heading(active ? "Refine it with the coach" : "Set it with the coach")}
-      <GoalChat source="app" height={isMobile ? 380 : 440} activeLabel={active?.goal.short_label ?? null} />
+      <div id="goal-coach">{heading(active ? "Refine it with the coach" : "Set it with the coach")}</div>
+      <GoalChat
+        key={refineSeed ? "refine" : "chat"}
+        source="app"
+        height={isMobile ? 380 : 440}
+        activeLabel={active?.goal.short_label ?? null}
+        initialText={refineSeed}
+      />
     </div>
   );
 }

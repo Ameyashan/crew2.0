@@ -100,6 +100,9 @@ export interface FeedItem {
   // Why this employer is tracked ("Fortune 500 #12", "Top-100 H-1B sponsor");
   // empty for companies outside the curated universe.
   badges: string[];
+  // Posted pay vs the locked goal's pay floor (src/lib/jobs/comp.ts). Absent
+  // when the user has no goal floor; "below" rows are filtered out of the feed.
+  comp_fit?: "meets" | "below" | "unknown";
 }
 
 // Full detail for one job + the viewer's match.

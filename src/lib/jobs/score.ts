@@ -17,6 +17,7 @@ import { visaScoreBoost } from "@/lib/jobs/h1b/normalize";
 import type { Job } from "@/lib/db/schema";
 import type { ScoreResult, RoleMode } from "@/lib/jobs/types";
 import { formatGoalForScoring, type GoalSpec } from "@/lib/goal/goal-logic";
+import { parseComp, findCompInJd, compColumns } from "@/lib/jobs/comp";
 
 const MODEL = "claude-sonnet-4-6";
 const BATCH = 15;
@@ -62,7 +63,8 @@ function buildJobsBlock(batch: Job[]): string {
     .map((j, idx) => {
       const loc = j.location_raw || [j.city, j.region, j.country].filter(Boolean).join(", ") || "—";
       const snippet = jdText(j.ats, j.raw_json, SNIPPET_CHARS).replace(/\s+/g, " ").trim();
-      return `[${idx + 1}] ${j.title} — ${j.company} — ${loc}${snippet ? `\n${snippet}` : ""}`;
+      const pay = j.comp_label ? `\nListed pay: ${j.comp_label}` : "";
+      return `[${idx + 1}] ${j.title} — ${j.company} — ${loc}${pay}${snippet ? `\n${snippet}` : ""}`;
     })
     .join("\n\n");
 }
@@ -139,6 +141,33 @@ async function scoreBatch(
   return out;
 }
 
+const COMP_JD_CHARS = 20000;
+const COMP_WRITE_CONCURRENCY = 10;
+
+// Fill jobs.comp_* for jobs not parsed yet, mutating the in-memory rows so the
+// scorer prompt sees "Listed pay". comp_parsed_at is set even when nothing was
+// found, so each job is parsed once.
+async function parseCompFor(jobs: Job[]): Promise<void> {
+  const pending = jobs.filter((j) => !j.comp_parsed_at);
+  if (!pending.length) return;
+  const sb = supabaseAdmin();
+  const nowIso = new Date().toISOString();
+  const updates = pending.map((j) => {
+    const parsed = parseComp(j.compensation) ?? findCompInJd(jdText(j.ats, j.raw_json, COMP_JD_CHARS));
+    const cols = { ...compColumns(parsed), comp_parsed_at: nowIso };
+    Object.assign(j, cols);
+    return { id: j.id, cols };
+  });
+  for (let i = 0; i < updates.length; i += COMP_WRITE_CONCURRENCY) {
+    await Promise.all(
+      updates.slice(i, i + COMP_WRITE_CONCURRENCY).map(async ({ id, cols }) => {
+        const { error } = await sb.from("jobs").update(cols).eq("id", id);
+        if (error) console.error("[jobs/score] comp write failed", id, error.message);
+      }),
+    );
+  }
+}
+
 export interface ScoreSummary {
   scored: number;
   skipped: number; // already-scored jobs left untouched
@@ -201,6 +230,9 @@ export async function scoreJobsForUser({
   // score so the model sees a snippet (best-effort — a failure just scores on
   // the title).
   await hydrateJobs(todo).catch(() => 0);
+  // Pay floor needs pay: parse it once per job (field, else JD) and keep it on
+  // the jobs row for the feed. Best-effort — scoring never waits on a failure.
+  await parseCompFor(todo).catch((e) => console.error("[jobs/score] comp parse failed", e));
 
   const profile = await getProfile();
   // A locked goal is the primary axis and already states the target roles, so
