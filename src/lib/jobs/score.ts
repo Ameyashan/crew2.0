@@ -16,6 +16,7 @@ import { hydrateJobs } from "@/lib/jobs/hydrate";
 import { visaScoreBoost } from "@/lib/jobs/h1b/normalize";
 import type { Job } from "@/lib/db/schema";
 import type { ScoreResult, RoleMode } from "@/lib/jobs/types";
+import { formatGoalForScoring, type GoalSpec } from "@/lib/goal/goal-logic";
 
 const MODEL = "claude-sonnet-4-6";
 const BATCH = 15;
@@ -43,7 +44,15 @@ Scoring (0–100):
 
 For each job give ONE short, concrete reason (max ~15 words) citing the actual match or gap ("Analyst role matches their current BA title", "PM role — different function from their analyst background"). No flattery, no filler.
 
-If NO target role is given and the candidate info is otherwise sparse, score by general role desirability/seniority and say so briefly. Score every job; never skip one.
+When the candidate block has a "Goal (confirmed by candidate)" section, that goal REPLACES the Target role line and is the primary axis — the candidate settled it explicitly:
+- Role family and level must match the goal's target roles and level.
+- Judge industry / company type from the company name and the job text (e.g. "hedge funds", "Series B fintech"). Unknown fit is neutral, not a penalty.
+- Pay: if the job lists pay and the TOP of its range is below the goal's pay floor, score at most 40. Unlisted pay is neutral — never penalize it.
+- A clearly hit dealbreaker scores at most 30.
+- Priority companies named in the goal get a modest boost when the role also fits.
+- The reason must cite the goal dimension that decided it ("Senior PM at a quant fund — fits your hedge-fund PM goal", "Posted $150–170k — below your $200k floor", "Sales-led role — one of your dealbreakers").
+
+If NO target role or goal is given and the candidate info is otherwise sparse, score by general role desirability/seniority and say so briefly. Score every job; never skip one.
 
 Output strict JSON only, no prose:
 { "scores": [ { "i": number, "score": number, "reasons": string } ] }`;
@@ -164,11 +173,13 @@ export async function scoreJobsForUser({
   roleMode = null,
   targetRoles = [],
   visaRequired = false,
+  goal = null,
 }: {
   jobs: Job[];
   roleMode?: RoleMode;
   targetRoles?: string[];
   visaRequired?: boolean;
+  goal?: GoalSpec | null;
 }): Promise<ScoreSummary> {
   const userId = currentUserId();
   if (!jobs.length) return { scored: 0, skipped: 0 };
@@ -192,8 +203,10 @@ export async function scoreJobsForUser({
   await hydrateJobs(todo).catch(() => 0);
 
   const profile = await getProfile();
-  const senderContext = senderContextFromProfile(profile);
-  const targetRoleLine = resolveTargetRoleLine(roleMode, targetRoles, profile);
+  // A locked goal is the primary axis and already states the target roles, so
+  // it replaces the Target role line (and the goal brief in the sender context).
+  const senderContext = senderContextFromProfile(profile, { omitGoal: !!goal });
+  const targetRoleLine = goal ? formatGoalForScoring(goal) : resolveTargetRoleLine(roleMode, targetRoles, profile);
 
   // Deterministic tie-breaker when the user needs sponsorship: a small bump
   // toward employers with a positive visa signal (USCIS-verified > JD-parsed).

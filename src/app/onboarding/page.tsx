@@ -1,4 +1,4 @@
-// @ts-nocheck — onboarding: the prototype's 3-step 600px card (jugaadu reskin, Phase F)
+// @ts-nocheck — onboarding: the prototype's 600px card (jugaadu reskin, Phase F); step 3 hosts the goal coach
 "use client";
 
 import { useState } from "react";
@@ -13,16 +13,11 @@ import {
   onboardingCompletedCount,
 } from "@/components/paper/phase5-logic";
 import { SECTORS } from "@/lib/jobs/catalog/sectors";
+import { GoalChat } from "@/components/goal/GoalChat";
+import { goalToPrefsPatch } from "@/lib/goal/goal-logic";
 
 // The four agents shown as chips on step 1 (prototype lines 115–118).
 const AGENT_CHIPS = ["resume", "person khoji", "email wallah", "outreach"];
-
-// Two preset goals + the "write your own" escape hatch (prototype step 3). The
-// picked goal saves to the same context/goals field Settings edits.
-const GOAL_PRESETS = [
-  "Land a senior role at a company I respect.",
-  "Meet the people who can open doors for me.",
-];
 
 const TOTAL_STEPS = 5;
 
@@ -32,8 +27,11 @@ function OnboardingV3({ onDone }) {
   const [resume, setResume] = useState(null); // { name, seeded } | null
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
+  // Step 3 is the goal coach chat. Once the user locks a goal it's saved
+  // server-side (career_goals); we keep it here to seed step 5's roles and to
+  // merge its filters into the preferences saved on finish.
   const [goal, setGoal] = useState("");
-  const [customMode, setCustomMode] = useState(false);
+  const [lockedGoal, setLockedGoal] = useState(null); // GoalSpec | null
   const [interests, setInterests] = useState([]); // sector ids
   // Role targeting (step 5): "current" matches roles like the title read from
   // the resume; "different" matches the roles typed into targetRoles.
@@ -100,24 +98,26 @@ function OnboardingV3({ onDone }) {
       // it resolves we warm the feed with a scan so Jobs has matches ready
       // instead of an empty "set your interests" state. The profile is already
       // marked onboarded, so we never block the Desk on any of this.
-      if (interests.length || roleMode) {
+      if (interests.length || roleMode || lockedGoal) {
+        // The PUT replaces the whole row, so carry the locked goal's filters
+        // (sizes, locations, visa) instead of blanking what the lock wrote.
+        const goalPrefs = lockedGoal ? goalToPrefsPatch(lockedGoal) : null;
+        const typedRoles = targetRolesText
+          .split(",")
+          .map((r) => r.trim())
+          .filter(Boolean);
         void fetch("/api/jobs/preferences", {
           method: "PUT",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             interests,
             posted_within: "any",
-            company_sizes: [],
-            locations: [],
-            visa_required: false,
-            role_mode: roleMode,
+            company_sizes: goalPrefs?.company_sizes ?? [],
+            locations: goalPrefs?.locations ?? [],
+            visa_required: goalPrefs?.visa_required ?? false,
+            role_mode: roleMode ?? goalPrefs?.role_mode ?? null,
             target_roles:
-              roleMode === "different"
-                ? targetRolesText
-                    .split(",")
-                    .map((r) => r.trim())
-                    .filter(Boolean)
-                : [],
+              roleMode === "different" ? typedRoles : roleMode ? [] : (goalPrefs?.target_roles ?? []),
           }),
         })
           .then(() => fetch("/api/jobs/refresh", { method: "POST" }))
@@ -166,7 +166,8 @@ function OnboardingV3({ onDone }) {
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 24px" }}>
       <div
         style={{
-          width: 600,
+          // The goal chat on step 3 needs a little more room than the form steps.
+          width: step === 3 ? 680 : 600,
           maxWidth: "100%",
           background: TOKENS.card,
           border: `1px solid ${TOKENS.lineSoft}`,
@@ -306,7 +307,7 @@ function OnboardingV3({ onDone }) {
           </div>
         )}
 
-        {/* ── Step 3 — goal ── */}
+        {/* ── Step 3 — goal (coach chat) ── */}
         {step === 3 && (
           <div>
             <div style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 30, lineHeight: 1.25, letterSpacing: "-.01em" }}>
@@ -318,80 +319,24 @@ function OnboardingV3({ onDone }) {
                 fontSize: 14,
                 lineHeight: 1.7,
                 color: TOKENS.muted2,
-                margin: "16px 0 24px",
+                margin: "16px 0 20px",
               }}
             >
-              One line is enough. The crew uses it to rank roles and people for you.
+              Tell the coach in a sentence. It&apos;ll ask a couple of questions, then you lock in a goal — the crew
+              ranks roles and people against it. You can refine it any time.
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 30 }}>
-              {GOAL_PRESETS.map((g) => {
-                const active = !customMode && goal === g;
-                return (
-                  <div
-                    key={g}
-                    onClick={() => {
-                      setCustomMode(false);
-                      setGoal(g);
-                    }}
-                    style={{
-                      border: `1px solid ${active ? TOKENS.ink : TOKENS.line}`,
-                      borderRadius: RADII.panelTight,
-                      padding: "14px 18px",
-                      background: TOKENS.card,
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <span style={{ fontFamily: PAPER_FONTS_V2.serif, fontSize: 15, lineHeight: 1.4, color: TOKENS.ink }}>
-                      {g}
-                    </span>
-                    <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12, color: TOKENS.ink }}>
-                      {active ? "✓" : ""}
-                    </span>
-                  </div>
-                );
-              })}
-              {/* write your own */}
-              {!customMode ? (
-                <div
-                  onClick={() => {
-                    setCustomMode(true);
-                    setGoal("");
-                  }}
-                  style={{
-                    border: `1px solid ${TOKENS.line}`,
-                    borderRadius: RADII.panelTight,
-                    padding: "14px 18px",
-                    background: TOKENS.card,
-                    cursor: "pointer",
-                  }}
-                >
-                  <span style={{ fontFamily: PAPER_FONTS_V2.serif, fontStyle: "italic", fontSize: 15, color: TOKENS.muted }}>
-                    or write your own…
-                  </span>
-                </div>
-              ) : (
-                <input
-                  autoFocus
-                  value={goal}
-                  onChange={(e) => setGoal(e.target.value)}
-                  placeholder="e.g. Break into climate tech as a staff engineer."
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                    border: `1px solid ${goal.trim() ? TOKENS.ink : TOKENS.line}`,
-                    borderRadius: RADII.panelTight,
-                    padding: "14px 18px",
-                    background: TOKENS.card,
-                    color: TOKENS.ink,
-                    fontFamily: PAPER_FONTS_V2.serif,
-                    fontSize: 15,
-                    outline: "none",
-                  }}
-                />
-              )}
+            <div style={{ marginBottom: 26 }}>
+              <GoalChat
+                source="onboarding"
+                height={isMobile ? 340 : 380}
+                onLocked={(g) => {
+                  setLockedGoal(g.goal);
+                  setGoal(g.goal.summary);
+                  // Seed step 5 with the goal's roles (still editable there).
+                  setRoleMode("different");
+                  setTargetRolesText(g.goal.target_roles.join(", "));
+                }}
+              />
             </div>
           </div>
         )}
@@ -490,6 +435,11 @@ function OnboardingV3({ onDone }) {
                 );
               })}
             </div>
+            {lockedGoal && roleMode === "different" && (
+              <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.6, color: TOKENS.muted2, marginBottom: 10 }}>
+                Filled in from your goal — edit if you like.
+              </div>
+            )}
             {roleMode === "current" && (
               <div style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, lineHeight: 1.6, color: resume ? TOKENS.muted2 : TOKENS.red }}>
                 {resume
@@ -568,6 +518,20 @@ function OnboardingV3({ onDone }) {
                 }}
               >
                 Skip setup
+              </span>
+            )}
+            {step === 3 && !lockedGoal && (
+              <span
+                onClick={next}
+                style={{
+                  fontFamily: PAPER_FONTS_V2.sans,
+                  fontSize: 13,
+                  color: TOKENS.faint2,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Skip for now
               </span>
             )}
             {step === 2 && (

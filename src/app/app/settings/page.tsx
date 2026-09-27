@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { GoalSettingsRow } from "@/components/goal/GoalSettingsRow";
 import { PAPER_FONTS_V2 } from "@/components/paper/fonts";
 import { TOKENS, RADII, SHADOWS } from "@/components/paper/tokens";
 import {
@@ -218,6 +219,7 @@ function SettingsV3({ profile, saveProfile, reloadProfile }) {
             Update any of these whenever you like — changes apply to your next draft.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <GoalSettingsRow />
             {connected.map((item) => (
               <ConnectedRow
                 key={item.key}

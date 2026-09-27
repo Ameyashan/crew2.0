@@ -48,6 +48,7 @@ import {
   deskHeadline,
   deskRailSections,
 } from "@/components/paper/desk-logic";
+import { GoalStrip } from "@/components/goal/GoalStrip";
 import { RunsRail } from "@/components/paper/runs-rail";
 import {
   runStatusChip,
@@ -418,6 +419,8 @@ function ComposeV3({ p, go }) {
             color: TOKENS.muted, marginTop: 10, maxWidth: 520, textAlign: 'center',
           }}>You say what you want. The crew does the boring half.</div>
         )}
+
+        <GoalStrip signedIn={signedIn}/>
 
         <DeskComposer
           input={input} setInput={setInput}
