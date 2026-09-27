@@ -8,6 +8,7 @@
 
 import { RUN_STATUS_LABEL, runStatusState, type RunStatusState } from "./run-status.ts";
 import type { LiveRunTitleInput } from "./run-view-logic.ts";
+import type { GoalSpec } from "../../lib/goal/goal-logic.ts";
 
 // ── Composer suggestion pills ────────────────────────────────────────────────
 // The three pills under the composer. Each just seeds the paste box with a
@@ -123,16 +124,63 @@ export function storyNudgeKey(userKey?: string | null): string {
 // only once we've confirmed the session AND resolved a name; while either is
 // still pending (signedIn null, or name not yet loaded) we fall back to the
 // neutral prompt rather than flashing the wrong variant.
+// With a locked goal, returning users are greeted with it instead ("Welcome
+// back, Sam — let's land that Senior Product Manager role.").
 export function deskHeadline(
   signedIn: boolean | null,
   firstTime: boolean,
   name?: string | null,
+  goal?: DeskGoal | null,
 ): string {
   if (signedIn === false) return "A crew of agents for your job hunt.";
   const first = (name || "").trim().split(/\s+/)[0] || "";
   if (signedIn === true && firstTime) return first ? `Welcome, ${first}.` : "Welcome.";
+  const role = signedIn === true && goal ? goalRolePhrase(goal) : "";
+  if (role) return first ? `Welcome back, ${first} — let's land that ${role} role.` : `Let's land that ${role} role.`;
   if (signedIn === true && first) return `Welcome back, ${first} — what should the crew get done?`;
   return "What should the crew get done?";
+}
+
+// ── Goal-shaped Desk ─────────────────────────────────────────────────────────
+// The slice of a locked goal the Desk reads (src/lib/goal/goal-logic.ts).
+export type DeskGoal = Pick<GoalSpec, "target_roles" | "seniority" | "target_companies">;
+
+// Level words worth saying out loud in front of the role ("Senior Product
+// Manager"); the rest (mid, entry, director…) read oddly or are already in the
+// title.
+const LEVEL_PREFIX: Partial<Record<GoalSpec["seniority"][number], string>> = {
+  senior: "Senior",
+  staff_principal: "Staff",
+};
+
+// "Senior Product Manager" from the goal's first role + a single level.
+export function goalRolePhrase(goal: DeskGoal): string {
+  const role = (goal.target_roles[0] || "").trim();
+  if (!role) return "";
+  const prefix = goal.seniority.length === 1 ? LEVEL_PREFIX[goal.seniority[0]] : undefined;
+  return prefix && !role.toLowerCase().includes(prefix.toLowerCase()) ? `${prefix} ${role}` : role;
+}
+
+// A composer pill: seeds the composer (`fill`) or navigates (`href`).
+export type DeskPill = { id: string; label: string; fill: string } | { id: string; label: string; href: string };
+
+// Three pills written around the goal: reach people at the top priority
+// company, tailor for the goal role, and jump to goal-ranked roles. Falls back
+// to the generic pills when the goal has no role.
+export function goalSuggestionPills(goal: DeskGoal | null | undefined): DeskPill[] {
+  const generic: DeskPill[] = SUGGESTION_PILLS.map((p) => ({ ...p }));
+  if (!goal) return generic;
+  const role = goalRolePhrase(goal);
+  if (!role) return generic;
+  const company = (goal.target_companies[0] || "").trim();
+  const first: DeskPill = company
+    ? { id: "find", label: `People at ${company}`, fill: `Find people at ${company} who hire for ${role} roles` }
+    : { ...SUGGESTION_PILLS[0] };
+  return [
+    first,
+    { id: "resume", label: `Resume for ${role}`, fill: `Tailor my resume for a ${role} role at ` },
+    { id: "roles", label: "Roles that fit your goal", href: "/app/jobs/recommended" },
+  ];
 }
 
 // ── First-time gate ──────────────────────────────────────────────────────────

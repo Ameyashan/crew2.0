@@ -16,6 +16,8 @@ import { hydrateJobs } from "@/lib/jobs/hydrate";
 import { visaScoreBoost } from "@/lib/jobs/h1b/normalize";
 import type { Job } from "@/lib/db/schema";
 import type { ScoreResult, RoleMode } from "@/lib/jobs/types";
+import { formatGoalForScoring, type GoalSpec } from "@/lib/goal/goal-logic";
+import { parseComp, findCompInJd, compColumns } from "@/lib/jobs/comp";
 
 const MODEL = "claude-sonnet-4-6";
 const BATCH = 15;
@@ -43,7 +45,15 @@ Scoring (0–100):
 
 For each job give ONE short, concrete reason (max ~15 words) citing the actual match or gap ("Analyst role matches their current BA title", "PM role — different function from their analyst background"). No flattery, no filler.
 
-If NO target role is given and the candidate info is otherwise sparse, score by general role desirability/seniority and say so briefly. Score every job; never skip one.
+When the candidate block has a "Goal (confirmed by candidate)" section, that goal REPLACES the Target role line and is the primary axis — the candidate settled it explicitly:
+- Role family and level must match the goal's target roles and level.
+- Judge industry / company type from the company name and the job text (e.g. "hedge funds", "Series B fintech"). Unknown fit is neutral, not a penalty.
+- Pay: if the job lists pay and the TOP of its range is below the goal's pay floor, score at most 40. Unlisted pay is neutral — never penalize it.
+- A clearly hit dealbreaker scores at most 30.
+- Priority companies named in the goal get a modest boost when the role also fits.
+- The reason must cite the goal dimension that decided it ("Senior PM at a quant fund — fits your hedge-fund PM goal", "Posted $150–170k — below your $200k floor", "Sales-led role — one of your dealbreakers").
+
+If NO target role or goal is given and the candidate info is otherwise sparse, score by general role desirability/seniority and say so briefly. Score every job; never skip one.
 
 Output strict JSON only, no prose:
 { "scores": [ { "i": number, "score": number, "reasons": string } ] }`;
@@ -53,7 +63,8 @@ function buildJobsBlock(batch: Job[]): string {
     .map((j, idx) => {
       const loc = j.location_raw || [j.city, j.region, j.country].filter(Boolean).join(", ") || "—";
       const snippet = jdText(j.ats, j.raw_json, SNIPPET_CHARS).replace(/\s+/g, " ").trim();
-      return `[${idx + 1}] ${j.title} — ${j.company} — ${loc}${snippet ? `\n${snippet}` : ""}`;
+      const pay = j.comp_label ? `\nListed pay: ${j.comp_label}` : "";
+      return `[${idx + 1}] ${j.title} — ${j.company} — ${loc}${pay}${snippet ? `\n${snippet}` : ""}`;
     })
     .join("\n\n");
 }
@@ -130,6 +141,33 @@ async function scoreBatch(
   return out;
 }
 
+const COMP_JD_CHARS = 20000;
+const COMP_WRITE_CONCURRENCY = 10;
+
+// Fill jobs.comp_* for jobs not parsed yet, mutating the in-memory rows so the
+// scorer prompt sees "Listed pay". comp_parsed_at is set even when nothing was
+// found, so each job is parsed once.
+async function parseCompFor(jobs: Job[]): Promise<void> {
+  const pending = jobs.filter((j) => !j.comp_parsed_at);
+  if (!pending.length) return;
+  const sb = supabaseAdmin();
+  const nowIso = new Date().toISOString();
+  const updates = pending.map((j) => {
+    const parsed = parseComp(j.compensation) ?? findCompInJd(jdText(j.ats, j.raw_json, COMP_JD_CHARS));
+    const cols = { ...compColumns(parsed), comp_parsed_at: nowIso };
+    Object.assign(j, cols);
+    return { id: j.id, cols };
+  });
+  for (let i = 0; i < updates.length; i += COMP_WRITE_CONCURRENCY) {
+    await Promise.all(
+      updates.slice(i, i + COMP_WRITE_CONCURRENCY).map(async ({ id, cols }) => {
+        const { error } = await sb.from("jobs").update(cols).eq("id", id);
+        if (error) console.error("[jobs/score] comp write failed", id, error.message);
+      }),
+    );
+  }
+}
+
 export interface ScoreSummary {
   scored: number;
   skipped: number; // already-scored jobs left untouched
@@ -164,11 +202,13 @@ export async function scoreJobsForUser({
   roleMode = null,
   targetRoles = [],
   visaRequired = false,
+  goal = null,
 }: {
   jobs: Job[];
   roleMode?: RoleMode;
   targetRoles?: string[];
   visaRequired?: boolean;
+  goal?: GoalSpec | null;
 }): Promise<ScoreSummary> {
   const userId = currentUserId();
   if (!jobs.length) return { scored: 0, skipped: 0 };
@@ -190,10 +230,15 @@ export async function scoreJobsForUser({
   // score so the model sees a snippet (best-effort — a failure just scores on
   // the title).
   await hydrateJobs(todo).catch(() => 0);
+  // Pay floor needs pay: parse it once per job (field, else JD) and keep it on
+  // the jobs row for the feed. Best-effort — scoring never waits on a failure.
+  await parseCompFor(todo).catch((e) => console.error("[jobs/score] comp parse failed", e));
 
   const profile = await getProfile();
-  const senderContext = senderContextFromProfile(profile);
-  const targetRoleLine = resolveTargetRoleLine(roleMode, targetRoles, profile);
+  // A locked goal is the primary axis and already states the target roles, so
+  // it replaces the Target role line (and the goal brief in the sender context).
+  const senderContext = senderContextFromProfile(profile, { omitGoal: !!goal });
+  const targetRoleLine = goal ? formatGoalForScoring(goal) : resolveTargetRoleLine(roleMode, targetRoles, profile);
 
   // Deterministic tie-breaker when the user needs sponsorship: a small bump
   // toward employers with a positive visa signal (USCIS-verified > JD-parsed).

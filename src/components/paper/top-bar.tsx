@@ -9,7 +9,8 @@ import { supabaseBrowser, signInWithGoogle } from "@/lib/supabase-browser";
 import { useSessionUser } from "@/lib/use-signed-in";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { useRuns, useFocusedRun, setFocusedRun, beginAuthNavigation } from "@/lib/runs-store";
-import { TOP_NAV, nameFromEmail, isNavActive, avatarBg, avatarInitial, crewChip } from "./top-bar-logic";
+import { TOP_NAV, nameFromEmail, isNavActive, avatarBg, avatarInitial, crewChip, goalChip } from "./top-bar-logic";
+import { useActiveGoal } from "@/components/goal/use-active-goal";
 import {
   serializePendingRun,
   PENDING_RUN_KEY,
@@ -51,6 +52,12 @@ export function TopBar() {
   // strand a signed-in visitor on a Desk that still said "Sign in", even across
   // a refresh. `null` = still resolving, so we don't flash the wrong variant.
   const { signedIn, user } = useSessionUser();
+
+  // The locked goal's label (or a "Set a goal" nudge), always one tap from the
+  // goal page. Signed-in only.
+  const activeGoal = useActiveGoal(signedIn === true);
+  const goalPill = goalChip(activeGoal === undefined ? undefined : (activeGoal?.goal ?? null));
+  const onGoal = isNavActive(pathname, "/app/goal");
 
   // Preferred display name: the saved profile first, then the session account
   // (Google metadata or the email) so we never call a logged-in user "Guest".
@@ -271,6 +278,38 @@ export function TopBar() {
               );
             })}
           </nav>
+        )}
+
+        {!isSignedOut && goalPill && (
+          <Link
+            href={goalPill.href}
+            title={goalPill.hasGoal ? "Your goal — tap to view or refine" : "Set your job-search goal"}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              flexShrink: isMobile ? 0 : 1,
+              minWidth: 0,
+              maxWidth: isMobile ? undefined : 260,
+              padding: isMobile ? "6px 10px" : "7px 12px",
+              borderRadius: RADII.pill,
+              border: `1px ${goalPill.hasGoal ? "solid" : "dashed"} ${onGoal ? TOKENS.ink : TOKENS.line}`,
+              background: onGoal ? TOKENS.chip : "transparent",
+              color: goalPill.hasGoal ? TOKENS.ink : TOKENS.muted2,
+              textDecoration: "none",
+              fontFamily: PAPER_FONTS_V2.sans,
+              fontSize: isMobile ? 12 : 12.5,
+              lineHeight: 1,
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span aria-hidden="true" style={{ color: TOKENS.green }}>
+              ◎
+            </span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+              {isMobile ? "Goal" : goalPill.label}
+            </span>
+          </Link>
         )}
 
         {/* Live-runs chip: green while working, amber when something needs eyes.

@@ -22,6 +22,9 @@ export interface UserProfile {
   needs_sponsorship: boolean | null;
   github_url: string | null;
   portfolio_url: string | null;
+  // Outreach-safe text of the locked career goal (no comp floor/dealbreakers),
+  // written by lockGoal() in src/lib/goal/store.ts.
+  goal_brief?: string | null;
   updated_at: string;
 }
 
@@ -72,7 +75,12 @@ export async function upsertProfile(patch: ProfilePatch) {
 
 // Returns just the parts of the profile we want to inject as sender context
 // in drafts. Truncates resume to keep the prompt tight.
-export function senderContextFromProfile(p: UserProfile | null): string {
+// `omitGoal` drops the goal brief for callers that already give the model the
+// full goal (the job scorer), so it isn't stated twice.
+export function senderContextFromProfile(
+  p: UserProfile | null,
+  opts: { omitGoal?: boolean } = {},
+): string {
   if (!p) return "";
   const parts: string[] = [];
   if (p.full_name) parts.push(`Name: ${p.full_name}`);
@@ -87,6 +95,9 @@ export function senderContextFromProfile(p: UserProfile | null): string {
   } else if (p.context_prompt) {
     const trimmed = p.context_prompt.replace(/\s+/g, " ").trim().slice(0, 2400);
     parts.push(`Goals & context (in their own words):\n${trimmed}`);
+  }
+  if (!opts.omitGoal && p.goal_brief?.trim()) {
+    parts.push(`Current job-search goal (confirmed):\n${p.goal_brief.trim()}`);
   }
   return parts.join("\n\n");
 }

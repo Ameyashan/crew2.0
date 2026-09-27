@@ -43,6 +43,11 @@ export const PRODUCT_EVENTS = {
   // Job page "Who to reach out to" lookup (connections + web + Apollo).
   job_contacts_found: {} as { count: number; apollo: string },
   job_contact_action: {} as { action: "copy_note" | "draft"; kind: string },
+  // Goal coach (src/lib/goal). goal_locked.refined = replaced an earlier goal;
+  // edited = locked from the card's edit form rather than as proposed.
+  goal_chat_started: {} as { source: string },
+  goal_proposed: {} as { source: string },
+  goal_locked: {} as { source: string; refined: boolean; edited: boolean },
   // Signed-out funnel (blur gate)
   blur_gate_hit: {},
   blur_gate_signin_click: {},

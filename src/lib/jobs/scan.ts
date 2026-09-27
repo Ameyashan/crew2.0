@@ -17,6 +17,8 @@ import { fetchAllListings } from "@/lib/jobs/orchestrator";
 import { enrichJobs } from "@/lib/jobs/enrich";
 import { scoreJobsForUser } from "@/lib/jobs/score";
 import { selectAll } from "@/lib/jobs/paging";
+import { getActiveGoal } from "@/lib/goal/active";
+import type { GoalSpec } from "@/lib/goal/goal-logic";
 import type { Job } from "@/lib/db/schema";
 import type { PostedWithin, SizeBucket, RoleMode, VisaConfidence } from "@/lib/jobs/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -62,6 +64,19 @@ export function extractPins(cs: unknown): string[] {
     return strArray((cs as Record<string, unknown>).target_companies);
   }
   return [];
+}
+
+// Union of pin lists, deduped on the normalized name (first spelling wins).
+export function mergePins(...lists: string[][]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const p of lists.flat()) {
+    const key = p.toLowerCase().trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(p.trim());
+  }
+  return out;
 }
 
 // The profile's current role, used as the title signal when the user hasn't
@@ -163,7 +178,13 @@ export async function loadFollowedCompanyIds(sb: SupabaseClient, uid: string): P
 export async function loadScanPrefs(
   sb: SupabaseClient,
   uid: string,
-): Promise<{ prefs: ScanPrefs; pins: string[]; follows: string[]; currentRole: string | null }> {
+): Promise<{
+  prefs: ScanPrefs;
+  pins: string[];
+  follows: string[];
+  currentRole: string | null;
+  goal: GoalSpec | null;
+}> {
   const { data: row } = await sb.from("job_preferences").select("*").eq("user_id", uid).maybeSingle();
   const prefs: ScanPrefs = row
     ? {
@@ -178,13 +199,20 @@ export async function loadScanPrefs(
         include_staffing: row.include_staffing === true,
       }
     : { ...DEFAULT_PREFS };
-  const { data: prof } = await sb.from("user_profile").select("context_structured").eq("user_id", uid).maybeSingle();
-  const follows = await loadFollowedCompanyIds(sb, uid);
+  const [{ data: prof }, follows, active] = await Promise.all([
+    sb.from("user_profile").select("context_structured").eq("user_id", uid).maybeSingle(),
+    loadFollowedCompanyIds(sb, uid),
+    getActiveGoal(sb, uid),
+  ]);
+  const goal = active?.goal ?? null;
   return {
     prefs,
-    pins: extractPins(prof?.context_structured),
+    // The locked goal's priority companies are pins too: scanned, and exempt
+    // from the staffing filter, like the ones named in the profile context.
+    pins: mergePins(extractPins(prof?.context_structured), goal?.target_companies ?? []),
     follows,
     currentRole: extractCurrentRole(prof?.context_structured),
+    goal,
   };
 }
 
@@ -394,7 +422,7 @@ export async function enrichCandidates(sb: SupabaseClient, jobs: Job[], prefs: S
 
 // Select → enrich → score for one user. MUST run inside runWithUser(uid).
 export async function scoreUser(sb: SupabaseClient, uid: string, companyIds?: string[]): Promise<UserScanSummary> {
-  const { prefs, pins, follows, currentRole } = await loadScanPrefs(sb, uid);
+  const { prefs, pins, follows, currentRole, goal } = await loadScanPrefs(sb, uid);
   if (!hasScanSignal(prefs, pins, follows, currentRole)) {
     return { candidates: 0, scored: 0, skipped: 0, reason: "no_preferences" };
   }
@@ -406,6 +434,7 @@ export async function scoreUser(sb: SupabaseClient, uid: string, companyIds?: st
     roleMode: prefs.role_mode,
     targetRoles: prefs.target_roles,
     visaRequired: prefs.visa_required,
+    goal,
   });
   return { candidates: candidates.length, ...summary };
 }

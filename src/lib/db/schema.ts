@@ -284,6 +284,13 @@ export interface Job {
   company_size: SizeBucket | null;
   enriched_at: string | null;
   jd_visa_checked_at: string | null; // LLM JD visa parse done (0031)
+  // Parsed pay (0037, src/lib/jobs/comp.ts) — filled lazily at scoring time.
+  comp_min_usd?: number | null;
+  comp_max_usd?: number | null;
+  comp_currency?: string | null;
+  comp_period?: string | null;
+  comp_label?: string | null;
+  comp_parsed_at?: string | null;
   first_seen_at: string;
   last_seen_at: string;
   is_active: boolean;

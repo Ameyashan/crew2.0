@@ -173,6 +173,16 @@ export function goalPhrase(labels: string[]): string {
   return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]} roles`;
 }
 
+// After a goal is locked its old rankings are cleared and a background scan
+// re-scores (src/lib/goal/store.ts). For a while after the lock an empty feed
+// means "still re-ranking", not "nothing matches".
+export const RERANK_WINDOW_MS = 10 * 60_000;
+export function isReranking(finalizedAt: string | null | undefined, feedCount: number, now: number): boolean {
+  if (!finalizedAt || feedCount > 0) return false;
+  const t = Date.parse(finalizedAt);
+  return Number.isFinite(t) && now - t >= 0 && now - t < RERANK_WINDOW_MS;
+}
+
 // Split the one-line `reasons` string into "→" bullets for the detail view's
 // "WHY IT MATTERS TO YOU" card. Splits on newlines / bullet glyphs / semicolons;
 // a single-sentence reason stays one bullet.

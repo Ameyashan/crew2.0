@@ -10,6 +10,8 @@ import {
   STORY_NUDGE_PREFIX,
   isFirstTime,
   deskHeadline,
+  goalRolePhrase,
+  goalSuggestionPills,
   deskRunTitle,
   linkLabel,
   deskRunChips,
@@ -450,4 +452,36 @@ test("railRowMeta: kind, then status or caption, then when", () => {
     "Scanning the team page",
   );
   assert.equal(railRowMeta({ ...base, source: "live", status: "running" }, now), "Working…");
+});
+
+const PM_GOAL = { target_roles: ["Product Manager"], seniority: ["senior" as const], target_companies: ["Citadel", "Two Sigma"] };
+
+test("deskHeadline greets returning users with their goal", () => {
+  assert.equal(deskHeadline(true, false, "Sam Sharma", PM_GOAL), "Welcome back, Sam — let's land that Senior Product Manager role.");
+  assert.equal(deskHeadline(true, false, null, PM_GOAL), "Let's land that Senior Product Manager role.");
+  // First-time welcome and signed-out pitch are unchanged by a goal.
+  assert.equal(deskHeadline(true, true, "Sam", PM_GOAL), "Welcome, Sam.");
+  assert.equal(deskHeadline(false, false, "Sam", PM_GOAL), "A crew of agents for your job hunt.");
+  // A goal with no role falls back to the plain greeting.
+  assert.equal(
+    deskHeadline(true, false, "Sam", { ...PM_GOAL, target_roles: [] }),
+    "Welcome back, Sam — what should the crew get done?",
+  );
+});
+
+test("goalRolePhrase adds only senior/staff and never doubles it", () => {
+  assert.equal(goalRolePhrase(PM_GOAL), "Senior Product Manager");
+  assert.equal(goalRolePhrase({ ...PM_GOAL, target_roles: ["Senior PM"] }), "Senior PM");
+  assert.equal(goalRolePhrase({ ...PM_GOAL, seniority: ["mid"] }), "Product Manager");
+  assert.equal(goalRolePhrase({ ...PM_GOAL, seniority: ["senior", "staff_principal"] }), "Product Manager");
+});
+
+test("goalSuggestionPills: company-first pills, link pill, generic fallback", () => {
+  const pills = goalSuggestionPills(PM_GOAL);
+  assert.deepEqual(pills.map((p) => p.label), ["People at Citadel", "Resume for Senior Product Manager", "Roles that fit your goal"]);
+  assert.equal("fill" in pills[0] && pills[0].fill, "Find people at Citadel who hire for Senior Product Manager roles");
+  assert.equal("href" in pills[2] && pills[2].href, "/app/jobs/recommended");
+  // No priority company → the generic "Apply to a role" pill leads.
+  assert.equal(goalSuggestionPills({ ...PM_GOAL, target_companies: [] })[0].label, "Apply to a role");
+  assert.deepEqual(goalSuggestionPills(null).map((p) => p.label), SUGGESTION_PILLS.map((p) => p.label));
 });

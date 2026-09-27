@@ -104,10 +104,12 @@ export function deriveConnectedRows(profile: Record<string, unknown> | null | un
     },
     {
       key: "goals",
-      name: "Goals summary",
+      // The structured goal lives on /app/goal; this is the free-text
+      // self-summary the crew reads alongside it.
+      name: "Extra context about you",
       sub: context
         ? `~ ${Math.round((context.length || 0) / 5)} word self-summary on file`
-        : "No goals summary yet",
+        : "Optional — anything else the crew should know",
       on: !!context,
     },
   ];

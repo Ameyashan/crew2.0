@@ -7,6 +7,7 @@ import {
   avatarBg,
   avatarInitial,
   crewChip,
+  goalChip,
   AVATAR_BG,
   type RunLite,
 } from "./top-bar-logic.ts";
@@ -121,4 +122,12 @@ test("crewChip: parallel runs show a count instead of collapsing into one", () =
     ])?.label,
     "2 need you",
   );
+});
+
+test("goalChip: loading → null, none → nudge, goal → clipped label", () => {
+  assert.equal(goalChip(undefined), null);
+  assert.deepEqual(goalChip(null), { label: "Set a goal", href: "/app/goal", hasGoal: false });
+  assert.deepEqual(goalChip({ short_label: "PM · $200k+" }), { label: "PM · $200k+", href: "/app/goal", hasGoal: true });
+  const long = goalChip({ short_label: "Senior Product Manager · hedge funds · $200k+" });
+  assert.ok(long && long.label.length <= 32 && long.label.endsWith("…"));
 });

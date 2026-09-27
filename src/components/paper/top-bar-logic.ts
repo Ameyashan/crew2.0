@@ -64,3 +64,15 @@ export function crewChip(
     : count > 1 ? `${count} need you` : "needs you";
   return { tone: active.length ? "active" : "attention", label, target, count };
 }
+
+// Goal chip beside the nav: the locked goal's short label (clipped for the
+// bar), or a nudge to set one. Always links to the goal page. `undefined` =
+// still loading → render nothing rather than flashing the nudge.
+export function goalChip(
+  goal: { short_label: string } | null | undefined,
+): { label: string; href: string; hasGoal: boolean } | null {
+  if (goal === undefined) return null;
+  if (!goal) return { label: "Set a goal", href: "/app/goal", hasGoal: false };
+  const label = goal.short_label.length > 32 ? `${goal.short_label.slice(0, 31).trimEnd()}…` : goal.short_label;
+  return { label, href: "/app/goal", hasGoal: true };
+}
