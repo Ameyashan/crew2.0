@@ -179,7 +179,7 @@ export function goalSuggestionPills(goal: DeskGoal | null | undefined): DeskPill
   return [
     first,
     { id: "resume", label: `Resume for ${role}`, fill: `Tailor my resume for a ${role} role at ` },
-    { id: "roles", label: "Roles that fit your goal", href: "/app/jobs/recommended" },
+    { id: "roles", label: "Roles that fit your goal", href: "/app/jobs" },
   ];
 }
 

@@ -8,6 +8,8 @@ import { CompanyLogo } from "@/components/paper/CompanyLogo";
 import { TrackerSetup, type SetupStep } from "@/components/jobs/TrackerSetup";
 import { PeopleYouKnow } from "@/components/jobs/PeopleYouKnow";
 import { AskForIntroButton } from "@/components/jobs/AskForIntroButton";
+import { GoalJobsView } from "@/components/jobs/GoalJobsView";
+import { useActiveGoal } from "@/components/goal/use-active-goal";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { postedAgo, compDisplay } from "@/lib/jobs/format";
 import type { TrackerDTO, TrackerJob } from "@/lib/jobs/types";
@@ -16,6 +18,9 @@ import type { TrackerDTO, TrackerJob } from "@/lib/jobs/types";
 // boards fresh and list the open roles whose titles fit, with anything first
 // seen in the last 24h on top. No LLM on this page — the AI-ranked feed lives
 // at /app/jobs/recommended and scores only on request.
+//
+// Once a goal is locked the tab becomes GoalJobsView instead: applications and
+// goal-ranked opportunities, nothing else.
 
 function QuietPill({ children, onClick }: { children: ReactNode; onClick: () => void }) {
   return (
@@ -181,6 +186,8 @@ export default function JobsTrackerPage() {
   // null = showing the tracker; a step = showing setup at that step.
   const [editing, setEditing] = useState<SetupStep | null>(null);
   const [companyFilter, setCompanyFilter] = useState<string | null>(null);
+  // undefined = still loading; the tracker only loads once we know there's no goal.
+  const activeGoal = useActiveGoal();
 
   const load = useCallback(
     () =>
@@ -198,8 +205,8 @@ export default function JobsTrackerPage() {
   );
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (activeGoal === null) void load();
+  }, [activeGoal, load]);
 
   const companies = useMemo(() => tracker?.companies ?? [], [tracker]);
   const firstRun = tracker !== null && companies.length === 0;
@@ -231,7 +238,9 @@ export default function JobsTrackerPage() {
         background: TOKENS.paper,
       }}
     >
-      {error ? (
+      {activeGoal ? (
+        <GoalJobsView goal={activeGoal} isMobile={isMobile} />
+      ) : error ? (
         <div
           style={{
             background: TOKENS.card,
@@ -245,7 +254,7 @@ export default function JobsTrackerPage() {
           </div>
           <p style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 12, color: TOKENS.red, marginTop: 6 }}>{error}</p>
         </div>
-      ) : tracker === null ? (
+      ) : activeGoal === undefined || tracker === null ? (
         <p style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 13, color: TOKENS.muted }}>Loading…</p>
       ) : setupStep !== null ? (
         <TrackerSetup

@@ -480,7 +480,7 @@ test("goalSuggestionPills: company-first pills, link pill, generic fallback", ()
   const pills = goalSuggestionPills(PM_GOAL);
   assert.deepEqual(pills.map((p) => p.label), ["People at Citadel", "Resume for Senior Product Manager", "Roles that fit your goal"]);
   assert.equal("fill" in pills[0] && pills[0].fill, "Find people at Citadel who hire for Senior Product Manager roles");
-  assert.equal("href" in pills[2] && pills[2].href, "/app/jobs/recommended");
+  assert.equal("href" in pills[2] && pills[2].href, "/app/jobs");
   // No priority company → the generic "Apply to a role" pill leads.
   assert.equal(goalSuggestionPills({ ...PM_GOAL, target_companies: [] })[0].label, "Apply to a role");
   assert.deepEqual(goalSuggestionPills(null).map((p) => p.label), SUGGESTION_PILLS.map((p) => p.label));
