@@ -19,17 +19,22 @@ import { goalToPrefsPatch } from "@/lib/goal/goal-logic";
 // The four agents shown as chips on step 1 (prototype lines 115–118).
 const AGENT_CHIPS = ["resume", "person khoji", "email wallah", "outreach"];
 
-const TOTAL_STEPS = 5;
+// Steps 4–5 (sectors, roles) are the manual fallback for users who skip the
+// goal coach. Locking a goal on step 3 already sets target roles, sizes,
+// locations and priority companies — enough for the scan on its own — so the
+// wizard ends there.
+const FULL_STEPS = 5;
+const GOAL_STEPS = 3;
 
 function OnboardingV3({ onDone }) {
   const isMobile = useIsMobile();
-  const [step, setStep] = useState(1); // 1 | 2 | 3 | 4 | 5
+  const [step, setStep] = useState(1); // 1 | 2 | 3 (| 4 | 5 without a locked goal)
   const [resume, setResume] = useState(null); // { name, seeded } | null
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   // Step 3 is the goal coach chat. Once the user locks a goal it's saved
-  // server-side (career_goals); we keep it here to seed step 5's roles and to
-  // merge its filters into the preferences saved on finish.
+  // server-side (career_goals); we keep it here to merge its roles and filters
+  // into the preferences saved on finish.
   const [goal, setGoal] = useState("");
   const [lockedGoal, setLockedGoal] = useState(null); // GoalSpec | null
   const [interests, setInterests] = useState([]); // sector ids
@@ -150,13 +155,22 @@ function OnboardingV3({ onDone }) {
     }
   }
 
+  const totalSteps = lockedGoal ? GOAL_STEPS : FULL_STEPS;
+
   function next() {
-    if (step < TOTAL_STEPS) setStep(step + 1);
+    if (step < totalSteps) setStep(step + 1);
     else finish();
   }
 
+  // Nothing is lost going back: the resume upload and goal lock are already
+  // saved server-side, the goal chat reloads its transcript on remount, and
+  // the step 4–5 picks live in state until finish().
+  function back() {
+    if (step > 1) setStep(step - 1);
+  }
+
   const dot = (n) => (n <= step ? TOKENS.ink : TOKENS.line);
-  const nextText = step === TOTAL_STEPS ? "Open the Desk" : "Next";
+  const nextText = step === totalSteps ? "Open the Desk" : "Next";
   // Block advancing while the resume is still being read on step 2 — clicking
   // Next mid-read would drop the user past the upload before its Story seeding
   // lands, and reads as if the app broke.
@@ -204,7 +218,7 @@ function OnboardingV3({ onDone }) {
               color: TOKENS.faint,
             }}
           >
-            STEP {step} OF {TOTAL_STEPS}
+            STEP {step} OF {totalSteps}
           </span>
         </div>
 
@@ -332,7 +346,7 @@ function OnboardingV3({ onDone }) {
                 onLocked={(g) => {
                   setLockedGoal(g.goal);
                   setGoal(g.goal.summary);
-                  // Seed step 5 with the goal's roles (still editable there).
+                  // Carry the goal's roles into the preferences saved on finish.
                   setRoleMode("different");
                   setTargetRolesText(g.goal.target_roles.join(", "));
                 }}
@@ -485,7 +499,7 @@ function OnboardingV3({ onDone }) {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {[1, 2, 3, 4, 5].map((n) => (
+            {Array.from({ length: totalSteps }, (_, i) => i + 1).map((n) => (
               <span key={n} style={{ width: 18, height: 4, borderRadius: 2, background: dot(n) }} />
             ))}
             {completed > 0 && (
@@ -505,6 +519,20 @@ function OnboardingV3({ onDone }) {
             {submitError && (
               <span style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 11, color: TOKENS.red }}>
                 {submitError}
+              </span>
+            )}
+            {step > 1 && (
+              <span
+                onClick={submitting ? undefined : back}
+                style={{
+                  fontFamily: PAPER_FONTS_V2.sans,
+                  fontSize: 13,
+                  color: TOKENS.faint2,
+                  cursor: submitting ? "wait" : "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                ← Back
               </span>
             )}
             {step === 1 && (
