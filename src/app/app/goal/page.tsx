@@ -130,7 +130,7 @@ export default function GoalPage() {
             </>
           ) : (
             <div style={{ marginTop: 12, fontFamily: PAPER_FONTS_V2.sans, fontSize: 13 }}>
-              <Link href="/app/jobs/recommended" style={{ color: TOKENS.ink }}>
+              <Link href="/app/jobs" style={{ color: TOKENS.ink }}>
                 See roles that fit this goal →
               </Link>
             </div>

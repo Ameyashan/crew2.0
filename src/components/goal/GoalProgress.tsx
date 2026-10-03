@@ -51,7 +51,7 @@ export function GoalProgress({ progress, onRefine }: { progress: GoalProgressDTO
         }}
       >
         {progress.nudge}{" "}
-        <Link href="/app/jobs/recommended" style={{ color: TOKENS.ink, fontStyle: "normal", fontSize: 13 }}>
+        <Link href="/app/jobs" style={{ color: TOKENS.ink, fontStyle: "normal", fontSize: 13 }}>
           Open your matches →
         </Link>
       </div>
