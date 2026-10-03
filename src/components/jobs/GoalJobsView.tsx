@@ -8,13 +8,19 @@ import { CompanyLogo } from "@/components/paper/CompanyLogo";
 import { relativeWhen } from "@/components/paper/phase5-logic";
 import { JobCard } from "@/components/jobs/JobCard";
 import { useJobFeed } from "@/components/jobs/use-job-feed";
+import { STRONG_SCORE } from "@/lib/jobs/format";
 import { hydrateRun, setFocusedRun, type PersistedComposeRun } from "@/lib/runs-store";
 import { STAGE_LABEL, applicationsSummary, type ApplicationItem } from "@/lib/jobs/applications-logic";
 import type { ActiveGoalDTO } from "@/components/goal/use-active-goal";
 
-// The Jobs tab once a goal is locked: just two sections — the applications
-// the crew has built, and opportunities ranked against the goal (the same
-// scored feed as /app/jobs/recommended). The company tracker steps aside.
+// The Jobs tab once a goal is locked. Roles first, applications second:
+//   Strong matches for your goal — feed items at or above STRONG_SCORE. This is
+//     exactly the "N strong matches" the goal page counts (same loader), so the
+//     count there links straight to this list.
+//   Also worth a look — the closest below-bar matches the feed rides along
+//     when too few clear the bar (its `fallback` flag).
+//   Applications — what the crew has built; one quiet line while empty.
+// The company tracker steps aside.
 
 function QuietPill({ children, onClick, disabled }: { children: ReactNode; onClick: () => void; disabled?: boolean }) {
   return (
@@ -41,9 +47,9 @@ function QuietPill({ children, onClick, disabled }: { children: ReactNode; onCli
   );
 }
 
-function SectionLabel({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
+function SectionLabel({ children, aside, id }: { children: ReactNode; aside?: ReactNode; id?: string }) {
   return (
-    <div style={{ display: "flex", alignItems: "baseline", gap: 10, margin: "0 0 10px", flexWrap: "wrap" }}>
+    <div id={id} style={{ display: "flex", alignItems: "baseline", gap: 10, margin: "0 0 10px", flexWrap: "wrap" }}>
       <span
         style={{
           fontFamily: PAPER_FONTS_V2.mono,
@@ -194,9 +200,12 @@ export function GoalJobsView({ goal, isMobile }: { goal: ActiveGoalDTO; isMobile
   const [apps, setApps] = useState<ApplicationItem[] | null>(null);
   const [appsError, setAppsError] = useState<string | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
-  const { jobs, total, belowBar, error, followedIds, onToggleFollow, refreshing, note, refresh, reranking } =
+  const { jobs, total, error, followedIds, onToggleFollow, refreshing, note, refresh, reranking } =
     useJobFeed(goal.finalized_at);
   const label = goal.goal.short_label;
+  const strong = (jobs ?? []).filter((j) => j.score >= STRONG_SCORE);
+  const others = (jobs ?? []).filter((j) => j.score < STRONG_SCORE);
+  const roles = (n: number) => `${n} role${n === 1 ? "" : "s"}`;
 
   useEffect(() => {
     let alive = true;
@@ -271,11 +280,89 @@ export function GoalJobsView({ goal, isMobile }: { goal: ActiveGoalDTO; isMobile
           marginBottom: 26,
         }}
       >
-        Working toward <em style={{ color: TOKENS.inkSoft }}>{label}</em>. Your applications, then the roles the crew
-        ranked against that goal.
+        Working toward <em style={{ color: TOKENS.inkSoft }}>{label}</em>. The roles the crew ranked against that
+        goal, then the applications it has built for you.
       </div>
 
-      <SectionLabel aside={apps ? applicationsSummary(apps) : undefined}>Applications</SectionLabel>
+      <SectionLabel id="strong-matches" aside={jobs !== null && total > 0 ? roles(strong.length) : undefined}>
+        Strong matches for your goal
+      </SectionLabel>
+
+      {note && (
+        <div
+          style={{
+            fontFamily: PAPER_FONTS_V2.mono,
+            fontSize: 12,
+            color: TOKENS.ink,
+            border: `1px solid ${TOKENS.amberLine}`,
+            background: TOKENS.amberWash,
+            borderRadius: RADII.panelTight,
+            padding: "8px 12px",
+            marginBottom: 12,
+          }}
+        >
+          {note}
+        </div>
+      )}
+
+      {error ? (
+        <p style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 12, color: TOKENS.red }}>{error}</p>
+      ) : jobs === null ? (
+        <p style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 13, color: TOKENS.muted }}>Loading…</p>
+      ) : total === 0 ? (
+        <QuietNote>
+          {refreshing
+            ? "Scoring roles against your goal — this can take a minute or two…"
+            : reranking
+              ? `Re-ranking roles for “${label}”. They'll show up here on their own.`
+              : "No roles ranked for this goal yet. Press Refresh and the crew will score what's open."}
+        </QuietNote>
+      ) : (
+        <>
+          {strong.length ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {strong.map((item) => (
+                <JobCard
+                  key={item.match_id || item.job_id}
+                  item={item}
+                  isMobile={isMobile}
+                  onOpen={() => router.push(`/app/jobs/${item.job_id}`)}
+                  following={!!item.company_id && followedIds.has(item.company_id)}
+                  onToggleFollow={onToggleFollow}
+                />
+              ))}
+            </div>
+          ) : (
+            <QuietNote>
+              Nothing clears the bar for this goal right now — the closest matches are below. Press Refresh to score
+              what&apos;s new, or widen the goal a little.
+            </QuietNote>
+          )}
+
+          {others.length > 0 && (
+            <>
+              <div style={{ height: 32 }} />
+              <SectionLabel aside={`${roles(others.length)} · closest below the bar`}>Also worth a look</SectionLabel>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {others.map((item) => (
+                  <JobCard
+                    key={item.match_id || item.job_id}
+                    item={item}
+                    isMobile={isMobile}
+                    onOpen={() => router.push(`/app/jobs/${item.job_id}`)}
+                    following={!!item.company_id && followedIds.has(item.company_id)}
+                    onToggleFollow={onToggleFollow}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      <div style={{ height: 32 }} />
+
+      <SectionLabel aside={apps?.length ? applicationsSummary(apps) : undefined}>Applications</SectionLabel>
       {appsError ? (
         <p style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 12, color: TOKENS.red, margin: "0 0 8px" }}>
           {appsError}
@@ -303,78 +390,18 @@ export function GoalJobsView({ goal, isMobile }: { goal: ActiveGoalDTO; isMobile
           ))}
         </div>
       ) : (
-        <QuietNote>
-          No applications yet. Open a role below and run the crew — it tailors your résumé and finds who to reach, and
-          the application lands here.
-        </QuietNote>
-      )}
-
-      <div style={{ height: 32 }} />
-
-      <SectionLabel aside={total ? `${total} role${total === 1 ? "" : "s"} for your goal` : undefined}>
-        Opportunities
-      </SectionLabel>
-
-      {note && (
-        <div
-          style={{
-            fontFamily: PAPER_FONTS_V2.mono,
-            fontSize: 12,
-            color: TOKENS.ink,
-            border: `1px solid ${TOKENS.amberLine}`,
-            background: TOKENS.amberWash,
-            borderRadius: RADII.panelTight,
-            padding: "8px 12px",
-            marginBottom: 12,
-          }}
-        >
-          {note}
-        </div>
-      )}
-      {belowBar && total > 0 && (
-        <div
+        <p
           style={{
             fontFamily: PAPER_FONTS_V2.serif,
             fontStyle: "italic",
-            fontSize: 13.5,
+            fontSize: 14,
             lineHeight: 1.5,
             color: TOKENS.muted2,
-            border: `1px solid ${TOKENS.lineSoft}`,
-            background: TOKENS.cardWarm,
-            borderRadius: RADII.panelTight,
-            padding: "10px 14px",
-            marginBottom: 12,
+            margin: 0,
           }}
         >
-          Few roles clear the bar for this goal right now, so the closest matches are below too.
-        </div>
-      )}
-
-      {error ? (
-        <p style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 12, color: TOKENS.red }}>{error}</p>
-      ) : jobs === null ? (
-        <p style={{ fontFamily: PAPER_FONTS_V2.mono, fontSize: 13, color: TOKENS.muted }}>Loading…</p>
-      ) : total === 0 ? (
-        <QuietNote>
-          {refreshing
-            ? "Scoring roles against your goal — this can take a minute or two…"
-            : reranking
-              ? `Re-ranking roles for “${label}”. They'll show up here on their own.`
-              : "No roles ranked for this goal yet. Press Refresh and the crew will score what's open."}
-        </QuietNote>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {jobs.map((item) => (
-            <JobCard
-              key={item.match_id || item.job_id}
-              item={item}
-              isMobile={isMobile}
-              onOpen={() => router.push(`/app/jobs/${item.job_id}`)}
-              following={!!item.company_id && followedIds.has(item.company_id)}
-              onToggleFollow={onToggleFollow}
-            />
-          ))}
-        </div>
+          None yet — open a strong match above and run the crew; the application lands here.
+        </p>
       )}
     </>
   );

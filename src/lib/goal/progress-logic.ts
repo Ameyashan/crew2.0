@@ -3,7 +3,7 @@
 // threshold. Counts come from src/lib/goal/progress.ts. Import-free.
 
 export interface GoalProgressCounts {
-  strong_matches: number; // score ≥ STRONG_SCORE, not dismissed
+  strong_matches: number; // roles clearing the fit bar on the Jobs tab (STRONG_SCORE in src/lib/jobs/format.ts)
   applications: number; // job_applications created since the goal started
   submitted: number; // … and confirmed submitted on the ATS
   outreach_sent: number; // interactions "sent" since the goal started
@@ -11,7 +11,6 @@ export interface GoalProgressCounts {
   dismissed_since_lock: number; // matches passed on under the CURRENT goal
 }
 
-export const STRONG_SCORE = 70;
 export const REFINE_AFTER_DISMISSALS = 10;
 
 export interface ProgressStep {
