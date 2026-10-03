@@ -1,45 +1,18 @@
 import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { withUser } from "@/lib/auth";
-import { feedItemFromJoin, COMPANY_EMBED, type FeedJoinRow } from "@/lib/jobs/serialize";
-import {
-  loadScanPrefs,
-  matchesLocations,
-  matchesSize,
-  matchesStaffingPref,
-  explicitCompanies,
-  matchesVisaNeed,
-  postedThreshold,
-} from "@/lib/jobs/scan";
-import { diversifyByCompany } from "@/lib/jobs/format";
-import { compVsFloor, storedComp } from "@/lib/jobs/comp";
-import type { FeedItem } from "@/lib/jobs/types";
+import { loadRankedFeed } from "@/lib/jobs/feed";
 
 export const runtime = "nodejs";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
-// How many score-ranked matches we pull before applying preferences. Filtering
-// happens here (not in SQL) because location matching is regex-based, so the DB
-// window has to be wider than the page we return.
-const CANDIDATE_WINDOW = 300;
-// Hide clearly-weak matches (wrong role family / level) so a Business Analyst
-// doesn't see Product roles just because they're at a company they follow. If
-// fewer than MIN_STRONG matches clear the cutoff, we fall back to also showing
-// the closest below-bar matches (flagged, so the UI can say so) rather than a
-// one-card or falsely-empty feed.
-const MIN_SCORE = 50;
-const MIN_STRONG = 3;
-// Max jobs from a single company before the rest of that company's postings are
-// pushed to the tail of the feed — keeps one prolific board from walling it.
-const PER_COMPANY_CAP = 4;
 
 // GET /api/jobs/feed?limit&offset&filter=new
-// The user's ranked feed: job_matches (not dismissed) joined to active jobs,
-// ordered by score desc, re-checked against the user's CURRENT preferences.
-// Matches are scored once and persist, so preferences saved after a scan (or a
-// scan run before preferences existed) would otherwise leak through — the feed
-// is where "what you asked for" is enforced.
+// One page of the user's ranked feed (see src/lib/jobs/feed.ts for the
+// ranking and preference filters — the goal page's "strong matches" count
+// reads the same function). `fallback` is true when below-bar matches were
+// included because too few cleared the fit bar.
 export async function GET(req: NextRequest) {
   return withUser(async (userId) => {
     const url = new URL(req.url);
@@ -48,62 +21,16 @@ export async function GET(req: NextRequest) {
       Math.max(1, parseInt(url.searchParams.get("limit") || String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT),
     );
     const offset = Math.max(0, parseInt(url.searchParams.get("offset") || "0", 10) || 0);
-    const filterNew = url.searchParams.get("filter") === "new";
+    const onlyNew = url.searchParams.get("filter") === "new";
 
-    const sb = supabaseAdmin();
-    const SELECT = `id, score, reasons, status, jobs!inner(id, company_id, title, company, location_raw, city, region, country, remote_type, compensation, comp_label, comp_currency, comp_max_usd, posted_date, posted_date_approx, url, visa_confidence, visa_evidence, company_size, is_active, ${COMPANY_EMBED})`;
-    let q = sb
-      .from("job_matches")
-      .select(SELECT)
-      .eq("user_id", userId)
-      .neq("status", "dismissed")
-      .eq("jobs.is_active", true)
-      .order("score", { ascending: false })
-      .limit(CANDIDATE_WINDOW);
-    if (filterNew) q = q.eq("status", "new");
-
-    const [{ data, error }, { prefs, follows, pins, goal }] = await Promise.all([q, loadScanPrefs(sb, userId)]);
-    const explicit = explicitCompanies(follows, pins);
-    if (error) return Response.json({ error: error.message }, { status: 500 });
-
-    const threshold = postedThreshold(prefs.posted_within);
-    const floor = goal?.comp_floor_usd ?? null;
-    const rows = ((data ?? []) as unknown as FeedJoinRow[]).filter((row) => {
-      const j = row.jobs;
-      if (!j) return false;
-      if (!matchesLocations(j, prefs.locations)) return false;
-      if (!matchesSize(j, prefs.company_sizes)) return false;
-      // "I need sponsorship" hides explicit-no postings outright.
-      if (!matchesVisaNeed(j, prefs.visa_required)) return false;
-      // Staffing firms stay hidden unless opted in, followed or pinned.
-      if (!matchesStaffingPref(j, prefs.include_staffing, explicit)) return false;
-      // posted_within is enforced only here and in the email digest — scan-time
-      // selection ignores it so a tight setting can't starve the pipeline. An
-      // unknown posted date never hides a job.
-      if (threshold && j.posted_date && j.posted_date < threshold) return false;
-      // A locked goal's pay floor hides roles whose posted range tops out
-      // below it. Unlisted / non-USD pay is never hidden.
-      if (floor != null && compVsFloor(storedComp(j), floor, goal?.comp_basis) === "below") return false;
-      return true;
-    });
-
-    const items = rows.flatMap((row): FeedItem[] => {
-      const item = feedItemFromJoin(row);
-      if (!item) return [];
-      if (floor == null || !row.jobs) return [item];
-      return [{ ...item, comp_fit: compVsFloor(storedComp(row.jobs), floor, goal?.comp_basis) }];
-    });
-
-    // Prefer matches that clear the fit bar; when too few do, include the
-    // closest below-bar ones (items are score-ordered, so strong stay on top)
-    // and tell the UI we did.
-    const strong = items.filter((x) => x.score >= MIN_SCORE);
-    const fallback = strong.length < MIN_STRONG && items.length > strong.length;
-    const ranked = diversifyByCompany(fallback ? items : strong, PER_COMPANY_CAP);
-
-    const jobs = ranked.slice(offset, offset + limit);
-    const next_offset = offset + limit < ranked.length ? offset + limit : null;
-
-    return Response.json({ jobs, next_offset, fallback });
+    let ranked;
+    try {
+      ranked = await loadRankedFeed(supabaseAdmin(), userId, { onlyNew });
+    } catch (e) {
+      return Response.json({ error: String((e as Error)?.message || e) }, { status: 500 });
+    }
+    const jobs = ranked.items.slice(offset, offset + limit);
+    const next_offset = offset + limit < ranked.items.length ? offset + limit : null;
+    return Response.json({ jobs, next_offset, fallback: ranked.fallback });
   });
 }

@@ -7,7 +7,10 @@ import type { GoalProgressDTO } from "./use-goal-progress";
 
 // Goal page funnel: strong matches → applications → submitted → messages →
 // replies since the goal was set, the next-step nudge, and a refine prompt
-// once the user keeps passing on matches.
+// once the user keeps passing on matches. "Strong matches" is the same list
+// the Jobs tab opens with, so that step links straight to it.
+const MATCHES_HREF = "/app/jobs#strong-matches";
+
 export function GoalProgress({ progress, onRefine }: { progress: GoalProgressDTO; onRefine?: () => void }) {
   return (
     <div
@@ -19,8 +22,8 @@ export function GoalProgress({ progress, onRefine }: { progress: GoalProgressDTO
       }}
     >
       <div style={{ display: "flex", flexWrap: "wrap", gap: "14px 22px" }}>
-        {progress.steps.map((s, i) => (
-          <div key={s.id} style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+        {progress.steps.map((s, i) => {
+          const count = (
             <span
               style={{
                 fontFamily: PAPER_FONTS_V2.serif,
@@ -31,14 +34,42 @@ export function GoalProgress({ progress, onRefine }: { progress: GoalProgressDTO
             >
               {s.count}
             </span>
+          );
+          const text = (
             <span style={{ fontFamily: PAPER_FONTS_V2.sans, fontSize: 12.5, color: TOKENS.muted2 }}>{s.label}</span>
-            {i < progress.steps.length - 1 && (
-              <span aria-hidden="true" style={{ color: TOKENS.faint, marginLeft: 8 }}>
-                →
-              </span>
-            )}
-          </div>
-        ))}
+          );
+          return (
+            <div key={s.id} style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+              {s.id === "strong_matches" ? (
+                <Link
+                  href={MATCHES_HREF}
+                  title="See these roles on Jobs"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "baseline",
+                    gap: 6,
+                    textDecoration: "underline",
+                    textDecorationColor: TOKENS.faint,
+                    textUnderlineOffset: 4,
+                  }}
+                >
+                  {count}
+                  {text}
+                </Link>
+              ) : (
+                <>
+                  {count}
+                  {text}
+                </>
+              )}
+              {i < progress.steps.length - 1 && (
+                <span aria-hidden="true" style={{ color: TOKENS.faint, marginLeft: 8 }}>
+                  →
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
       <div
         style={{
@@ -51,7 +82,7 @@ export function GoalProgress({ progress, onRefine }: { progress: GoalProgressDTO
         }}
       >
         {progress.nudge}{" "}
-        <Link href="/app/jobs" style={{ color: TOKENS.ink, fontStyle: "normal", fontSize: 13 }}>
+        <Link href={MATCHES_HREF} style={{ color: TOKENS.ink, fontStyle: "normal", fontSize: 13 }}>
           Open your matches →
         </Link>
       </div>

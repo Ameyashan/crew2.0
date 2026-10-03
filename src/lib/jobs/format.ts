@@ -47,29 +47,23 @@ export function scoreTier(score: number): "high" | "mid" | "low" {
   return "low";
 }
 
-// ── Prototype presentation helpers (Phase D — Jobs feed + detail) ─────────────
-// These mirror the handoff prototype (lines 423–505). The prototype's FIT box
-// uses tighter thresholds than scoreTier above and its own colour tiers.
+// ── FIT bar ───────────────────────────────────────────────────────────────────
+// The ONE definition of a "strong match", shared by the feed (what clears the
+// bar), the goal page's "N strong matches" count and the card's FIT box. Keep
+// these three reading the same constant so the numbers can never disagree.
+export const STRONG_SCORE = 50;
 
-export type FitTier = "strong" | "fair" | "weak";
+export type FitTier = "strong" | "weak";
 
-// Prototype FIT tiers: ≥85 green, ≥75 amber, else muted.
 export function fitTier(score: number): FitTier {
-  if (score >= 85) return "strong";
-  if (score >= 75) return "fair";
-  return "weak";
+  return score >= STRONG_SCORE ? "strong" : "weak";
 }
 
-// text/border pair for the FIT box, matching the prototype hexes exactly.
+// text/border pair for the FIT box: green for a strong match, muted below the bar.
 export function fitColors(score: number): { color: string; border: string } {
-  switch (fitTier(score)) {
-    case "strong":
-      return { color: "#3d7a4f", border: "#bcd6c2" };
-    case "fair":
-      return { color: "#8a6d2f", border: "#e6d5ab" };
-    default:
-      return { color: "#8b8171", border: "#ddd5c4" };
-  }
+  return fitTier(score) === "strong"
+    ? { color: "#3d7a4f", border: "#bcd6c2" }
+    : { color: "#8b8171", border: "#ddd5c4" };
 }
 
 export type VisaKind = "sponsors" | "tbd" | "none";

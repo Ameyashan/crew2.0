@@ -8,6 +8,7 @@ import {
   scoreTier,
   fitTier,
   fitColors,
+  STRONG_SCORE,
   visaKind,
   visaChipLabel,
   visaChipColors,
@@ -52,19 +53,18 @@ test("visaBadge / visaLabelFull / sizeLabel / scoreTier unchanged", () => {
 });
 
 // ── FIT tiers (prototype thresholds 85 / 75) ─────────────────────────────────
-test("fitTier uses the prototype's 85 / 75 thresholds", () => {
+test("fitTier: one bar (STRONG_SCORE) decides strong vs weak", () => {
+  assert.equal(STRONG_SCORE, 50);
   assert.equal(fitTier(100), "strong");
-  assert.equal(fitTier(85), "strong");
-  assert.equal(fitTier(84), "fair");
-  assert.equal(fitTier(75), "fair");
-  assert.equal(fitTier(74), "weak");
+  assert.equal(fitTier(STRONG_SCORE), "strong");
+  assert.equal(fitTier(STRONG_SCORE - 1), "weak");
   assert.equal(fitTier(0), "weak");
 });
 
-test("fitColors returns the exact prototype hex pairs per tier", () => {
+test("fitColors: green at or above the bar, muted below", () => {
   assert.deepEqual(fitColors(90), { color: "#3d7a4f", border: "#bcd6c2" });
-  assert.deepEqual(fitColors(78), { color: "#8a6d2f", border: "#e6d5ab" });
-  assert.deepEqual(fitColors(40), { color: "#8b8171", border: "#ddd5c4" });
+  assert.deepEqual(fitColors(50), { color: "#3d7a4f", border: "#bcd6c2" });
+  assert.deepEqual(fitColors(49), { color: "#8b8171", border: "#ddd5c4" });
 });
 
 // ── Visa chip (three states; verified + JD-parse share the green) ────────────
